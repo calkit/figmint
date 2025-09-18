@@ -1,0 +1,2 @@
+# figmint
+Compose fresh figures.
