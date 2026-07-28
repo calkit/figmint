@@ -1,0 +1,38 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "asciimath",
+    "Calkit",
+    "fastapi",
+    "figmint",
+    "Figrecipe",
+    "frontmatter",
+    "infty",
+    "jsdom",
+    "katex",
+    "mathml",
+    "myst",
+    "oxlint",
+    "pydantic",
+    "pyproject",
+    "pyyaml",
+    "Rescan",
+    "smd",
+    "Stencila",
+    "streamwise",
+    "subcomponents",
+    "tldraw",
+    "tspan",
+    "uvicorn",
+    "vite",
+    "vitest",
+    "zustand"
+  ],
+  "ignorePaths": [
+    "node_modules/**",
+    "web/dist/**",
+    "uv.lock",
+    "package-lock.json"
+  ]
+}

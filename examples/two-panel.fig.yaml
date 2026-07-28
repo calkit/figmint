@@ -1,0 +1,124 @@
+# A figmint document.
+#
+# This is the whole figure: which artifacts it draws from, where they came from,
+# and exactly where each element sits. Geometry is in points (1pt = 1/72in), so
+# the canvas below is a 6.5in x 2.9in figure — full text width for most journals.
+#
+# Everything here is meant to be edited by hand or by an agent. Move a panel by
+# changing its `x`/`y`; the editor will show it in the same place.
+figmint: "0.1"
+id: fig-turbine-performance
+title: Cross-flow turbine performance and near wake
+caption: >-
+  (a) Power coefficient versus tip speed ratio for the baseline configuration.
+  (b) Streamwise velocity deficit measured one and three diameters downstream.
+
+canvas:
+  width: 468
+  height: 210
+  units: pt
+  background: null
+  grid:
+    size: 6
+    snap: true
+
+# Where each panel came from. `hash` is the content hash at the time the panel
+# was placed — the editor re-hashes on scan and flags anything that has changed.
+sources:
+  cp-curve:
+    path: figures/cp_curve.svg
+    hash: sha256:ff1f3fef05a1416456a72b25be66d0009780ea2d9e14dd95efc2d5fe3929cb85
+    mediaType: image/svg+xml
+    intrinsic:
+      width: 216
+      height: 162
+    provenance:
+      generatedBy: scripts/plot_cp.py
+      command: uv run python scripts/plot_cp.py --case baseline
+      commit: "3f9a1c47b28e5d06a4f1e0b39c7d2a58e6104fbb"
+      importedAt: "2026-07-28T00:00:00Z"
+      derivedFrom:
+        - data/processed/performance.csv
+  wake-profile:
+    path: figures/wake_profile.svg
+    hash: sha256:86783c6efc436024a4a088132587a01543a610b4fc1809abcefb9e639ad580ec
+    mediaType: image/svg+xml
+    intrinsic:
+      width: 216
+      height: 162
+    provenance:
+      generatedBy: scripts/plot_wake.py
+      importedAt: "2026-07-28T00:00:00Z"
+
+# Paint order: later entries draw on top.
+nodes:
+  - id: panel-a
+    type: image
+    name: Power coefficient
+    source: cp-curve
+    x: 12
+    y: 36
+    width: 216
+    height: 162
+    fit: contain
+
+  - id: panel-b
+    type: image
+    name: Wake profile
+    source: wake-profile
+    x: 240
+    y: 36
+    width: 216
+    height: 162
+    fit: contain
+
+  - id: label-a
+    type: text
+    text: (a)
+    x: 12
+    y: 12
+    width: 24
+    height: 14
+    style:
+      fontFamily: Helvetica, Arial, sans-serif
+      fontSize: 10
+      fontWeight: bold
+      color: "#111111"
+
+  - id: label-b
+    type: text
+    text: (b)
+    x: 240
+    y: 12
+    width: 24
+    height: 14
+    style:
+      fontFamily: Helvetica, Arial, sans-serif
+      fontSize: 10
+      fontWeight: bold
+      color: "#111111"
+
+  # LaTeX is stored verbatim so it stays editable and re-typesets on load.
+  - id: eq-cp
+    type: math
+    tex: C_P = \frac{P}{\tfrac{1}{2}\rho A U_\infty^3}
+    x: 300
+    y: 6
+    width: 150
+    height: 26
+    fontSize: 10
+    color: "#111111"
+
+  # A labelled box exports to a Stencila `<s:roi-rect>` overlay component.
+  - id: roi-peak
+    type: rect
+    label: Peak
+    x: 108
+    y: 54
+    width: 48
+    height: 42
+    style:
+      stroke: "#d1495b"
+      strokeWidth: 1
+      fill: null
+      strokeDash: 4 2

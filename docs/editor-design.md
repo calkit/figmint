@@ -48,3 +48,44 @@ subcomponents with their own provenance concerns.
 6. Just as easily, the figmint UI can build/export the composite image and
    `figmint status` shows it's up-to-date, since none of the input components
    have changed.
+
+## Decisions so far
+
+Recorded as the scaffold gets built; the format itself is documented in
+[format.md](format.md).
+
+- **Free-form canvas, not a grid editor.** Panels have absolute `x`/`y`/`w`/`h`
+  so they can be dragged and resized directly. Stencila's `Figure.layout` grid
+  is derived from those positions on export rather than driving the editor.
+- **Points as the storage unit.** A figure authored at 468pt is 6.5in in the PDF
+  with no scaling step.
+- **SVG all the way down.** The canvas renders the same SVG the exporter emits,
+  so there's no separate print path to keep in sync, and vector panels stay
+  vector.
+- **No canvas framework.** tldraw and friends bring their own document model,
+  which is the one thing here that has to stay ours — the text format is the
+  point of the project.
+- **The backend owns the filesystem.** Content hashes come from the actual bytes
+  on disk, not from the browser, so provenance answers can't be spoofed by the
+  UI. This matters for the "deep fake figure" concern above.
+- **Provenance sidecars** (`<artifact>.prov.yaml`) are the seam for pipeline
+  tools, so figmint doesn't need to understand Calkit, DVC, and Make separately.
+
+Staleness is already computed and surfaced in the editor's provenance panel
+(`ok` / `stale` / `missing` / `unknown`), which covers step 5 of the demo from
+the GUI side.
+
+### Still open
+
+- **`figmint status` and `figmint build` as CLI commands.** The demo above needs
+  them so an agent can check staleness without the GUI. The hashing and
+  comparison logic already exists in `src/figmint/assets.py`; what's missing is
+  a command that loads a `.fig.yaml`, re-hashes its sources, and exits non-zero
+  when anything is stale.
+- **Watching for changes.** Step 4 wants the UI to update automatically when a
+  script rewrites an artifact. Today you press Rescan.
+- **Round-tripping `.smd`** back into the editor — export is one-way.
+- **Validating the Stencila export** against the real `stencila` CLI.
+- **Composite-of-composite:** a source that points at another figmint document
+  rather than an image. This is the knowledge-graph direction above, and it is
+  the main thing the current source model would need to grow.

@@ -1,0 +1,8 @@
+# Provenance sidecar. Written by whatever produced the artifact — a plotting
+# script, a Calkit/DVC stage, a Makefile rule — and read by figmint when it
+# scans the figure directory.
+generatedBy: scripts/plot_cp.py
+command: uv run python scripts/plot_cp.py --case baseline
+commit: "3f9a1c47b28e5d06a4f1e0b39c7d2a58e6104fbb"
+derivedFrom:
+  - data/processed/performance.csv
