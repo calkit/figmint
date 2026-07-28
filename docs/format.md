@@ -74,6 +74,23 @@ This deliberately mirrors how Stencila decides whether a node needs
 re-execution: it compares a node's `compilationDigest` against the
 `executionDigest` captured at the last run.
 
+### Accepting a change
+
+A `stale` component is cleared by `figmint accept`, never by `figmint build`.
+The separation is the point: rebuilding is mechanical, but deciding that a
+regenerated panel still says what the figure claims it says is a judgement. If
+building silently re-recorded hashes, every rebuild would destroy the evidence
+that a component had moved underneath the figure.
+
+Accepting re-reads the component and updates `hash`, `size`, `modified`,
+`intrinsic`, and `credentials`, and stamps `provenance.acceptedAt`. If the
+component has *lost* a manifest it previously had, the recorded `credentials`
+are removed rather than left behind asserting provenance the file no longer has.
+
+The rewrite goes through a round-trip YAML parser, so comments, key order,
+blank lines, and explicit `null`s survive. A format that claims to be
+hand-editable cannot reformat itself behind the author's back.
+
 ### Content Credentials (C2PA)
 
 The primary provenance source is the signed [C2PA](https://c2pa.org) manifest
@@ -145,6 +162,36 @@ The two are complementary rather than redundant: credentials win where they
 overlap, and the sidecar supplies what C2PA has no field for — the script path,
 the exact command line, the upstream data files. This is the seam where Calkit,
 DVC, or a plain Makefile can declare what produced a figure.
+
+## Building
+
+`figmint build` composes a document into one self-contained artifact:
+
+```sh
+figmint build fig.fig.yaml --to svg --to pdf
+```
+
+Vector panels are **inlined as SVG**, not embedded as images — a plot's text
+stays selectable text and its lines stay lines all the way into the PDF. Raster
+panels become data URIs. The result references nothing outside itself.
+
+Two details that matter for correctness:
+
+- **Panel ids are namespaced on inline.** Two matplotlib plots both define
+  `#clip1` and `#DejaVuSans-glyph-*`. Without rewriting ids and their
+  references, the second panel silently adopts the first panel's clip paths and
+  glyphs — which shows up as subtly wrong output, not an error.
+- **Geometry in points means true size.** A 468pt canvas produces a PDF with
+  `MediaBox [0 0 468 210]`, i.e. exactly 6.5in wide, with no scaling step.
+
+LaTeX is rendered to vector paths via matplotlib's mathtext when matplotlib is
+importable. It is not a runtime dependency — it is simply very likely to be
+present in a project that makes figures. Without it, math falls back to
+`<foreignObject>` + MathML, which browsers render but most SVG-to-PDF converters
+drop; `build` warns rather than letting an equation vanish from a PDF silently.
+
+PDF and PNG output shell out to `rsvg-convert`, `inkscape`, or ImageMagick,
+whichever is present. SVG needs nothing.
 
 ## Relationship to Stencila
 

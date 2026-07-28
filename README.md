@@ -40,9 +40,14 @@ web/                 React + TypeScript + Vite editor
   src/io/            .fig.yaml serialization, Stencila export, API client
   src/state/         editor store with undo/redo
   src/components/    canvas, panels, inspector
-src/figmint/         Python backend
+src/figmint/         Python backend and CLI
   assets.py          directory scan, content hashing, intrinsic sizes
+  credentials.py     reading C2PA Content Credentials
+  document.py        .fig.yaml loading
+  status.py          staleness checking
+  build.py           composing to self-contained SVG/PDF/PNG
   server.py          HTTP API; also serves the built editor
+  cli.py             serve / status / build
 ```
 
 The backend owns everything that touches the filesystem, so provenance answers
@@ -53,6 +58,53 @@ told. In development Vite proxies `/api` to it; in production
 The canvas is plain SVG in document coordinates — the same elements the exporter
 writes. What you see and what you publish stay in agreement, and there is no
 second rendering path to keep in sync.
+
+## Command line
+
+The editor is not the only way in — `status` and `build` do the same work
+headlessly, so an agent or a CI job can use them.
+
+```sh
+figmint status                 # is every figure still true to its components?
+figmint status -v figures/     # also list the healthy ones
+figmint accept fig.fig.yaml    # "I've reviewed the change" — re-records hashes
+figmint build fig.fig.yaml     # compose into a self-contained SVG
+figmint build . --if-stale --to pdf --to svg
+```
+
+`status` exits `1` when anything is stale and `2` on error, so it drops straight
+into a pipeline.
+
+### Two kinds of stale
+
+These are different questions, and figmint keeps them apart deliberately:
+
+| | Question | Fixed by |
+| --- | --- | --- |
+| **Output** | Is the built figure older than its inputs? | `build` — purely mechanical |
+| **Component** | Has a panel changed since it was placed? | `accept` — a judgement call |
+
+Rebuilding does **not** clear a changed-component warning. The axes may have
+moved, the units may have changed, the point the panel was making may no longer
+hold. If `build` silently re-recorded hashes, every rebuild would erase the
+evidence that anything had changed, and the warning would be worth nothing.
+
+So the loop after a script regenerates a component is:
+
+```sh
+figmint status              # cp-curve changed on disk
+# ...look at it...
+figmint accept .            # yes, that's the figure I meant
+figmint build . --if-stale  # regenerate the composite
+```
+
+`accept` rewrites the document with a round-trip YAML parser, so comments, key
+order, and formatting survive — the diff is the hash line plus what it recorded.
+
+A build inlines every vector panel rather than rasterising it, so text in a plot
+stays selectable text all the way into the PDF, and the page comes out at true
+size — a 468pt canvas is exactly 6.5in. PDF and PNG need `rsvg-convert` or
+`inkscape` on the system; SVG needs nothing.
 
 ## Provenance
 

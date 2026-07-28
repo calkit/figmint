@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useEditor } from '../state/store'
 import { makeId, makeMathNode, makeTextNode } from '../model/document'
+import { buildDocument } from '../io/api'
 import type { FigNode } from '../model/types'
 
 export function Toolbar({ onExport }: { onExport: () => void }) {
@@ -67,6 +68,33 @@ export function Toolbar({ onExport }: { onExport: () => void }) {
     }
   }
 
+  /**
+   * Build composes from the saved file, not from memory, so the artifact always
+   * matches a document someone else could open. Save first when dirty.
+   */
+  const doBuild = async () => {
+    setBusy(true)
+    try {
+      let target = documentPath
+      if (!target || dirty) {
+        await doSave()
+        target = useEditor.getState().documentPath
+        if (!target) return
+      }
+      const result = await buildDocument(target, ['svg'])
+      const names = result.outputs.map((o) => o.path).join(', ')
+      setStatus(
+        result.warnings.length > 0
+          ? `Built ${names} — ${result.warnings[0]}`
+          : `Built ${names}`,
+      )
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const doOpen = async () => {
     const path = window.prompt('Open document path:', 'figures/example.fig.yaml')
     if (!path) return
@@ -95,6 +123,14 @@ export function Toolbar({ onExport }: { onExport: () => void }) {
         </button>
         <button className="btn" onClick={() => void doSave()} disabled={busy}>
           Save{dirty ? ' •' : ''}
+        </button>
+        <button
+          className="btn"
+          onClick={() => void doBuild()}
+          disabled={busy}
+          title="Compose into a self-contained SVG next to the document"
+        >
+          Build
         </button>
         <button className="btn" onClick={onExport}>
           Export…

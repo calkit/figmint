@@ -73,6 +73,26 @@ export function listDocuments(): Promise<{ documents: string[] }> {
   return request<{ documents: string[] }>('/documents')
 }
 
+export interface BuildOutput {
+  path: string
+  bytes: number
+}
+
+/**
+ * Build a *saved* document into artifacts. The backend composes from what is on
+ * disk, so save before calling — the editor does this for you.
+ */
+export function buildDocument(
+  path: string,
+  formats: string[] = ['svg'],
+): Promise<{ outputs: BuildOutput[]; warnings: string[] }> {
+  return request('/build', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, formats }),
+  })
+}
+
 /** URL that serves the raw bytes of a project-relative path. */
 export function assetUrl(path: string): string {
   return `${BASE}/file?path=${encodeURIComponent(path)}`

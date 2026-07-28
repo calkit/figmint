@@ -78,19 +78,32 @@ Recorded as the scaffold gets built; the format itself is documented in
   that don't sign, and carry what C2PA has no field for (script path, command
   line, upstream data). Credentials win where the two overlap.
 
-Staleness is already computed and surfaced in the editor's provenance panel
-(`ok` / `stale` / `missing` / `unknown`), which covers step 5 of the demo from
-the GUI side.
+### Demo status
+
+Against the walkthrough above:
+
+| Step | State |
+| --- | --- |
+| 1–2. Insert components | done — drag from the figure panel, provenance recorded |
+| 3. Agent resizes a panel | done — geometry is plain YAML an agent can edit |
+| 4. Agent edits a script, UI updates on change | partial — press Rescan; no watcher yet |
+| 5. `figmint status` shows staleness | done — exits non-zero, so CI and agents can gate on it |
+| 5. `figmint build` | done — composes to self-contained SVG/PDF/PNG |
+| 6. Build from the UI, then status is clean | done — the Build button composes from the saved file |
+
+Building the demo surfaced a distinction the walkthrough glosses over: rebuilding
+does not clear a *changed-component* warning, only a *stale-output* one. Deciding
+that a regenerated panel still supports the claim it was placed to support is a
+judgement, so it lives in a separate `figmint accept` step. Folding it into
+`build` would mean every rebuild silently erased the evidence that an input had
+moved — which would defeat the point of tracking staleness at all.
 
 ### Still open
 
-- **`figmint status` and `figmint build` as CLI commands.** The demo above needs
-  them so an agent can check staleness without the GUI. The hashing and
-  comparison logic already exists in `src/figmint/assets.py`; what's missing is
-  a command that loads a `.fig.yaml`, re-hashes its sources, and exits non-zero
-  when anything is stale.
 - **Watching for changes.** Step 4 wants the UI to update automatically when a
-  script rewrites an artifact. Today you press Rescan.
+  script rewrites an artifact. Today you press Rescan. The backend already
+  re-hashes on scan, so this is a watcher plus a websocket, not new provenance
+  logic.
 - **Signing the exported composite.** figmint reads Content Credentials but does
   not write them. Signing the output with each panel as a `componentOf`
   ingredient would make the knowledge graph real and machine-checkable — C2PA
@@ -100,8 +113,7 @@ the GUI side.
 - **Composite-of-composite:** a source that points at another figmint document
   rather than an image. Closely related to the signing item above — C2PA
   ingredients and figmint sources want to become the same concept.
-- **PDF export.** Stencila's PDF path can't embed our SVG panels and needs an
-  external tool. Emitting print-ready SVG ourselves is likely the better route.
 
-The Stencila export is now validated against the real CLI (2.15.0) — see
+The Stencila export is validated against the real CLI (2.15.0), and PDF output
+now goes through our own composed SVG rather than Stencila's PDF path — see
 [format.md](format.md).

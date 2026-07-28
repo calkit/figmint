@@ -12,7 +12,6 @@ Run it with `make dev`, or directly::
 
 from __future__ import annotations
 
-import argparse
 import os
 from pathlib import Path
 from typing import Any
@@ -23,10 +22,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import build as build_mod
+from . import document as document_mod
+from . import status as status_mod
 from .assets import UnsafePathError, safe_join, scan
-
-#: Suffix identifying a figmint document.
-DOCUMENT_SUFFIX = ".fig.yaml"
+from .document import DOCUMENT_SUFFIX
 
 
 class Settings:
@@ -41,6 +41,12 @@ class Settings:
 class DocumentWrite(BaseModel):
     path: str
     text: str
+
+
+class BuildRequest(BaseModel):
+    path: str
+    #: Any of `svg`, `pdf`, `png`. Defaults to SVG.
+    formats: list[str] | None = None
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -109,6 +115,66 @@ def create_app(settings: Settings) -> FastAPI:
         os.replace(temporary, target)
         return {"path": payload.path, "bytes": len(payload.text.encode("utf-8"))}
 
+    @app.get("/api/status")
+    def document_status(path: str) -> dict[str, Any]:
+        """Staleness report for one document — the API behind `figmint status`."""
+        target = resolve(path)
+        report = status_mod.check_path(target)
+        if report.error:
+            raise HTTPException(status_code=400, detail=report.error)
+        return {
+            "path": path,
+            "stale": report.stale,
+            "sources": [
+                {
+                    "key": s.key,
+                    "path": s.path,
+                    "state": s.state.value,
+                    "detail": s.detail,
+                }
+                for s in report.sources
+            ],
+            "outdatedOutputs": [
+                o.relative_to(settings.root).as_posix()
+                if o.is_relative_to(settings.root)
+                else str(o)
+                for o in report.outdated_outputs
+            ],
+        }
+
+    @app.post("/api/build")
+    def build_document(payload: BuildRequest) -> dict[str, Any]:
+        """Compose a saved document into artifacts, as `figmint build` does.
+
+        Builds from what is on disk, not from the editor's in-memory state, so
+        the artifact always corresponds to a document you could hand to someone
+        else. The editor saves first.
+        """
+        target = resolve(payload.path)
+        try:
+            document = document_mod.load(target)
+        except document_mod.DocumentError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        formats = tuple(payload.formats or ["svg"])
+        try:
+            results = build_mod.build(document, formats=formats)
+        except build_mod.BuildError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        return {
+            "outputs": [
+                {
+                    "path": r.output.relative_to(settings.root).as_posix()
+                    if r.output.is_relative_to(settings.root)
+                    else str(r.output),
+                    "bytes": r.output.stat().st_size,
+                }
+                for r in results
+            ],
+            "warnings": results[0].warnings if results else [],
+        }
+
     @app.get("/api/health")
     def health() -> dict[str, Any]:
         return {"ok": True, "root": str(settings.root), "figures": settings.figures}
@@ -120,43 +186,3 @@ def create_app(settings: Settings) -> FastAPI:
         app.mount("/", StaticFiles(directory=dist, html=True), name="editor")
 
     return app
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="figmint", description=__doc__)
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    serve = sub.add_parser("serve", help="run the editor backend")
-    serve.add_argument(
-        "--root",
-        type=Path,
-        default=Path.cwd(),
-        help="project root the editor may read and write (default: cwd)",
-    )
-    serve.add_argument(
-        "--figures",
-        default=None,
-        help="subdirectory to scan for figures (default: the whole project)",
-    )
-    serve.add_argument("--host", default="127.0.0.1")
-    serve.add_argument("--port", type=int, default=8420)
-    serve.add_argument("--reload", action="store_true")
-
-    args = parser.parse_args(argv)
-
-    import uvicorn
-
-    settings = Settings(args.root, args.figures)
-    print(f"figmint api  root={settings.root}  figures={settings.figures or '.'}")
-    uvicorn.run(
-        create_app(settings),
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-        log_level="info",
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

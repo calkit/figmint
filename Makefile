@@ -47,6 +47,14 @@ build: web/node_modules  ## Build the editor into web/dist
 serve: build  ## Build, then serve the editor from the API process alone
 	uv run figmint serve --root $(ROOT) $(FIGURES_ARG) --port $(API_PORT)
 
+.PHONY: status
+status:  ## Report whether figures are stale (non-zero exit if they are)
+	uv run figmint status $(ROOT)
+
+.PHONY: figures
+figures:  ## Rebuild any figure whose components have changed
+	uv run figmint build $(ROOT) --if-stale --to svg
+
 .PHONY: components
 components:  ## Regenerate example components, signed with Content Credentials
 	@command -v stencila >/dev/null || { echo "stencila CLI not found"; exit 1; }
