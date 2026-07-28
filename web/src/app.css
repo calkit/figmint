@@ -390,6 +390,69 @@ body {
   color: var(--muted);
 }
 
+/* --- content credentials ------------------------------------------------ */
+
+.badge-ai {
+  background: #efe6fb;
+  color: #6b28c4;
+  font-weight: 700;
+}
+
+.cred-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 2px 0;
+}
+
+.cred-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cred-ai {
+  font-size: 11px;
+  color: #6b28c4;
+  font-weight: 600;
+}
+
+.cred-ingredients ul {
+  margin: 2px 0 0;
+  padding-left: 14px;
+}
+
+.cred-ingredients summary {
+  cursor: pointer;
+}
+
+.cred-nested {
+  color: var(--ok);
+}
+
+.asset-thumb {
+  position: relative;
+}
+
+.thumb-mark {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: rgba(240, 241, 243, 0.95);
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.thumb-ai {
+  background: #efe6fb;
+  color: #6b28c4;
+}
+
 /* --- forms -------------------------------------------------------------- */
 
 .field {

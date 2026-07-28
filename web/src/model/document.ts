@@ -121,6 +121,7 @@ export function sourceFromAsset(asset: Asset): Source {
       ...asset.provenance,
       importedAt: new Date().toISOString(),
     },
+    credentials: asset.credentials,
   }
 }
 
@@ -188,7 +189,19 @@ export function sourceStatus(
   const asset = assets.get(source.path)
   if (!asset) return 'missing'
   if (!source.hash) return 'unknown'
-  return asset.hash === source.hash ? 'ok' : 'stale'
+  if (asset.hash === source.hash) return 'ok'
+
+  // Embedding a C2PA manifest rewrites the file, so a freshly-signed artifact
+  // has a different hash while being byte-identical in content. Stencila
+  // records the pre-signing digest in its provenance assertion; when that
+  // matches what we placed, the panel is current, not stale.
+  const digests = [
+    asset.credentials?.stencila?.contentDigest,
+    source.credentials?.stencila?.contentDigest,
+  ]
+  if (digests.includes(source.hash)) return 'ok'
+
+  return 'stale'
 }
 
 /** Sources referenced by at least one node, in document order. */

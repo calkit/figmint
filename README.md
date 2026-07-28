@@ -54,6 +54,24 @@ The canvas is plain SVG in document coordinates — the same elements the export
 writes. What you see and what you publish stay in agreement, and there is no
 second rendering path to keep in sync.
 
+## Provenance
+
+Where a component carries signed [C2PA Content Credentials](https://c2pa.org),
+figmint reads them: who made it, with what tool, and whether any of it was
+AI-generated. That is a cryptographically bound claim, unlike anything figmint
+could infer from a filename.
+
+To see it, generate a signed component with Stencila:
+
+```sh
+stencila credentials init     # once — creates a local signing identity
+make components               # renders examples/components/schematic.smd
+```
+
+Components without credentials fall back to a `<artifact>.prov.yaml` sidecar,
+and every component is content-hashed either way so the editor can tell you when
+a panel has gone stale.
+
 ## Documents
 
 Figures are saved as `*.fig.yaml`: one human-readable, agent-editable file

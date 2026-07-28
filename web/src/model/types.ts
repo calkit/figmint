@@ -50,6 +50,12 @@ export interface Source {
   /** Natural dimensions in pt, used to seed the aspect ratio on insert. */
   intrinsic?: { width: number; height: number }
   provenance?: SourceProvenance
+  /**
+   * Credentials as read at import time. Recorded so the document preserves what
+   * was claimed when the panel was placed, even if the file later loses or
+   * changes its manifest; the live state is re-read on every scan.
+   */
+  credentials?: ContentCredentials
 }
 
 export interface SourceProvenance {
@@ -63,6 +69,83 @@ export interface SourceProvenance {
   importedAt?: string
   /** Free-form upstream links — DOIs, dataset URLs, ticket refs. */
   derivedFrom?: string[]
+  /**
+   * Tool named in the artifact's signed C2PA creation action. Stronger than
+   * `generatedBy`, which is only ever an unsigned assertion in a sidecar.
+   */
+  signedAgent?: string
+}
+
+/**
+ * A component asset recorded inside another asset's C2PA manifest.
+ *
+ * `componentOf` is the relationship that matters here — it is how the standard
+ * expresses "this asset was composited from these sources", which is exactly
+ * what a figmint composite figure is.
+ */
+export interface Ingredient {
+  title?: string
+  format?: string
+  relationship?: 'parentOf' | 'componentOf' | 'inputTo' | string
+  instanceId?: string
+  /** The ingredient carries its own manifest, so the provenance chain nests. */
+  hasManifest?: boolean
+}
+
+/**
+ * The `org.stencila.provenance` assertion Stencila writes when it signs an
+ * asset: a JSON-LD graph of nodes (asset, source document, producing software)
+ * and edges recording how one became another.
+ */
+export interface StencilaProvenance {
+  /**
+   * Hash of the asset *before* the manifest was embedded. Signing rewrites the
+   * file, so this is what lets figmint recognise a signed artifact as the same
+   * content it originally placed.
+   */
+  contentDigest?: string
+  producer?: string
+  assetType?: string
+  /** Stencila's AI-disclosure slot; null when nothing was declared. */
+  aiDisclosure?: unknown
+  /** Edge kinds in the graph, e.g. `ConvertedInto`, `Generated`. */
+  edgeKinds?: string[]
+  redactionCount?: number
+}
+
+/**
+ * C2PA Content Credentials read from an artifact.
+ *
+ * Unlike the hash comparison — which answers "has this file changed since I
+ * placed it?" — credentials answer "who made this, with what, and was any of it
+ * AI-generated?", and they are cryptographically bound to the file's contents.
+ */
+export interface ContentCredentials {
+  /**
+   * `Trusted` — signer is in a recognised trust list.
+   * `Valid` — signature verifies, but the signer is not trusted (the normal
+   * state for locally-signed development artifacts).
+   * `Invalid` — the file has been altered since signing, or the signature fails.
+   */
+  validationState?: 'Trusted' | 'Valid' | 'Invalid' | string
+  signedBy?: string
+  issuer?: string
+  signedAt?: string
+  /** Tool that wrote the claim, e.g. `Stencila 2.15.0`. */
+  claimGenerator?: string
+  /** Tool named in the creation action, e.g. `matplotlib 3.9.0`. */
+  softwareAgent?: string
+  /** Last segment of the IPTC digital source type URI. */
+  digitalSourceType?: string
+  sourceTypeLabel?: string
+  /** True when the source type indicates generative-AI involvement. */
+  machineGenerated?: boolean
+  actions?: string[]
+  ingredients?: Ingredient[]
+  /** Non-fatal validation codes, e.g. `signingCredential.untrusted`. */
+  warnings?: string[]
+  /** Present when the asset was signed by Stencila. */
+  stencila?: StencilaProvenance
 }
 
 /** Result of comparing a recorded `Source` against what is on disk right now. */
@@ -212,4 +295,5 @@ export interface Asset {
   mediaType: string
   intrinsic?: { width: number; height: number }
   provenance?: SourceProvenance
+  credentials?: ContentCredentials
 }

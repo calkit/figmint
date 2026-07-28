@@ -68,8 +68,15 @@ Recorded as the scaffold gets built; the format itself is documented in
 - **The backend owns the filesystem.** Content hashes come from the actual bytes
   on disk, not from the browser, so provenance answers can't be spoofed by the
   UI. This matters for the "deep fake figure" concern above.
-- **Provenance sidecars** (`<artifact>.prov.yaml`) are the seam for pipeline
-  tools, so figmint doesn't need to understand Calkit, DVC, and Make separately.
+- **C2PA Content Credentials are the primary provenance source.** Where a
+  generating tool signs its output, that signed manifest beats anything figmint
+  could infer, and its `digitalSourceType` is a direct, cryptographically bound
+  answer to "was any of this AI-generated?". Stencila already signs with
+  `stencila render --credentials`. figmint reads credentials today; writing them
+  for the exported composite is the next step.
+- **Provenance sidecars** (`<artifact>.prov.yaml`) are the fallback for tools
+  that don't sign, and carry what C2PA has no field for (script path, command
+  line, upstream data). Credentials win where the two overlap.
 
 Staleness is already computed and surfaced in the editor's provenance panel
 (`ok` / `stale` / `missing` / `unknown`), which covers step 5 of the demo from
@@ -84,8 +91,17 @@ the GUI side.
   when anything is stale.
 - **Watching for changes.** Step 4 wants the UI to update automatically when a
   script rewrites an artifact. Today you press Rescan.
+- **Signing the exported composite.** figmint reads Content Credentials but does
+  not write them. Signing the output with each panel as a `componentOf`
+  ingredient would make the knowledge graph real and machine-checkable — C2PA
+  already has the vocabulary for it. Blocked on a decision: sign with a local
+  self-signed identity like Stencila's, or a real certificate?
 - **Round-tripping `.smd`** back into the editor — export is one-way.
-- **Validating the Stencila export** against the real `stencila` CLI.
 - **Composite-of-composite:** a source that points at another figmint document
-  rather than an image. This is the knowledge-graph direction above, and it is
-  the main thing the current source model would need to grow.
+  rather than an image. Closely related to the signing item above — C2PA
+  ingredients and figmint sources want to become the same concept.
+- **PDF export.** Stencila's PDF path can't embed our SVG panels and needs an
+  external tool. Emitting print-ready SVG ourselves is likely the better route.
+
+The Stencila export is now validated against the real CLI (2.15.0) — see
+[format.md](format.md).

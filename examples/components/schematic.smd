@@ -1,0 +1,36 @@
+---
+title: Experimental setup schematic
+---
+
+A figure component whose source is executable code rather than a binary blob.
+Rendering this document to an image produces a panel that figmint can insert,
+and `--credentials` attaches a signed C2PA manifest recording that Stencila
+produced it:
+
+```sh
+stencila render schematic.smd schematic.png --credentials --yes
+```
+
+The resulting PNG carries an `org.stencila.provenance` assertion — a JSON-LD
+graph naming the producing software and the pre-signing content digest. figmint
+reads that during its directory scan, so the panel arrives already knowing where
+it came from, with no sidecar needed.
+
+```graphviz exec
+digraph setup {
+  rankdir=LR;
+  node [shape=box, style=rounded, fontname="Helvetica", fontsize=10];
+  edge [fontname="Helvetica", fontsize=9];
+
+  inlet   [label="Inlet\ntank"];
+  pump    [label="Pump"];
+  section [label="Test\nsection", style="rounded,filled", fillcolor="#e5eefd"];
+  turbine [label="Turbine", style="rounded,filled", fillcolor="#efe6fb"];
+  daq     [label="DAQ", shape=box3d];
+
+  inlet -> pump [label="  flow"];
+  pump -> section;
+  section -> turbine [label="  U∞"];
+  turbine -> daq [label="  torque,\n  RPM", style=dashed];
+}
+```

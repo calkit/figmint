@@ -74,10 +74,64 @@ This deliberately mirrors how Stencila decides whether a node needs
 re-execution: it compares a node's `compilationDigest` against the
 `executionDigest` captured at the last run.
 
-### Provenance sidecars
+### Content Credentials (C2PA)
 
-figmint doesn't try to understand every pipeline tool. Instead, whatever builds
-an artifact may drop a `<name>.prov.yaml` next to it:
+The primary provenance source is the signed [C2PA](https://c2pa.org) manifest
+embedded in the artifact itself, when the producing tool emits one. It beats
+anything figmint could infer, because it is cryptographically bound to the
+file's contents rather than asserted by a text file sitting next to it.
+
+figmint reads it on every scan and records it on the source:
+
+```yaml
+credentials:
+  validationState: Valid        # Trusted | Valid | Invalid
+  signedBy: Stencila local signing identity
+  claimGenerator: Stencila CLI 2.15.0
+  softwareAgent: Stencila 2.15.0
+  digitalSourceType: digitalCreation
+  sourceTypeLabel: created in software by a human
+  machineGenerated: false
+  ingredients:
+    - title: Experimental setup schematic
+      format: text/smd
+      relationship: inputTo
+      hasManifest: true
+  stencila:
+    contentDigest: sha256:eab1f75f…
+    edgeKinds: [ConvertedInto, Generated, ReadBy, UsedBy]
+```
+
+Three fields carry most of the weight:
+
+- **`digitalSourceType`** — the IPTC vocabulary value from the signed creation
+  action. `trainedAlgorithmicMedia` means generative AI;
+  `compositeWithTrainedAlgorithmicMedia` means *some element* was. This is the
+  direct answer to the "deep fake figure" concern in `editor-design.md`, and it
+  is why `machineGenerated` is derived from this field rather than guessed.
+  Note that `algorithmicMedia` (a matplotlib plot) is deliberately *not* flagged
+  as AI — conflating the two would cry wolf on every scripted figure.
+- **`validationState`** — `Invalid` means the file was altered after signing.
+  `Valid` means the signature verifies but the signer is not in a trust list,
+  which is what every locally-signed development artifact looks like, so the UI
+  does not present it as a success.
+- **`ingredients`** — how C2PA expresses composition. `componentOf` is "this was
+  composited from that", `parentOf` is "edited from", `inputTo` is "fed into".
+  When an ingredient carries its own manifest the chain nests, which is exactly
+  the knowledge graph `editor-design.md` asks for.
+
+#### Signing changes the file
+
+Embedding a manifest rewrites the bytes, so a freshly-signed artifact no longer
+matches the hash figmint recorded at import. Stencila's `org.stencila.provenance`
+assertion carries `org.stencila.contentDigest` — the digest *before* signing —
+and `sourceStatus` checks it before declaring a panel stale. Without this,
+signing a component would spuriously mark every figure using it as out of date.
+
+### Provenance sidecars (fallback)
+
+Not every tool signs its output. For those, whatever builds an artifact may drop
+a `<name>.prov.yaml` next to it:
 
 ```yaml
 # figures/cp_curve.svg.prov.yaml
@@ -87,9 +141,10 @@ commit: "3f9a1c47b28e5d06a4f1e0b39c7d2a58e6104fbb"
 derivedFrom: [data/processed/performance.csv]
 ```
 
-The backend reads it during the scan and it is copied into the document when the
-panel is placed. This is the seam where Calkit, DVC, or a plain Makefile can
-declare what produced a figure.
+The two are complementary rather than redundant: credentials win where they
+overlap, and the sidecar supplies what C2PA has no field for — the script path,
+the exact command line, the upstream data files. This is the seam where Calkit,
+DVC, or a plain Makefile can declare what produced a figure.
 
 ## Relationship to Stencila
 
@@ -123,6 +178,25 @@ frontmatter — they land in `Article.extra`, which is preserved across
 Nothing is lost, and the `.smd` renders sensibly in tools that have never heard
 of figmint.
 
+#### Verified against the real decoder
+
+Round-tripped through `stencila 2.15.0`, confirming the bridge holds:
+
+```sh
+stencila convert two-panel.smd out.json   # inspect the parsed tree
+stencila render  two-panel.smd out.html   # compile overlays and render
+```
+
+- The outer `Figure` keeps `id`, `layout: "2"`, and `overlay`; the caption is
+  parsed as `caption`, not swept into content.
+- Each panel becomes a nested `Figure` → `ImageObject` with the right
+  `contentUrl`.
+- The `figmint:` frontmatter survives intact — canvas, sources, and all six
+  nodes with exact geometry, including `background: null` and nested maps.
+- **Use `render`, not `convert`, to produce output.** `convert` leaves `s:`
+  components uncompiled; `render` expands `<s:roi-rect>` into plain SVG with
+  styling preserved.
+
 ### Annotations are already pixel-perfect
 
 Absolute positioning for annotations needs no bridge — `Figure.overlay` is an
@@ -131,16 +205,47 @@ is exactly the model figmint uses. Stencila's `s:` namespace supplies arrows,
 callouts, ROI boxes, scale bars, and halos; plain SVG elements pass through
 untouched.
 
+### Generating a component with Stencila
+
+`examples/components/schematic.smd` is a component whose source is executable
+code. `make components` renders it to a signed PNG:
+
+```sh
+stencila render schematic.smd ../figures/schematic.png --credentials --yes
+```
+
+The resulting image carries the full chain — the source document and the
+execution environment appear as `inputTo` ingredients, each with its own
+manifest — so the panel arrives already knowing what produced it, with no
+sidecar involved. Run `stencila credentials init` once first to create a local
+signing identity.
+
 ## Known limitations
 
-- **The SMD export has not been validated against the real Stencila decoder.**
-  It is written to the documented syntax, but `stencila convert` was not
-  available in this environment. Round-tripping a `.smd` back into figmint is
-  not implemented yet either — export is currently one-way.
+- **Round-tripping `.smd` back into figmint is not implemented** — export is
+  one-way. (The export itself *is* validated against the real decoder; see
+  below.)
+- **figmint does not write Content Credentials yet.** It reads them. Signing the
+  exported composite — with each panel as a `componentOf` ingredient and
+  `compositeWithTrainedAlgorithmicMedia` when any panel is AI-generated — is the
+  obvious next step, but it needs a decision about signing identity: a local
+  self-signed key like Stencila's, or a real certificate.
+- **`stencila credentials sign` output fails C2PA validation.** Stencila 2.15.0
+  omits `digitalSourceType` from its `c2pa.created` action when signing a static
+  asset, which the C2PA v2 spec requires, so c2pa-rs reports
+  `assertion.action.malformed` and marks the manifest `Invalid`. This affects
+  only that command — `stencila render --credentials` sets the field and
+  validates cleanly. Worth reporting upstream.
 - **Math in the overlay uses `<foreignObject>` + MathML.** That renders in
   browsers, so HTML output is fine, but many SVG→PDF paths drop `foreignObject`.
   The TeX travels verbatim in the frontmatter, so a future exporter can swap in
   real vector glyphs without any loss.
+- **Stencila cannot render our export to PDF.** Two independent blockers:
+  its PDF media embedder rejects `.svg` panels ("file extension `.svg` was not
+  recognized as an image format"), and PDF output needs an external tool it
+  declines to install automatically. HTML output works. Since the canvas is
+  already SVG, figmint emitting its own print-ready SVG (and converting that) is
+  probably the better path than going through Stencila for PDF.
 - **Layout inference is an approximation.** Panels are banded into rows by
   vertical overlap. Overlapping or deliberately off-grid arrangements fall back
   to a placement map, and the note is surfaced in the export dialog.

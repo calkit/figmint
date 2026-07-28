@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import credentials as credentials_mod
+
 #: Extensions we will offer as figure panels.
 FIGURE_SUFFIXES = {
     ".svg",
@@ -74,6 +76,8 @@ class Asset:
     mediaType: str  # noqa: N815 - matches the TypeScript model
     intrinsic: dict[str, float] | None = None
     provenance: dict[str, Any] = field(default_factory=dict)
+    #: Signed C2PA Content Credentials, when the producing tool emitted them.
+    credentials: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -81,6 +85,8 @@ class Asset:
             data.pop("provenance")
         if data["intrinsic"] is None:
             data.pop("intrinsic")
+        if data["credentials"] is None:
+            data.pop("credentials")
         return data
 
 
@@ -206,6 +212,7 @@ def intrinsic_size(path: Path) -> dict[str, float] | None:
 def describe(path: Path, root: Path) -> Asset:
     """Build an :class:`Asset` for one file."""
     stat = path.stat()
+    credentials = credentials_mod.read(path)
     return Asset(
         path=path.relative_to(root).as_posix(),
         name=path.name,
@@ -214,16 +221,43 @@ def describe(path: Path, root: Path) -> Asset:
         modified=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
         mediaType=MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream"),
         intrinsic=intrinsic_size(path),
-        provenance=sidecar_provenance(path, root),
+        provenance=merge_provenance(path, root, credentials),
+        credentials=credentials.to_dict() if credentials else None,
     )
+
+
+def merge_provenance(
+    path: Path,
+    root: Path,
+    credentials: credentials_mod.ContentCredentials | None,
+) -> dict[str, Any]:
+    """Combine signed Content Credentials with the unsigned sidecar.
+
+    Credentials win where the two disagree: they are cryptographically bound to
+    the file's contents, whereas a sidecar is just a text file sitting next to
+    it that anything could have written. The sidecar still supplies what C2PA
+    has no field for — the script path, the command line, the upstream data
+    files — so the two are complementary rather than redundant.
+    """
+    provenance = sidecar_provenance(path, root)
+    if credentials is None:
+        return provenance
+    # `softwareAgent` is the tool named in the signed creation action, which is
+    # a stronger claim than the sidecar's `generatedBy`.
+    if credentials.softwareAgent:
+        provenance["signedAgent"] = credentials.softwareAgent
+    elif credentials.claimGenerator:
+        provenance["signedAgent"] = credentials.claimGenerator
+    return provenance
 
 
 def sidecar_provenance(path: Path, root: Path) -> dict[str, Any]:
     """Read provenance recorded alongside an artifact.
 
-    Looks for `<name>.prov.yaml` next to the file. This is the seam where
-    pipeline tools (Calkit, DVC, a Makefile) can declare what produced an
-    artifact without figmint needing to understand each of them.
+    Looks for `<name>.prov.yaml` next to the file. This is the fallback for
+    tools that do not sign their output — Calkit, DVC, a plain Makefile — and
+    the place to record things C2PA has no field for, like the exact command
+    line and the upstream data files.
     """
     sidecar = path.with_suffix(path.suffix + ".prov.yaml")
     if not sidecar.exists():
