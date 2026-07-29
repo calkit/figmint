@@ -120,10 +120,6 @@ moved — which would defeat the point of tracking staleness at all.
   later — see Decisions above); the work is emitting a manifest with each panel
   as a `componentOf` ingredient, and `compositeWithTrainedAlgorithmicMedia` when
   any panel is AI-generated.
-- **Drag-to-reorder inside a laid-out group.** The solver owns child geometry,
-  so dragging a panel in a grid currently fights it. `reorderChild` and
-  `cellIndexAt` in `model/layout.ts` are the pieces; the canvas does not use
-  them yet, so today you reorder via the layer list.
 - **Round-tripping `.smd`** back into the editor — export is one-way.
 - **Composite-of-composite:** a source that points at another figmint document
   rather than an image. Closely related to the signing item above — C2PA
@@ -165,6 +161,29 @@ The other direction still makes sense and is not blocked by any of this: a
 `.fig.yaml` and its components are inputs, and the composed SVG/PDF is the
 output. That needs nothing from figmint beyond the CLI that already exists — it
 is a Calkit-side change, which is the right place for it.
+
+### figmint as a schema, Calkit as a manipulator/builder
+
+Calkit could contain the tooling to build a figmint output, and the editor
+could go into the vs code extension and calkit cloud.
+Figmint could simply be a composite figure schema with provenance
+retention, named like `my-figure.fig.yaml`.
+
+Calkit stage:
+
+```yaml
+my-fig:
+  kind: figmint
+  target_path: my-figure.fig.yaml
+  outputs:
+    - my-figure.png
+```
+
+No environment needed since figmint processing will be within Calkit.
+Calkit reads the inputs from the figmint yaml to compile the DVC stage.
+Is that wasteful to do over and over?
+Do we need another layer of caching for that, where we compute a hash
+(also some work)?
 
 ### Consequence for provenance
 
