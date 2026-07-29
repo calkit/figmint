@@ -542,9 +542,20 @@ def _check_documents(args: argparse.Namespace) -> int:
                 if component.resolved and component.resolved.is_file()
                 else None
             )
+            # Provenance comes from the *file*, not from the fact that we
+            # managed to locate it. Recovering an origin by content hash says
+            # which file this is; it says nothing about where that file came
+            # from. Treating the recovered path as a declared origin let an
+            # AI-generated image with no sidecar and no credentials pass the
+            # policy, which is precisely the case this exists to catch.
+            from .assets import merge_provenance
+
             recorded = dict(component.provenance)
-            if component.origin:
-                recorded.setdefault("importedFrom", component.origin)
+            if component.resolved and component.resolved.is_file():
+                recorded = {
+                    **merge_provenance(component.resolved, root, creds),
+                    **recorded,
+                }
             assessment = provenance_mod.assess(
                 recorded, creds.to_dict() if creds else component.credentials, stage
             )
@@ -574,7 +585,14 @@ def _check_documents(args: argparse.Namespace) -> int:
             print(f"  FAIL  {component.key}: {label}  [{assessment.level.slug}]")
             print(f"        {assessment.reason}")
             if document.embeds_components and not component.origin:
-                print("        fix: figmint adopt " + str(path))
+                print(f"        fix: figmint adopt {path}")
+            else:
+                print(
+                    "        fix: "
+                    + provenance_mod.explain_fix(
+                        assessment.level, component.origin or "<file>", policy.require
+                    )
+                )
 
         if failures and policy.enforce:
             exit_code = max(exit_code, EXIT_STALE)

@@ -383,3 +383,98 @@ class TestAssetIntegration:
     def test_unsigned_assets_omit_the_credentials_key(self):
         asset = describe(FIXTURES / "unsigned.svg", FIXTURES)
         assert "credentials" not in asset.to_dict()
+
+
+GEMINI = EXAMPLES / "components" / "wind-turbine-from-gemini.png"
+
+
+@pytest.fixture(scope="module")
+def gemini_creds() -> ContentCredentials:
+    if not GEMINI.is_file():
+        pytest.skip("Gemini sample not present")
+    result = read(GEMINI)
+    assert result is not None
+    return result
+
+
+class TestAiClaimInAParentManifest:
+    """AI disclosure can live in a parent manifest, not the active one.
+
+    A real Google-generated PNG signs the creation as `trainedAlgorithmicMedia`,
+    then re-signs after conversion with `composite` on top. Reading only the
+    active manifest reports "not AI" for an image that plainly is — a false
+    negative on the single signal this whole system exists to surface.
+
+    The fixture is a genuine Gemini output; no hand-written store has this shape.
+    """
+
+    def test_the_signature_is_googles_and_verifies(self, gemini_creds: ContentCredentials):
+        assert gemini_creds.validationState == "Valid"
+        assert gemini_creds.issuer == "Google LLC"
+
+    def test_the_active_manifest_does_not_say_ai(self, gemini_creds: ContentCredentials):
+        # This is the trap: the asset's own claim is innocuous.
+        assert gemini_creds.digitalSourceType == "composite"
+
+    def test_but_it_is_still_reported_as_ai_generated(
+        self, gemini_creds: ContentCredentials
+    ):
+        assert gemini_creds.machineGenerated is True
+
+    def test_and_says_where_the_claim_came_from(self, gemini_creds: ContentCredentials):
+        # A non-obvious verdict needs to be explainable.
+        assert gemini_creds.machineGeneratedBy is not None
+        assert "Google" in gemini_creds.machineGeneratedBy
+        assert "chain" in (gemini_creds.sourceTypeLabel or "")
+
+    def test_the_parent_manifest_is_recorded_as_an_ingredient(
+        self, gemini_creds: ContentCredentials
+    ):
+        assert any(i.relationship == "parentOf" for i in gemini_creds.ingredients)
+        assert any(i.hasManifest for i in gemini_creds.ingredients)
+
+
+class TestChainScanning:
+    """Unit-level cover for the chain walk, independent of the sample file."""
+
+    def store(self, active_type: str, parent_type: str | None) -> dict:
+        def manifest(source_type: str | None) -> dict:
+            actions = [{"action": "c2pa.created"}]
+            if source_type:
+                actions[0]["digitalSourceType"] = (
+                    f"http://cv.iptc.org/newscodes/digitalsourcetype/{source_type}"
+                )
+            return {
+                "claim_generator_info": [{"name": "Some Tool"}],
+                "assertions": [
+                    {"label": "c2pa.actions.v2", "data": {"actions": actions}}
+                ],
+            }
+
+        manifests = {"active": manifest(active_type)}
+        if parent_type is not None:
+            manifests["parent"] = manifest(parent_type)
+        return {"active_manifest": "active", "manifests": manifests}
+
+    def test_ai_only_in_the_parent_still_counts(self):
+        creds = parse_manifest_store(
+            self.store("composite", "trainedAlgorithmicMedia")
+        )
+        assert creds.machineGenerated is True
+        assert creds.digitalSourceType == "composite"
+
+    def test_no_ai_anywhere_stays_false(self):
+        creds = parse_manifest_store(self.store("composite", "digitalCapture"))
+        assert creds.machineGenerated is False
+        assert creds.machineGeneratedBy is None
+
+    def test_ai_in_the_active_manifest_needs_no_chain_note(self):
+        creds = parse_manifest_store(
+            self.store("trainedAlgorithmicMedia", "digitalCapture")
+        )
+        assert creds.machineGenerated is True
+        assert "chain" not in (creds.sourceTypeLabel or "")
+
+    def test_a_single_manifest_store_still_works(self):
+        creds = parse_manifest_store(self.store("trainedAlgorithmicMedia", None))
+        assert creds.machineGenerated is True

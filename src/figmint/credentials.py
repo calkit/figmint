@@ -196,8 +196,13 @@ class ContentCredentials:
     #: Last URI segment of the IPTC digital source type.
     digitalSourceType: str | None = None  # noqa: N815
     sourceTypeLabel: str | None = None  # noqa: N815
-    #: True when the source type indicates generative-AI involvement.
+    #: True when *anywhere in the provenance chain* declares generative-AI
+    #: involvement — not merely the active manifest. Real generators sign the
+    #: creation step and then re-sign after resizing or converting, leaving the
+    #: AI claim in a parent manifest and something innocuous on top.
     machineGenerated: bool = False  # noqa: N815
+    #: Where that claim was found, so the UI can explain a non-obvious verdict.
+    machineGeneratedBy: str | None = None  # noqa: N815
     actions: list[str] = field(default_factory=list)
     ingredients: list[Ingredient] = field(default_factory=list)
     #: Non-fatal validation codes, e.g. `signingCredential.untrusted`.
@@ -270,6 +275,25 @@ def _parse_ingredients(raw: list[dict[str, Any]] | None) -> list[Ingredient]:
     return out
 
 
+def _ai_in_chain(manifests: dict[str, Any]) -> tuple[bool, str | None]:
+    """Whether any manifest in the store declares generative-AI origin.
+
+    Checking only the active manifest is not enough, and the failure is silent.
+    A real Google image signs the generation as `trainedAlgorithmicMedia`, then
+    re-signs after conversion with `composite` on top — so the asset's own
+    manifest looks innocuous while its parent says it was generated. Reading
+    only the top would report "not AI" for an image that plainly is.
+    """
+    for label, manifest in manifests.items():
+        parsed = _parse_actions(manifest.get("assertions") or [])
+        source_type = parsed["digitalSourceType"]
+        if source_type and _SOURCE_TYPES.get(source_type, ("", False))[1]:
+            generator = manifest.get("claim_generator_info") or []
+            name = _join_name(generator[0]) if generator else label
+            return True, name
+    return False, None
+
+
 def parse_manifest_store(store: dict[str, Any]) -> ContentCredentials:
     """Normalize a c2pa manifest-store JSON document.
 
@@ -290,6 +314,16 @@ def parse_manifest_store(store: dict[str, Any]) -> ContentCredentials:
 
     source_type = parsed["digitalSourceType"]
     label, machine = _SOURCE_TYPES.get(source_type or "", (None, False))
+
+    # The asset's own claim is the active manifest's, but AI involvement is a
+    # property of the whole chain.
+    chain_ai, chain_by = _ai_in_chain(manifests)
+    if chain_ai and not machine:
+        machine = True
+        if label:
+            label = f"{label}; AI-generated earlier in the chain"
+        else:
+            label = "AI-generated earlier in the chain"
 
     # Surface only genuinely non-fatal codes here; a hard failure shows up in
     # validation_state instead.
@@ -318,6 +352,7 @@ def parse_manifest_store(store: dict[str, Any]) -> ContentCredentials:
         digitalSourceType=source_type,
         sourceTypeLabel=label,
         machineGenerated=machine,
+        machineGeneratedBy=chain_by,
         actions=parsed["actions"],
         ingredients=_parse_ingredients(active.get("ingredients")),
         warnings=warnings,

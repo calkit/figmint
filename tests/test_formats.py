@@ -21,6 +21,7 @@ from figmint import formats
 from figmint.cli import EXIT_ERROR, EXIT_OK, EXIT_STALE, main
 from figmint.formats import DrawioDocument, FigYamlDocument, open_document
 from figmint.formats.base import DocumentError, UnsupportedFormat
+from figmint.importer import Origin, declare
 from figmint.formats.drawio import (
     UNITS_TO_POINTS,
     decode_data_uri,
@@ -31,6 +32,24 @@ from figmint.formats.drawio import (
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 DRAWIO = EXAMPLES / "test.drawio"
+
+
+def materialise_components(target: Path, into: Path) -> list[Path]:
+    """Write every embedded component out as a file beside the diagram.
+
+    The fixture diagram gains components over time as the project's example
+    evolves, so tests must not assume there is exactly one. Writing them all
+    keeps `adopt` able to identify everything.
+    """
+    written = []
+    for index, component in enumerate(open_document(target).components()):
+        if component.embedded is None:
+            continue
+        suffix = ".jpeg" if component.media_type == "image/jpeg" else ".svg"
+        path = into / f"component{index}{suffix}"
+        path.write_bytes(component.embedded)
+        written.append(path)
+    return written
 
 
 def strip_provenance(text: str) -> str:
@@ -100,12 +119,11 @@ class TestRealDrawioFile:
         assert document.canvas.height == pytest.approx(792)
         assert document.canvas.units == "pt"
 
-    def test_finds_the_embedded_component(self, document: DrawioDocument):
+    def test_finds_the_embedded_components(self, document: DrawioDocument):
         components = document.components()
-        assert len(components) == 1
-        assert components[0].is_embedded
-        assert components[0].embedded is not None
-        assert components[0].key == "7"
+        assert components, "expected at least one embedded component"
+        assert all(c.is_embedded for c in components)
+        assert "7" in {c.key for c in components}
 
     def test_the_embedded_content_is_the_real_svg(self, document: DrawioDocument):
         embedded = document.components()[0].embedded
@@ -134,9 +152,11 @@ class TestRealDrawioFile:
         assert node["y"] == pytest.approx(y * 0.72)
 
     def test_ignores_non_image_shapes(self, document: DrawioDocument):
-        # The fixture also contains ellipses, a LaTeX text cell, and a stock
-        # gear icon; only the imported image counts as a component.
-        assert len(document.components()) == 1
+        # The fixture also contains ellipses, a LaTeX text cell and a stock gear
+        # icon. None of those are components; only imported images are.
+        keys = {c.key for c in document.components()}
+        assert "8" not in keys, "the stock gear icon is not a component"
+        assert all(c.is_embedded for c in document.components())
 
 
 class TestBundledAssets:
@@ -152,9 +172,10 @@ class TestBundledAssets:
         origins = [c.origin for c in document.components()]
         assert not any("img/clipart" in (o or "") for o in origins)
 
-    def test_only_the_imported_image_counts(self, document: DrawioDocument):
-        assert len(document.components()) == 1
-        assert document.components()[0].is_embedded
+    def test_only_imported_images_count(self, document: DrawioDocument):
+        components = document.components()
+        assert components
+        assert all(c.is_embedded for c in components)
 
     @pytest.mark.parametrize(
         "value",
@@ -485,14 +506,15 @@ class TestCli:
         assert "matches no file" in capsys.readouterr().err
 
     def test_adopt_then_check_passes(self, project: Path, capsys):
-        document = open_document(project / "d.drawio")
-        embedded = document.components()[0].embedded
-        assert embedded is not None
-        (project / "plot.svg").write_bytes(embedded)
+        target = project / "d.drawio"
+        for path in materialise_components(target, project):
+            # Each needs a declared origin of its own; locating a file is not a
+            # provenance claim about it.
+            declare(path, Origin(imported_from="test fixture"))
 
-        assert main(["adopt", str(project / "d.drawio")]) == EXIT_OK
+        assert main(["adopt", str(target)]) == EXIT_OK
         assert "identified" in capsys.readouterr().out
-        assert main(["check", str(project / "d.drawio")]) == EXIT_OK
+        assert main(["check", str(target)]) == EXIT_OK
 
     def test_a_declared_origin_that_has_gone_is_reported(
         self, project: Path, capsys
@@ -528,9 +550,8 @@ class TestReimport:
         target = tmp_path / "d.drawio"
         target.write_text(strip_provenance(DRAWIO.read_text()))
 
-        # Put the embedded plot on disk and link it, as `adopt` would.
-        document = open_document(target)
-        (tmp_path / "plot.svg").write_bytes(document.components()[0].embedded)
+        # Put every embedded component on disk and link them, as `adopt` would.
+        self.components = materialise_components(target, tmp_path)
         assert main(["adopt", str(target)]) == EXIT_OK
         return tmp_path
 
@@ -539,28 +560,30 @@ class TestReimport:
         assert document.reimport() == []
 
     def test_a_changed_source_is_re_embedded(self, project: Path):
-        (project / "plot.svg").write_bytes(b"<svg>new content</svg>")
+        self.components[0].write_bytes(b"<svg>new content</svg>")
 
         document = open_document(project / "d.drawio")
         updated = document.reimport()
-        assert len(updated) == 1
+        assert len(updated) == 1  # only the one that changed
         document.save()
 
         again = open_document(project / "d.drawio")
-        assert again.components()[0].embedded == b"<svg>new content</svg>"
+        assert b"<svg>new content</svg>" in [
+            c.embedded for c in again.components()
+        ]
 
     def test_the_recorded_hash_is_updated(self, project: Path):
-        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+        self.components[0].write_bytes(b"<svg>new</svg>")
         document = open_document(project / "d.drawio")
         document.reimport()
         document.save()
 
-        component = open_document(project / "d.drawio").components()[0]
-        assert component.recorded_hash == component.embedded_hash()
+        for component in open_document(project / "d.drawio").components():
+            assert component.recorded_hash == component.embedded_hash()
 
     def test_layout_survives_a_refresh(self, project: Path):
         before = open_document(project / "d.drawio").nodes()[0]
-        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+        self.components[0].write_bytes(b"<svg>new</svg>")
 
         document = open_document(project / "d.drawio")
         document.reimport()
@@ -575,7 +598,7 @@ class TestReimport:
 
     def test_other_shapes_are_untouched(self, project: Path):
         target = project / "d.drawio"
-        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+        self.components[0].write_bytes(b"<svg>new</svg>")
         document = open_document(target)
         document.reimport()
         document.save()
@@ -592,15 +615,15 @@ class TestReimport:
         assert open_document(target).reimport() == []
 
     def test_a_missing_source_is_skipped_not_erased(self, project: Path):
-        (project / "plot.svg").unlink()
+        self.components[0].unlink()
         document = open_document(project / "d.drawio")
-        assert document.reimport() == []
+        assert document.reimport() == []  # nothing changed, so nothing to do
         # The embedded copy is still the only version left; deleting it would
         # destroy the figure.
         assert document.components()[0].embedded is not None
 
     def test_reimport_is_idempotent(self, project: Path):
-        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+        self.components[0].write_bytes(b"<svg>new</svg>")
         document = open_document(project / "d.drawio")
         document.reimport()
         document.save()
@@ -614,15 +637,14 @@ class TestReimportCli:
         (tmp_path / ".git").mkdir()
         target = tmp_path / "d.drawio"
         target.write_text(strip_provenance(DRAWIO.read_text()))
-        document = open_document(target)
-        (tmp_path / "plot.svg").write_bytes(document.components()[0].embedded)
+        self.components = materialise_components(target, tmp_path)
         main(["adopt", str(target)])
         return tmp_path
 
     def test_check_reports_without_writing(self, project: Path, capsys):
         target = project / "d.drawio"
         before = target.read_text()
-        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+        self.components[0].write_bytes(b"<svg>new</svg>")
 
         assert main(["reimport", str(target), "--check"]) == EXIT_STALE
         assert "out of date" in capsys.readouterr().out
@@ -636,13 +658,13 @@ class TestReimportCli:
         # pure input and the refreshed one is a pure output.
         target = project / "d.drawio"
         before = target.read_text()
-        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+        self.components[0].write_bytes(b"<svg>new</svg>")
 
         derived = project / "built.drawio"
         assert main(["reimport", str(target), "-o", str(derived)]) == EXIT_OK
         assert target.read_text() == before
         assert derived.exists()
-        assert open_document(derived).components()[0].embedded == b"<svg>new</svg>"
+        assert b"<svg>new</svg>" in [c.embedded for c in open_document(derived).components()]
 
     def test_reimport_on_a_fig_yaml_is_a_no_op(self, tmp_path: Path, capsys):
         shutil.copy(EXAMPLES / "two-panel.fig.yaml", tmp_path / "d.fig.yaml")
@@ -772,3 +794,48 @@ class TestPlace:
         assert len(document.reimport()) == 1
         document.save()
         assert open_document(target).components()[0].embedded == b"<svg>regenerated</svg>"
+
+
+class TestRecoveredOriginIsNotProvenance:
+    """Locating a file is not a claim about where it came from.
+
+    Content-hash matching answers "which file is this?". It says nothing about
+    the file's origin. Conflating the two let an AI-generated image with no
+    sidecar and no credentials pass the policy, purely because a copy of it
+    happened to sit in the project — exactly the case figmint exists to catch.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / ".git").mkdir()
+        # An anonymous image, as a downloaded AI generation arrives: no
+        # credentials, no sidecar, nothing.
+        anon = tmp_path / "generated.svg"
+        anon.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>')
+
+        target = tmp_path / "d.drawio"
+        target.write_text(strip_provenance(DRAWIO.read_text()))
+        document = open_document(target)
+        # Embed exactly those bytes, so hash matching will find the file.
+        document.place(anon, attributes={"src": "generated.svg"})
+        document.save()
+        return tmp_path
+
+    def test_hash_matching_still_locates_the_file(self, project: Path):
+        origins = [c.origin for c in open_document(project / "d.drawio").components()]
+        assert "generated.svg" in origins
+
+    def test_but_it_does_not_count_as_declared(self, project: Path, capsys):
+        assert main(["check", str(project / "d.drawio")]) == EXIT_STALE
+        out = capsys.readouterr().out
+        assert "unidentified" in out
+
+    def test_declaring_the_origin_is_what_makes_it_pass(self, project: Path):
+        target = project / "d.drawio"
+        # Every component needs its own declaration, including the ones the
+        # fixture diagram already carried.
+        for path in materialise_components(target, project):
+            declare(path, Origin(imported_from="test fixture"))
+        declare(project / "generated.svg", Origin(imported_from="Google Gemini"))
+        main(["adopt", str(target)])
+        assert main(["check", str(target)]) == EXIT_OK

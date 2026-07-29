@@ -1,0 +1,7 @@
+# Provenance for an imported component, written by `figmint import`.
+# This file states where the artifact came from. Without it, figmint
+# treats the artifact as unidentified and (by default) refuses to place
+# it in a figure.
+importedFrom: extracted from examples/test.drawio; originally a matplotlib v3.11.1
+  figure
+importedAt: '2026-07-29T23:26:50.327703+00:00'

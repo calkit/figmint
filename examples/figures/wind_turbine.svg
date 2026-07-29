@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="480" viewBox="0 0 720 480" role="img" aria-labelledby="title desc">
+  <title id="title">Wind turbine diagram</title>
+  <desc id="desc">A simple schematic showing a three-blade wind turbine on rolling terrain with wind arrows.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9dd9ff"/>
+      <stop offset="100%" stop-color="#eaf7ff"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8ec07c"/>
+      <stop offset="100%" stop-color="#5c9c63"/>
+    </linearGradient>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#176087"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="720" height="480" fill="url(#sky)"/>
+  <path d="M 0 360 C 120 320 210 380 340 355 C 470 330 580 380 720 345 L 720 480 L 0 480 Z" fill="url(#ground)"/>
+
+  <g stroke="#176087" stroke-width="4" fill="none" marker-end="url(#arrowhead)">
+    <path d="M 60 150 L 220 150"/>
+    <path d="M 40 210 L 200 210"/>
+    <path d="M 80 270 L 240 270"/>
+  </g>
+  <text x="48" y="132" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#0f3f5a">Wind</text>
+
+  <g id="turbine" transform="translate(430, 120)">
+    <rect x="-12" y="85" width="24" height="245" rx="8" fill="#d8dde2" stroke="#7f8a94" stroke-width="2"/>
+    <ellipse cx="0" cy="330" rx="58" ry="16" fill="#6c7a86" opacity="0.35"/>
+    <circle cx="0" cy="80" r="20" fill="#cfd7de" stroke="#6b7782" stroke-width="3"/>
+
+    <g fill="#f2f5f7" stroke="#6b7782" stroke-width="3">
+      <path d="M 0 80 L -10 70 L 120 20 Q 140 16 145 33 Q 145 50 125 56 Z"/>
+      <path d="M 0 80 L -11 90 L -86 -32 Q -92 -50 -76 -61 Q -58 -67 -45 -50 Z"/>
+      <path d="M 0 80 L 11 89 L -35 230 Q -44 248 -62 242 Q -79 232 -73 214 Z"/>
+    </g>
+  </g>
+
+  <g font-family="Helvetica, Arial, sans-serif" fill="#20313e">
+    <text x="462" y="210" font-size="20">Rotor</text>
+    <line x1="448" y1="206" x2="430" y2="134" stroke="#44515c" stroke-width="2"/>
+
+    <text x="476" y="340" font-size="20">Tower</text>
+    <line x1="456" y1="334" x2="430" y2="300" stroke="#44515c" stroke-width="2"/>
+  </g>
+</svg>

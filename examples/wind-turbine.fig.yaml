@@ -1,0 +1,49 @@
+figmint: "0.1"
+id: wind-turbine-diagram
+title: Wind Turbine Diagram
+caption: A schematic of a horizontal-axis wind turbine with wind direction arrows.
+
+canvas:
+  width: 468
+  height: 312
+  units: pt
+  background: null
+  grid:
+    size: 6
+    snap: true
+
+sources:
+  wind-turbine:
+    path: figures/wind_turbine.svg
+    mediaType: image/svg+xml
+    intrinsic:
+      width: 720
+      height: 480
+    provenance:
+      generatedBy: figmint
+      command: figmint build examples/wind-turbine.fig.yaml --to png --sign
+      importedAt: "2026-07-29T00:00:00Z"
+
+nodes:
+  - id: turbine-diagram
+    type: image
+    name: Wind turbine
+    source: wind-turbine
+    x: 12
+    y: 24
+    width: 444
+    height: 276
+    fit: contain
+
+  - id: label-main
+    type: text
+    text: Wind Turbine Schematic
+    x: 12
+    y: 4
+    width: 220
+    height: 16
+    style:
+      fontFamily: Helvetica, Arial, sans-serif
+      fontSize: 10
+      fontWeight: bold
+      color: "#111111"
