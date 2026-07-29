@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditor } from '../state/store'
-import type { FigNode, Rect } from '../model/types'
+import type { FigNode, NodeId, Rect } from '../model/types'
 import {
   HANDLES,
   HANDLE_ANCHOR,
@@ -52,6 +52,7 @@ export function Canvas() {
   const zoomBy = useEditor((s) => s.zoomBy)
   const zoomToFit = useEditor((s) => s.zoomToFit)
   const insertAsset = useEditor((s) => s.insertAsset)
+  const resolveLayouts = useEditor((s) => s.resolveLayouts)
 
   const svgRef = useRef<SVGSVGElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -126,9 +127,12 @@ export function Canvas() {
     if (next.length === 0) return
 
     pushHistory()
+    // Moving a group moves what it contains; otherwise the frame would slide
+    // out from under its own panels.
+    const moving = withGroupMembers(doc.nodes, next)
     const startRects: Record<string, Rect> = {}
     for (const n of doc.nodes) {
-      if (next.includes(n.id)) {
+      if (moving.has(n.id)) {
         startRects[n.id] = { x: n.x, y: n.y, width: n.width, height: n.height }
       }
     }
@@ -258,6 +262,11 @@ export function Canvas() {
   }
 
   const onPointerUp = () => {
+    // Resizing a group changes its cells, so children need re-solving. Doing it
+    // on release rather than per frame keeps dragging cheap.
+    if (interaction.kind === 'resize' || interaction.kind === 'move') {
+      resolveLayouts()
+    }
     if (interaction.kind === 'marquee') {
       const box = normalize(interaction.origin, interaction.current)
       if (box.width > 1 || box.height > 1) {
@@ -463,6 +472,30 @@ function normalize(a: { x: number; y: number }, b: { x: number; y: number }): Re
     width: Math.abs(a.x - b.x),
     height: Math.abs(a.y - b.y),
   }
+}
+
+/**
+ * Expand a selection to include everything a selected group governs.
+ *
+ * Applied transitively, so nesting a group inside a group still moves the whole
+ * subtree rather than orphaning the inner one.
+ */
+function withGroupMembers(nodes: FigNode[], ids: NodeId[]): Set<NodeId> {
+  const out = new Set(ids)
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const node of nodes) {
+      if (node.type !== 'group' || !out.has(node.id)) continue
+      for (const child of node.children) {
+        if (!out.has(child)) {
+          out.add(child)
+          grew = true
+        }
+      }
+    }
+  }
+  return out
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {

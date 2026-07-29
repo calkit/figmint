@@ -17,7 +17,11 @@ from pathlib import Path
 
 from . import accept as accept_mod
 from . import build as build_mod
+from . import calkit as calkit_mod
+from . import importer
+from . import provenance as provenance_mod
 from . import status as status_mod
+from .assets import scan
 from .document import DOCUMENT_SUFFIX, DocumentError, discover, load
 
 # Exit codes, so callers can distinguish "out of date" from "broken".
@@ -181,6 +185,87 @@ def cmd_accept(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# import
+# ---------------------------------------------------------------------------
+
+
+def cmd_import(args: argparse.Namespace) -> int:
+    origin = importer.Origin(
+        imported_from=args.source,
+        doi=args.doi,
+        url=args.url,
+        citation=args.citation,
+        license=args.license,
+        note=args.note,
+    )
+    try:
+        sidecar = importer.declare(args.path, origin, overwrite=args.overwrite)
+    except importer.ImportError_ as exc:
+        print(f"{exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    print(f"declared {args.path}")
+    print(f"  wrote {sidecar}")
+
+    project = calkit_mod.project_for(args.path.resolve().parent)
+    if project is not None:
+        print(
+            "  note: this project uses Calkit — a stage that fetches this file "
+            "would make it reproducible rather than merely declared"
+        )
+    return EXIT_OK
+
+
+# ---------------------------------------------------------------------------
+# check
+# ---------------------------------------------------------------------------
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    """Check components against the project's provenance policy."""
+    root = (args.root or Path.cwd()).resolve()
+    try:
+        policy = provenance_mod.load_policy(root)
+    except ValueError as exc:
+        print(f"{exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    assets = scan(root, args.figures)
+    if not assets:
+        print("no components found", file=sys.stderr)
+        return EXIT_ERROR
+
+    print(
+        f"policy: require {policy.require.slug}"
+        f"{'' if policy.enforce else ' (advisory)'}"
+    )
+    violations = 0
+    for asset in assets:
+        assessment = asset.assessment or {}
+        level = provenance_mod.Level.parse(
+            str(assessment.get("level", "unidentified"))
+        )
+        if policy.permits(level):
+            if args.verbose:
+                print(f"  ok    {asset.path}  [{level.slug}]")
+            continue
+        violations += 1
+        print(f"  FAIL  {asset.path}  [{level.slug}]")
+        print(f"        {assessment.get('reason', '')}")
+        print(
+            f"        fix: "
+            f"{provenance_mod.explain_fix(level, asset.path, policy.require)}"
+        )
+
+    if not violations:
+        print(f"all {len(assets)} components satisfy the policy")
+        return EXIT_OK
+
+    print(f"{violations} of {len(assets)} components fail the policy")
+    return EXIT_STALE if policy.enforce else EXIT_OK
+
+
+# ---------------------------------------------------------------------------
 # serve
 # ---------------------------------------------------------------------------
 
@@ -283,6 +368,49 @@ def build_parser() -> argparse.ArgumentParser:
         help="only accept this source key; repeat for several (default: all stale)",
     )
     accept_cmd.set_defaults(func=cmd_accept)
+
+    import_cmd = sub.add_parser(
+        "import",
+        help="declare where an imported component came from",
+        description=(
+            "Record the origin of a file that was not produced in this project, "
+            "so it is identified rather than anonymous. Writes a `.prov.yaml` "
+            "sidecar next to the artifact."
+        ),
+    )
+    import_cmd.add_argument("path", type=Path, help="the imported file")
+    import_cmd.add_argument(
+        "--from",
+        dest="source",
+        help="where it came from, in whatever form is meaningful",
+    )
+    import_cmd.add_argument("--url", help="retrieval URL")
+    import_cmd.add_argument("--doi", help="DOI of the source work")
+    import_cmd.add_argument("--citation", help="bibliographic citation")
+    import_cmd.add_argument("--license", help="license the artifact is used under")
+    import_cmd.add_argument("--note", help="anything else worth recording")
+    import_cmd.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="replace an existing sidecar instead of merging into it",
+    )
+    import_cmd.set_defaults(func=cmd_import)
+
+    check_cmd = sub.add_parser(
+        "check",
+        help="check components against the provenance policy",
+        description=(
+            "Verify that every component is identified well enough for this "
+            f"project. Exits {EXIT_STALE} when the policy is enforced and "
+            "something fails it."
+        ),
+    )
+    check_cmd.add_argument("--root", type=Path, default=None)
+    check_cmd.add_argument(
+        "--figures", default=None, help="subdirectory to scan (default: all)"
+    )
+    check_cmd.add_argument("-v", "--verbose", action="store_true")
+    check_cmd.set_defaults(func=cmd_check)
 
     return parser
 

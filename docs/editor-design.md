@@ -77,6 +77,21 @@ Recorded as the scaffold gets built; the format itself is documented in
 - **Provenance sidecars** (`<artifact>.prov.yaml`) are the fallback for tools
   that don't sign, and carry what C2PA has no field for (script path, command
   line, upstream data). Credentials win where the two overlap.
+- **Layouts are explicit, and derived geometry stays derived.** A group can
+  carry a grid; when it does, the solver owns its children's x/y/w/h. This is
+  not a reversal of "free-form canvas" — a figure with no group behaves exactly
+  as before. It means the common case (a 2×2 panel grid) can be *stated* rather
+  than approximated, which is also what lets the Stencila export emit
+  `Figure.layout` directly instead of reverse-engineering it from coordinates.
+- **Signing: local certificate now, cloud attestation later.** The near-term
+  answer is a local self-signed identity, matching what Stencila does. The
+  longer-term one is different in kind: a cloud certificate that signs the
+  figmint output as an attestation that *the output truly reflects the inputs
+  as described*. That is a claim about build integrity, not authorship, and it
+  is only meaningful if the build is reproducible — which is exactly why the
+  `reproducible` provenance level and the Calkit boundary below matter. Design
+  for it now by keeping the built artifact a pure function of the document plus
+  its components.
 
 ### Demo status
 
@@ -86,7 +101,7 @@ Against the walkthrough above:
 | --- | --- |
 | 1–2. Insert components | done — drag from the figure panel, provenance recorded |
 | 3. Agent resizes a panel | done — geometry is plain YAML an agent can edit |
-| 4. Agent edits a script, UI updates on change | partial — press Rescan; no watcher yet |
+| 4. Agent edits a script, UI updates on change | done — the backend watches and pushes over a websocket |
 | 5. `figmint status` shows staleness | done — exits non-zero, so CI and agents can gate on it |
 | 5. `figmint build` | done — composes to self-contained SVG/PDF/PNG |
 | 6. Build from the UI, then status is clean | done — the Build button composes from the saved file |
@@ -100,15 +115,15 @@ moved — which would defeat the point of tracking staleness at all.
 
 ### Still open
 
-- **Watching for changes.** Step 4 wants the UI to update automatically when a
-  script rewrites an artifact. Today you press Rescan. The backend already
-  re-hashes on scan, so this is a watcher plus a websocket, not new provenance
-  logic.
 - **Signing the exported composite.** figmint reads Content Credentials but does
-  not write them. Signing the output with each panel as a `componentOf`
-  ingredient would make the knowledge graph real and machine-checkable — C2PA
-  already has the vocabulary for it. Blocked on a decision: sign with a local
-  self-signed identity like Stencila's, or a real certificate?
+  not write them. The decision is made (local cert now, cloud attestation
+  later — see Decisions above); the work is emitting a manifest with each panel
+  as a `componentOf` ingredient, and `compositeWithTrainedAlgorithmicMedia` when
+  any panel is AI-generated.
+- **Drag-to-reorder inside a laid-out group.** The solver owns child geometry,
+  so dragging a panel in a grid currently fights it. `reorderChild` and
+  `cellIndexAt` in `model/layout.ts` are the pieces; the canvas does not use
+  them yet, so today you reorder via the layer list.
 - **Round-tripping `.smd`** back into the editor — export is one-way.
 - **Composite-of-composite:** a source that points at another figmint document
   rather than an image. Closely related to the signing item above — C2PA
@@ -117,6 +132,62 @@ moved — which would defeat the point of tracking staleness at all.
 The Stencila export is validated against the real CLI (2.15.0), and PDF output
 now goes through our own composed SVG rather than Stencila's PDF path — see
 [format.md](format.md).
+
+## The figmint / Calkit boundary
+
+The question was whether figmint should embed a pipeline stage definition —
+kind, script, environment — in its own YAML, with Calkit gaining a `figmint`
+stage kind in return.
+
+**Recommendation: figmint references stages; Calkit defines and runs them.**
+
+Embedding a stage definition means duplicating Calkit's schema in a second file
+that can drift from the first, and figmint would then need to resolve
+environments, manage locks, and execute things for the definition to be worth
+anything. Calkit already does all of that. Two sources of truth for one stage is
+the bug, not the feature.
+
+Referencing gets something strictly better anyway: a claim that can be
+*checked*. "Produced by `scripts/plot.py`", written in a sidecar, is a
+self-assertion that nothing verifies. "Stage `plot-cp` in `calkit.yaml` declares
+this exact path as an output" is verifiable without running anything, and it
+carries Calkit's environment locks and DVC hashes behind it. That is the
+"unambiguous proof of work" an imported component needs.
+
+So the only question figmint asks Calkit is: *which stage, if any, declares this
+file as an output?* Implemented in `src/figmint/calkit.py`, ~150 lines, no
+dependency on Calkit itself — it reads `calkit.yaml`. Everything else
+(environments, locks, staleness of the stage) stays on Calkit's side and is
+reachable through `calkit status`.
+
+The other direction still makes sense and is not blocked by any of this: a
+`figmint` stage kind in Calkit, where `figmint build` is the command, the
+`.fig.yaml` and its components are inputs, and the composed SVG/PDF is the
+output. That needs nothing from figmint beyond the CLI that already exists — it
+is a Calkit-side change, which is the right place for it.
+
+### Consequence for provenance
+
+Components now sort into five levels (`src/figmint/provenance.py`), and a
+project declares its minimum in `figmint.toml`:
+
+| Level | Meaning |
+| --- | --- |
+| `unidentified` | a file that simply appeared |
+| `declared` | imported, with a stated origin (URL, DOI, citation) |
+| `generated` | a sidecar names a producing script — unverified |
+| `reproducible` | a Calkit stage declares it as an output — verifiable |
+| `signed` | valid C2PA credentials naming the producer |
+
+The editor refuses to place a component below the threshold, and
+`figmint check` fails in CI. `figmint import` is the escape hatch that keeps
+this from being obstructive: a genuinely external artifact stays usable, it just
+has to say where it came from.
+
+One wrinkle worth revisiting: `signed` and `reproducible` are not really
+comparable — one answers *who made this*, the other *can I make it again*. They
+are forced into a single order because a policy needs a comparison, which works
+for the common case but will chafe for a project that wants both.
 
 ## Provenance issues for imported components
 
@@ -138,3 +209,8 @@ Calkit can then have a figmint stage kind, which reuses its way of
 tracking locked environments, DVC locks for I/O hashing, etc.?
 Calkit can compile a figmint figure into a DVC stage if all the inputs
 are part of the figmint file.
+
+## Inserting figures that are figmint outputs into another composite figmint figure
+
+This produces a chain of provenance and the need to check staleness all the
+way through.

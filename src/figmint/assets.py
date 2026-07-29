@@ -15,7 +15,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import calkit as calkit_mod
 from . import credentials as credentials_mod
+from . import provenance as provenance_mod
 
 #: Extensions we will offer as figure panels.
 FIGURE_SUFFIXES = {
@@ -78,6 +80,8 @@ class Asset:
     provenance: dict[str, Any] = field(default_factory=dict)
     #: Signed C2PA Content Credentials, when the producing tool emitted them.
     credentials: dict[str, Any] | None = None
+    #: How well we know where this came from — see `provenance.assess`.
+    assessment: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -87,6 +91,8 @@ class Asset:
             data.pop("intrinsic")
         if data["credentials"] is None:
             data.pop("credentials")
+        if data["assessment"] is None:
+            data.pop("assessment")
         return data
 
 
@@ -209,10 +215,24 @@ def intrinsic_size(path: Path) -> dict[str, float] | None:
     return {"width": round(width, 2), "height": round(height, 2)}
 
 
-def describe(path: Path, root: Path) -> Asset:
-    """Build an :class:`Asset` for one file."""
+def describe(
+    path: Path,
+    root: Path,
+    project: "calkit_mod.Project | None" = None,
+) -> Asset:
+    """Build an :class:`Asset` for one file.
+
+    `project` is passed in by `scan` so a whole directory shares one Calkit
+    lookup rather than re-walking for a project root per file.
+    """
     stat = path.stat()
     credentials = credentials_mod.read(path)
+    creds_dict = credentials.to_dict() if credentials else None
+    provenance = merge_provenance(path, root, credentials)
+    stage = project.stage_for(path) if project else None
+    assessment = provenance_mod.assess(provenance, creds_dict, stage)
+    if stage is not None:
+        provenance = {**provenance, "pipelineStage": stage.name}
     return Asset(
         path=path.relative_to(root).as_posix(),
         name=path.name,
@@ -221,8 +241,9 @@ def describe(path: Path, root: Path) -> Asset:
         modified=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
         mediaType=MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream"),
         intrinsic=intrinsic_size(path),
-        provenance=merge_provenance(path, root, credentials),
-        credentials=credentials.to_dict() if credentials else None,
+        provenance=provenance,
+        credentials=creds_dict,
+        assessment=assessment.to_dict(),
     )
 
 
@@ -270,7 +291,24 @@ def sidecar_provenance(path: Path, root: Path) -> dict[str, Any]:
         return {}
     if not isinstance(data, dict):
         return {}
-    allowed = {"generatedBy", "command", "commit", "derivedFrom"}
+    # Allowlisted rather than passed through wholesale, so a stray sidecar key
+    # can never shadow something figmint computes itself (a hash, say).
+    allowed = {
+        # What produced it, in this project.
+        "generatedBy",
+        "command",
+        "commit",
+        "derivedFrom",
+        # Where it came from, when it was produced elsewhere. These are what
+        # `figmint import` writes and what lifts a file out of `unidentified`.
+        "importedFrom",
+        "url",
+        "doi",
+        "citation",
+        "license",
+        "note",
+        "importedAt",
+    }
     return {k: v for k, v in data.items() if k in allowed}
 
 
@@ -280,6 +318,9 @@ def scan(root: Path, subdir: str | None = None) -> list[Asset]:
     if not base.exists():
         return []
 
+    # Resolve the Calkit project once for the whole scan, not per file.
+    project = calkit_mod.project_for(root)
+
     assets: list[Asset] = []
     for path in sorted(base.rglob("*")):
         if not path.is_file():
@@ -288,7 +329,7 @@ def scan(root: Path, subdir: str | None = None) -> list[Asset]:
             continue
         if any(part in SKIP_DIRS for part in path.relative_to(root).parts):
             continue
-        assets.append(describe(path, root))
+        assets.append(describe(path, root, project))
 
     assets.sort(key=lambda a: a.modified, reverse=True)
     return assets

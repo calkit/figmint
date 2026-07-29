@@ -16,6 +16,8 @@ export default defineConfig({
       '/api': {
         target: process.env.FIGMINT_API ?? 'http://127.0.0.1:8420',
         changeOrigin: true,
+        // The filesystem watcher pushes over a websocket on /api/watch.
+        ws: true,
       },
     },
   },

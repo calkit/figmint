@@ -511,6 +511,13 @@ def compose_svg(document: Document) -> tuple[str, list[str]]:
             parts.append(_ellipse_svg(node))
         elif kind == "arrow":
             parts.append(_arrow_svg(node))
+        elif kind == "group":
+            # A group positions its children; the children are themselves nodes
+            # in this same list, so there is nothing to draw. An explicit frame
+            # is the one exception.
+            style = node.get("style") or {}
+            if style.get("stroke") or style.get("fill"):
+                parts.append(_rect_svg(node))
         else:
             warnings.append(f"node {node.get('id', '?')}: unknown type `{kind}`")
 

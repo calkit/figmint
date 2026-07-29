@@ -50,6 +50,8 @@ export interface Source {
   /** Natural dimensions in pt, used to seed the aspect ratio on insert. */
   intrinsic?: { width: number; height: number }
   provenance?: SourceProvenance
+  /** Provenance level as assessed when the panel was placed. */
+  assessment?: Assessment
   /**
    * Credentials as read at import time. Recorded so the document preserves what
    * was claimed when the panel was placed, even if the file later loses or
@@ -90,6 +92,43 @@ export interface Ingredient {
   instanceId?: string
   /** The ingredient carries its own manifest, so the provenance chain nests. */
   hasManifest?: boolean
+}
+
+/**
+ * How well we know where a component came from.
+ *
+ * The ordering matters: it is what a project's policy compares against. The
+ * step from `generated` to `reproducible` is the meaningful one — a sidecar
+ * saying "produced by plot.py" is a self-assertion, whereas a Calkit stage
+ * declaring the file as an output can actually be checked.
+ */
+export type ProvenanceLevel =
+  | 'unidentified'
+  | 'declared'
+  | 'generated'
+  | 'reproducible'
+  | 'signed'
+
+export const PROVENANCE_ORDER: ProvenanceLevel[] = [
+  'unidentified',
+  'declared',
+  'generated',
+  'reproducible',
+  'signed',
+]
+
+export interface Assessment {
+  level: ProvenanceLevel
+  label: string
+  /** Why this level was assigned — shown so the verdict is auditable. */
+  reason: string
+}
+
+/** What the project will accept, from `figmint.toml`. */
+export interface ProvenancePolicy {
+  require: ProvenanceLevel
+  /** When false, violations are reported but placement is still allowed. */
+  enforce: boolean
 }
 
 /**
@@ -244,6 +283,45 @@ export interface ArrowNode extends BaseNode {
   curve?: 'straight' | 'quad' | 'elbow'
 }
 
+/**
+ * How a group arranges its children.
+ *
+ * `grid` is the general case; `row` and `column` are the one-dimensional
+ * shorthands people actually reach for. Track weights are relative, so
+ * `[30, 70]` and `[3, 7]` mean the same split — and `[30, 70]` happens to be
+ * exactly what Stencila's `Figure.layout` wants, which keeps the export honest.
+ */
+export interface Layout {
+  type: 'grid' | 'row' | 'column'
+  /** Columns in a `grid`; ignored for `row` and `column`. */
+  columns?: number
+  /** Uniform gap, or `[column, row]` in points. */
+  gap?: number | [number, number]
+  /** Relative track widths. Length must match `columns` to take effect. */
+  columnWidths?: number[]
+  rowHeights?: number[]
+  /** `stretch` fills each cell; `preserve` keeps the panel's aspect ratio. */
+  fit?: 'stretch' | 'preserve'
+  /** Fill order. Row-major (default) reads like text. */
+  order?: 'row-major' | 'column-major'
+}
+
+/**
+ * A container that positions other nodes.
+ *
+ * Children are referenced by id and remain top-level nodes, so everything that
+ * already walks `doc.nodes` keeps working. When `layout` is set the group owns
+ * its children's geometry; when it is null the group is just a way to move
+ * several things together.
+ */
+export interface GroupNode extends BaseNode {
+  type: 'group'
+  children: NodeId[]
+  layout?: Layout | null
+  /** Optional frame, mostly useful while arranging. */
+  style?: ShapeStyle
+}
+
 export type FigNode =
   | ImageNode
   | TextNode
@@ -251,6 +329,7 @@ export type FigNode =
   | RectNode
   | EllipseNode
   | ArrowNode
+  | GroupNode
 
 export type NodeType = FigNode['type']
 
@@ -296,4 +375,5 @@ export interface Asset {
   intrinsic?: { width: number; height: number }
   provenance?: SourceProvenance
   credentials?: ContentCredentials
+  assessment?: Assessment
 }

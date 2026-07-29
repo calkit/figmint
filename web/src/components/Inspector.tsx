@@ -1,5 +1,11 @@
 import { useEditor } from '../state/store'
-import type { FigNode, ShapeStyle, TextStyle } from '../model/types'
+import type {
+  FigNode,
+  GroupNode,
+  Layout,
+  ShapeStyle,
+  TextStyle,
+} from '../model/types'
 
 /**
  * Right rail: properties of the current selection, and document settings when
@@ -15,6 +21,8 @@ export function Inspector() {
   const updateNode = useEditor((s) => s.updateNode)
   const pushHistory = useEditor((s) => s.pushHistory)
   const patchDoc = useEditor((s) => s.patchDoc)
+  const setLayout = useEditor((s) => s.setLayout)
+  const ungroup = useEditor((s) => s.ungroup)
 
   const nodes = doc.nodes.filter((n) => selection.includes(n.id))
 
@@ -246,6 +254,14 @@ export function Inspector() {
         </>
       )}
 
+      {!multiple && node.type === 'group' && (
+        <LayoutFields
+          node={node}
+          onChange={(layout) => setLayout(node.id, layout)}
+          onUngroup={() => ungroup(node.id)}
+        />
+      )}
+
       {!multiple &&
         (node.type === 'rect' ||
           node.type === 'ellipse' ||
@@ -281,6 +297,117 @@ export function Inspector() {
         />
       </Field>
     </aside>
+  )
+}
+
+/**
+ * Layout controls for a group.
+ *
+ * Changing anything here re-solves immediately, so the grid is visible on the
+ * canvas as you tune it rather than after some separate apply step.
+ */
+function LayoutFields({
+  node,
+  onChange,
+  onUngroup,
+}: {
+  node: GroupNode
+  onChange: (layout: Layout | null) => void
+  onUngroup: () => void
+}) {
+  const layout = node.layout ?? null
+  const gap = Array.isArray(layout?.gap) ? layout.gap[0] : (layout?.gap ?? 0)
+
+  return (
+    <>
+      <Field label="Arrangement">
+        <select
+          className="input"
+          value={layout?.type ?? 'none'}
+          onChange={(e) => {
+            const value = e.target.value
+            if (value === 'none') return onChange(null)
+            onChange({
+              ...(layout ?? {}),
+              type: value as Layout['type'],
+              columns: layout?.columns ?? 2,
+              fit: layout?.fit ?? 'preserve',
+            })
+          }}
+        >
+          <option value="none">free (no layout)</option>
+          <option value="grid">grid</option>
+          <option value="row">row</option>
+          <option value="column">column</option>
+        </select>
+      </Field>
+
+      {layout && (
+        <>
+          {layout.type === 'grid' && (
+            <Field label="Columns">
+              <NumberInput
+                value={layout.columns ?? 2}
+                onChange={(v) =>
+                  onChange({ ...layout, columns: Math.max(1, Math.round(v)) })
+                }
+              />
+            </Field>
+          )}
+          <div className="row">
+            <Field label="Gap">
+              <NumberInput
+                value={gap}
+                onChange={(v) => onChange({ ...layout, gap: v })}
+              />
+            </Field>
+            <Field label="Fit">
+              <select
+                className="input"
+                value={layout.fit ?? 'preserve'}
+                onChange={(e) =>
+                  onChange({
+                    ...layout,
+                    fit: e.target.value as Layout['fit'],
+                  })
+                }
+              >
+                <option value="preserve">preserve aspect</option>
+                <option value="stretch">stretch to cell</option>
+              </select>
+            </Field>
+          </div>
+          <Field label="Column widths">
+            <input
+              className="input mono"
+              placeholder="e.g. 30 70 — blank for equal"
+              defaultValue={(layout.columnWidths ?? []).join(' ')}
+              onBlur={(e) => {
+                const parsed = e.target.value
+                  .split(/[\s,]+/)
+                  .filter(Boolean)
+                  .map(Number)
+                  .filter((n) => Number.isFinite(n) && n > 0)
+                onChange({
+                  ...layout,
+                  columnWidths: parsed.length ? parsed : undefined,
+                })
+              }}
+            />
+          </Field>
+          <p className="muted small">
+            Exports directly as Stencila <code>Figure.layout</code>, so the grid
+            you set is the grid it renders — no inference.
+          </p>
+        </>
+      )}
+
+      <Field label={`${node.children.length} children`}>
+        <button className="btn-small" onClick={onUngroup}>
+          Ungroup
+        </button>
+      </Field>
+    </>
   )
 }
 

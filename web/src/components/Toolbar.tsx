@@ -18,6 +18,8 @@ export function Toolbar({ onExport }: { onExport: () => void }) {
   const openDocument = useEditor((s) => s.openDocument)
   const setStatus = useEditor((s) => s.setStatus)
   const zoomBy = useEditor((s) => s.zoomBy)
+  const selection = useEditor((s) => s.selection)
+  const groupSelection = useEditor((s) => s.groupSelection)
 
   const [busy, setBusy] = useState(false)
 
@@ -175,6 +177,25 @@ export function Toolbar({ onExport }: { onExport: () => void }) {
         </button>
         <button className="btn" onClick={() => addShape('arrow')}>
           Arrow
+        </button>
+      </div>
+
+      <div className="toolbar-group">
+        <button
+          className="btn"
+          onClick={() => groupSelection({ type: 'grid', columns: 2, gap: 6, fit: 'preserve' })}
+          disabled={selection.length < 2}
+          title="Arrange the selection in a grid (⌘G)"
+        >
+          Grid
+        </button>
+        <button
+          className="btn"
+          onClick={() => groupSelection(null)}
+          disabled={selection.length < 2}
+          title="Group without a layout — moves together, keeps positions"
+        >
+          Group
         </button>
       </div>
 

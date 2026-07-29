@@ -1,6 +1,9 @@
+import { PROVENANCE_ORDER } from './types'
 import type {
+  Assessment,
   Asset,
   FigmintDocument,
+  ProvenancePolicy,
   FigNode,
   ImageNode,
   MathNode,
@@ -122,7 +125,19 @@ export function sourceFromAsset(asset: Asset): Source {
       importedAt: new Date().toISOString(),
     },
     credentials: asset.credentials,
+    assessment: asset.assessment,
   }
+}
+
+/** Whether a component is identified well enough for the project's policy. */
+export function meetsPolicy(
+  assessment: Assessment | undefined,
+  policy: ProvenancePolicy | null,
+): boolean {
+  if (!policy) return true
+  const required = PROVENANCE_ORDER.indexOf(policy.require)
+  const actual = PROVENANCE_ORDER.indexOf(assessment?.level ?? 'unidentified')
+  return actual >= required
 }
 
 export function makeImageNode(

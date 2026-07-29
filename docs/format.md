@@ -163,6 +163,45 @@ overlap, and the sidecar supplies what C2PA has no field for — the script path
 the exact command line, the upstream data files. This is the seam where Calkit,
 DVC, or a plain Makefile can declare what produced a figure.
 
+## Layouts
+
+A `group` node arranges other nodes. Children are referenced by id and stay
+top-level nodes, so everything that walks `nodes` keeps working — the group only
+decides their geometry.
+
+```yaml
+  - id: panels
+    type: group
+    children: [panel-a, panel-b]
+    x: 12
+    y: 36
+    width: 444
+    height: 162
+    layout:
+      type: grid          # grid | row | column
+      columns: 2
+      gap: 12             # or [column, row]
+      columnWidths: [40, 60]   # relative weights; [4, 6] means the same
+      fit: preserve       # preserve aspect, or stretch to the cell
+```
+
+With a `layout`, the solver owns each child's `x`/`y`/`width`/`height` — edit the
+grid, not the coordinates. Without one, a group is just a way to move several
+things at once, and children keep whatever positions they were dragged to.
+
+Two behaviours worth knowing:
+
+- **`fit: preserve` centres a panel in its cell** rather than distorting it. A
+  grid should arrange plots, not silently change their aspect ratio.
+- **Hiding a panel leaves its cell empty** instead of reflowing the grid. You
+  asked for two columns; widening the survivor would quietly change a layout you
+  specified, and un-hiding would no longer restore what was there.
+
+Layouts export directly to Stencila's `Figure.layout`: `[2]`, `[40 60]`,
+`[row]`. That is the point of having them — a figure with an explicit grid is
+*stated* rather than reverse-engineered from pixel positions, and inference stays
+as the fallback for free-form figures.
+
 ## Building
 
 `figmint build` composes a document into one self-contained artifact:

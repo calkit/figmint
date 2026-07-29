@@ -5,6 +5,7 @@ import type {
   EllipseNode,
   FigmintDocument,
   FigNode,
+  GroupNode,
   ImageNode,
   MathNode,
   RectNode,
@@ -242,6 +243,47 @@ function ArrowView({ node }: { node: ArrowNode }) {
   )
 }
 
+/**
+ * A group draws nothing of its own in the finished figure — it exists to
+ * position its children. While it is selected, its bounds and cells are shown
+ * so the arrangement is visible; that chrome is editor-only and never exported.
+ */
+function GroupView({ node, selected }: { node: GroupNode; selected: boolean }) {
+  const st = node.style ?? {}
+  const hasFrame = st.stroke || st.fill
+  return (
+    <g>
+      {hasFrame && (
+        <rect
+          x={node.x}
+          y={node.y}
+          width={node.width}
+          height={node.height}
+          rx={st.cornerRadius ?? 0}
+          fill={st.fill ?? 'none'}
+          stroke={st.stroke ?? 'none'}
+          strokeWidth={st.strokeWidth ?? 1}
+          strokeDasharray={st.strokeDash ?? undefined}
+        />
+      )}
+      {selected && !hasFrame && (
+        <rect
+          x={node.x}
+          y={node.y}
+          width={node.width}
+          height={node.height}
+          fill="none"
+          stroke="#8b5cf6"
+          strokeWidth={0.5}
+          strokeDasharray="3 2"
+          pointerEvents="none"
+          data-editor-only="true"
+        />
+      )}
+    </g>
+  )
+}
+
 export function NodeView({ node, doc, selected, onPointerDown }: Props) {
   if (node.hidden) return null
 
@@ -259,6 +301,8 @@ export function NodeView({ node, doc, selected, onPointerDown }: Props) {
         return <EllipseView node={node} />
       case 'arrow':
         return <ArrowView node={node} />
+      case 'group':
+        return <GroupView node={node} selected={selected} />
     }
   })()
 

@@ -5,7 +5,9 @@ import type {
   EllipseNode,
   FigmintDocument,
   FigNode,
+  GroupNode,
   ImageNode,
+  Layout,
   MathNode,
   RectNode,
   TextNode,
@@ -83,9 +85,65 @@ export interface InferredLayout {
  * This is a lossy approximation by design. The authoritative geometry travels in
  * the frontmatter; the grid is what non-figmint Stencila consumers see.
  */
+/**
+ * Translate an explicit group layout into Stencila's grid mini-language.
+ *
+ * This is the whole reason layouts are worth having on the model: when the
+ * author has said "two columns, 30/70", the export can say exactly that instead
+ * of reverse-engineering it from pixel positions. Inference stays as the
+ * fallback for free-form figures.
+ */
+export function layoutToStencila(
+  layout: Layout,
+  count: number,
+): string | null {
+  if (count <= 1) return null
+
+  if (layout.type === 'row') return '[row]'
+  if (layout.type === 'column') return null // stacked is Stencila's default
+
+  const columns = Math.max(1, Math.floor(layout.columns ?? 1))
+  if (columns <= 1) return null
+
+  const weights = layout.columnWidths
+  if (weights && weights.length === columns && weights.every((w) => w > 0)) {
+    const total = weights.reduce((a, b) => a + b, 0)
+    const ratios = weights.map((w) => Math.round((w / total) * 100))
+    ratios[ratios.length - 1] += 100 - ratios.reduce((a, b) => a + b, 0)
+    // Equal-ish tracks read better as a plain column count.
+    const uniform = ratios.every((r) => Math.abs(r - 100 / columns) <= 2)
+    if (!uniform) return `[${ratios.join(' ')}]`
+  }
+  return `[${columns}]`
+}
+
 export function inferLayout(doc: FigmintDocument): InferredLayout {
   const images = doc.nodes.filter((x): x is ImageNode => x.type === 'image')
   if (images.length === 0) return { layout: null, order: [] }
+
+  // An explicit group layout beats inference — the author already said what
+  // they meant, so guessing from coordinates would only lose information.
+  const group = doc.nodes.find(
+    (n): n is GroupNode =>
+      n.type === 'group' &&
+      !!n.layout &&
+      n.children.some((id) => images.some((img) => img.id === id)),
+  )
+  if (group?.layout) {
+    const ordered = group.children
+      .map((id) => images.find((img) => img.id === id))
+      .filter((x): x is ImageNode => x !== undefined)
+    const remaining = images.filter((img) => !group.children.includes(img.id))
+    const order = [...ordered, ...remaining]
+    return {
+      layout: layoutToStencila(group.layout, order.length),
+      order,
+      note: remaining.length
+        ? `${remaining.length} panel(s) outside the group were appended`
+        : undefined,
+    }
+  }
+
   if (images.length === 1) return { layout: null, order: images }
 
   const sorted = [...images].sort((a, b) => a.y - b.y || a.x - b.x)
@@ -293,6 +351,8 @@ function overlayElement(node: FigNode): string | null {
       return arrowSvg(node)
     case 'image':
       return null // images are figure content, not overlay
+    case 'group':
+      return null // groups position other nodes; they draw nothing themselves
   }
 }
 

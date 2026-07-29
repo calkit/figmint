@@ -536,6 +536,39 @@ code {
   color: var(--warn);
 }
 
+.watch-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--muted);
+}
+
+.watch-live {
+  background: var(--ok);
+}
+.watch-offline {
+  background: var(--danger);
+}
+.watch-connecting {
+  background: var(--warn);
+}
+
+.conflict-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  background: #fdf7ec;
+  border-top: 1px solid #f0d9ae;
+  color: var(--warn);
+  font-size: 12px;
+}
+
 .statusbar {
   flex: none;
   display: flex;

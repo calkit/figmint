@@ -1,4 +1,4 @@
-import type { Asset } from '../model/types'
+import type { Asset, ProvenancePolicy } from '../model/types'
 
 /**
  * Client for the figmint backend (see `src/figmint/server.py`).
@@ -42,6 +42,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface AssetIndex {
   root: string
   assets: Asset[]
+  /** The project's provenance policy, from `figmint.toml`. */
+  policy?: ProvenancePolicy
 }
 
 export function fetchAssets(dir?: string): Promise<AssetIndex> {

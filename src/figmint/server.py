@@ -12,11 +12,13 @@ Run it with `make dev`, or directly::
 
 from __future__ import annotations
 
+import contextlib
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,9 +26,13 @@ from pydantic import BaseModel
 
 from . import build as build_mod
 from . import document as document_mod
+from . import provenance as provenance_mod
 from . import status as status_mod
+from . import watch as watch_mod
 from .assets import UnsafePathError, safe_join, scan
 from .document import DOCUMENT_SUFFIX
+
+logger = logging.getLogger(__name__)
 
 
 class Settings:
@@ -51,6 +57,7 @@ class BuildRequest(BaseModel):
 
 def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="figmint", version="0.1.0")
+    watcher = watch_mod.Watcher(settings.root)
 
     # The Vite dev server proxies /api, so same-origin is the normal case. CORS
     # is here only for running the two on separate hosts during development.
@@ -75,8 +82,15 @@ def create_app(settings: Settings) -> FastAPI:
             assets = scan(settings.root, subdir)
         except UnsafePathError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
+        try:
+            policy = provenance_mod.load_policy(settings.root)
+        except ValueError as exc:
+            # A policy someone wrote down but got wrong must be loud, not
+            # silently replaced by the permissive default.
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
         return {
             "root": str(settings.root),
+            "policy": policy.to_dict(),
             "assets": [a.to_dict() for a in assets],
         }
 
@@ -174,6 +188,30 @@ def create_app(settings: Settings) -> FastAPI:
             ],
             "warnings": results[0].warnings if results else [],
         }
+
+    @app.websocket("/api/watch")
+    async def watch_project(websocket: WebSocket) -> None:
+        """Push filesystem changes to the editor so it can re-scan.
+
+        Only paths are sent; the client re-reads through the normal endpoints,
+        so freshness is always computed by the same code.
+        """
+        await websocket.accept()
+        try:
+            async with watcher.subscribe() as queue:
+                # Tell the client what it is watching, so it can show the state.
+                await websocket.send_json(
+                    {"type": "watching", "root": str(settings.root)}
+                )
+                while True:
+                    changes = await queue.get()
+                    await websocket.send_json(changes.to_dict())
+        except WebSocketDisconnect:
+            pass
+        except Exception:  # noqa: BLE001 - never let one socket take the server down
+            logger.exception("watch socket failed")
+            with contextlib.suppress(Exception):
+                await websocket.close()
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:

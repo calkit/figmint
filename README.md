@@ -36,18 +36,22 @@ make dev ROOT=~/research/turbine-paper FIGURES=figures
 
 ```
 web/                 React + TypeScript + Vite editor
-  src/model/         document model, geometry
+  src/model/         document model, geometry, layout solver
   src/io/            .fig.yaml serialization, Stencila export, API client
   src/state/         editor store with undo/redo
   src/components/    canvas, panels, inspector
 src/figmint/         Python backend and CLI
   assets.py          directory scan, content hashing, intrinsic sizes
   credentials.py     reading C2PA Content Credentials
+  provenance.py      provenance levels and project policy
+  calkit.py          reading Calkit's pipeline to verify stage outputs
+  importer.py        declaring the origin of imported components
+  watch.py           filesystem watcher behind the live-update websocket
   document.py        .fig.yaml loading
   status.py          staleness checking
   build.py           composing to self-contained SVG/PDF/PNG
   server.py          HTTP API; also serves the built editor
-  cli.py             serve / status / build
+  cli.py             serve / status / build / accept / check / import
 ```
 
 The backend owns everything that touches the filesystem, so provenance answers
@@ -65,6 +69,8 @@ The editor is not the only way in — `status` and `build` do the same work
 headlessly, so an agent or a CI job can use them.
 
 ```sh
+figmint check                  # is every component identified well enough?
+figmint import photo.png --from 'Fig 3b, Smith et al. 2024' --doi 10.1000/x
 figmint status                 # is every figure still true to its components?
 figmint status -v figures/     # also list the healthy ones
 figmint accept fig.fig.yaml    # "I've reviewed the change" — re-records hashes
@@ -113,6 +119,37 @@ figmint reads them: who made it, with what tool, and whether any of it was
 AI-generated. That is a cryptographically bound claim, unlike anything figmint
 could infer from a filename.
 
+### Nothing anonymous gets into a figure
+
+A composite figure is only as trustworthy as its least accountable panel, so
+figmint sorts components by how well their origin is known:
+
+| Level | Meaning |
+| --- | --- |
+| `unidentified` | a file that simply appeared |
+| `declared` | imported, with a stated origin (URL, DOI, citation) |
+| `generated` | a sidecar names a producing script — nothing verifies it |
+| `reproducible` | a Calkit stage declares it as an output — verifiable |
+| `signed` | valid C2PA credentials naming the producer |
+
+Set the minimum your project accepts in `figmint.toml`:
+
+```toml
+[provenance]
+require = "declared"   # unidentified | declared | generated | reproducible | signed
+enforce = true         # false to warn instead of block
+```
+
+The editor refuses to place a component below the bar, and `figmint check`
+fails in CI. This is not meant to stop you using a micrograph or a figure from
+a paper — `figmint import` records where it came from, and then it's fine.
+
+The step from `generated` to `reproducible` is the one that matters: a sidecar
+claiming `plot.py` made a file asserts something nothing checks, whereas a
+Calkit stage declaring that exact path as an output can be verified without
+running anything. See [the boundary note](docs/editor-design.md) for why figmint
+references Calkit stages rather than defining its own.
+
 To see it, generate a signed component with Stencila:
 
 ```sh
@@ -152,6 +189,10 @@ geometry round-trips through the frontmatter.
 | ⌘Z, ⇧⌘Z | undo, redo |
 | ⌘D | duplicate |
 | ⌘\[, ⌘\] | send backward, bring forward |
+
+Select two or more panels and press **Grid** to arrange them; the group's
+columns, gaps, and column weights are editable in the inspector, and export
+straight to Stencila's `Figure.layout`.
 
 ## Development
 

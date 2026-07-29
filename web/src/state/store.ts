@@ -4,18 +4,25 @@ import type {
   Asset,
   FigmintDocument,
   FigNode,
+  GroupNode,
+  Layout,
   NodeId,
+  ProvenancePolicy,
   Rect,
   SourceKey,
 } from '../model/types'
 import {
   emptyDocument,
   fitIntoBox,
+  makeId,
   makeImageNode,
   makeSourceKey,
+  meetsPolicy,
   sourceFromAsset,
 } from '../model/document'
+import { boundsOf } from '../model/geometry'
 import type { Viewport } from '../model/geometry'
+import { applyLayouts } from '../model/layout'
 import { fetchAssets, fetchDocument, saveDocument } from '../io/api'
 import { fromYaml, toYaml } from '../io/serialize'
 
@@ -32,6 +39,8 @@ interface EditorState {
   assets: Asset[]
   assetsByPath: Map<string, Asset>
   assetError: string | null
+  /** Provenance policy from `figmint.toml`; null until the first scan. */
+  policy: ProvenancePolicy | null
   status: string | null
 
   past: FigmintDocument[]
@@ -63,6 +72,16 @@ interface EditorState {
   nudgeSelected: (dx: number, dy: number) => void
   reorderSelected: (direction: 'front' | 'forward' | 'backward' | 'back') => void
 
+  // --- layout ------------------------------------------------------------
+  /** Wrap the selection in a group, optionally laid out as a grid. */
+  groupSelection: (layout?: Layout | null) => void
+  /** Dissolve a group, leaving its children where the layout put them. */
+  ungroup: (id: NodeId) => void
+  /** Change a group's layout and re-solve its children. */
+  setLayout: (id: NodeId, layout: Layout | null) => void
+  /** Re-run every layout solver; called after geometry changes. */
+  resolveLayouts: () => void
+
   // --- selection ---------------------------------------------------------
   select: (ids: NodeId[]) => void
   toggleSelect: (id: NodeId) => void
@@ -75,6 +94,16 @@ interface EditorState {
   zoomToFit: (size: { width: number; height: number }) => void
 
   // --- assets ------------------------------------------------------------
+  /**
+   * The open document changed on disk (an agent edited the YAML, say). Reloads
+   * when there is nothing to lose; otherwise flags the conflict rather than
+   * silently discarding the user's work.
+   */
+  noteDocumentsChanged: (paths: string[]) => void
+  /** Set when the open document changed on disk while we had unsaved edits. */
+  externalEdit: boolean
+  reloadFromDisk: () => Promise<void>
+
   loadAssets: (dir?: string) => Promise<void>
   insertAsset: (asset: Asset, at?: { x: number; y: number }) => void
   relinkSource: (key: SourceKey, asset: Asset) => void
@@ -93,10 +122,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   assets: [],
   assetsByPath: new Map(),
   assetError: null,
+  policy: null,
   status: null,
 
   past: [],
   future: [],
+  externalEdit: false,
 
   // --- history -----------------------------------------------------------
 
@@ -298,6 +329,77 @@ export const useEditor = create<EditorState>((set, get) => ({
     }))
   },
 
+  // --- layout ------------------------------------------------------------
+
+  groupSelection: (layout = null) => {
+    const { selection, doc } = get()
+    if (selection.length < 2) {
+      set({ status: 'Select at least two nodes to group' })
+      return
+    }
+    const members = doc.nodes.filter((n) => selection.includes(n.id))
+    const bounds = boundsOf(members)
+    if (!bounds) return
+
+    get().pushHistory()
+    const group: GroupNode = {
+      id: makeId('group'),
+      type: 'group',
+      // Children keep document order, so a grid fills the way the layer list
+      // reads rather than in whatever order things happened to be clicked.
+      children: doc.nodes.filter((n) => selection.includes(n.id)).map((n) => n.id),
+      layout,
+      ...bounds,
+    }
+    set((s) => ({
+      doc: produce(s.doc, (d) => {
+        // Insert beneath its children so the frame never covers them.
+        const firstIndex = d.nodes.findIndex((n) => selection.includes(n.id))
+        d.nodes.splice(Math.max(0, firstIndex), 0, group)
+      }),
+      selection: [group.id],
+      dirty: true,
+    }))
+    get().resolveLayouts()
+  },
+
+  ungroup: (id) => {
+    get().pushHistory()
+    set((s) => ({
+      doc: produce(s.doc, (d) => {
+        d.nodes = d.nodes.filter((n) => n.id !== id)
+      }),
+      selection: [],
+      dirty: true,
+    }))
+  },
+
+  setLayout: (id, layout) => {
+    get().pushHistory()
+    set((s) => ({
+      doc: produce(s.doc, (d) => {
+        const node = d.nodes.find((n) => n.id === id)
+        if (node && node.type === 'group') node.layout = layout
+      }),
+      dirty: true,
+    }))
+    get().resolveLayouts()
+  },
+
+  resolveLayouts: () => {
+    const updates = applyLayouts(get().doc.nodes)
+    if (Object.keys(updates).length === 0) return
+    set((s) => ({
+      doc: produce(s.doc, (d) => {
+        for (const node of d.nodes) {
+          const rect = updates[node.id]
+          if (rect) Object.assign(node, rect)
+        }
+      }),
+      dirty: true,
+    }))
+  },
+
   // --- selection ---------------------------------------------------------
 
   select: (ids) => set({ selection: ids }),
@@ -346,6 +448,44 @@ export const useEditor = create<EditorState>((set, get) => ({
       }
     }),
 
+  // --- external changes --------------------------------------------------
+
+  noteDocumentsChanged: (paths) => {
+    const { documentPath, dirty } = get()
+    if (!documentPath || !paths.includes(documentPath)) return
+
+    if (dirty) {
+      // Both sides have changes. Reloading would throw away the user's edits
+      // and saving would clobber the agent's, so surface it and let them pick.
+      set({
+        externalEdit: true,
+        status: `${documentPath} changed on disk, and you have unsaved edits`,
+      })
+      return
+    }
+    void get().reloadFromDisk()
+  },
+
+  reloadFromDisk: async () => {
+    const { documentPath } = get()
+    if (!documentPath) return
+    try {
+      const payload = await fetchDocument(documentPath)
+      set({
+        doc: fromYaml(payload.text),
+        dirty: false,
+        externalEdit: false,
+        // History is kept: an external edit should still be undoable from the
+        // editor's point of view.
+        past: [...get().past, get().doc].slice(-HISTORY_LIMIT),
+        future: [],
+        status: `Reloaded ${documentPath}`,
+      })
+    } catch (err) {
+      set({ status: err instanceof Error ? err.message : String(err) })
+    }
+  },
+
   // --- assets ------------------------------------------------------------
 
   loadAssets: async (dir) => {
@@ -354,6 +494,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       set({
         assets: index.assets,
         assetsByPath: new Map(index.assets.map((a) => [a.path, a])),
+        policy: index.policy ?? null,
         assetError: null,
       })
     } catch (err) {
@@ -366,7 +507,23 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   insertAsset: (asset, at) => {
-    const { doc } = get()
+    const { doc, policy } = get()
+
+    // Refuse anonymous components before they get into a figure. Blocking here
+    // rather than warning at export time is deliberate: once a panel is placed
+    // and the figure looks right, nobody goes back and finds out where it came
+    // from. `enforce = false` downgrades this to a warning for projects still
+    // adopting the policy.
+    if (policy?.enforce && !meetsPolicy(asset.assessment, policy)) {
+      set({
+        status:
+          `Blocked: ${asset.name} is ${asset.assessment?.level ?? 'unidentified'}, ` +
+          `but this project requires ${policy.require}. ` +
+          `Run: figmint import ${asset.path} --from '<url or DOI>'`,
+      })
+      return
+    }
+
     get().pushHistory()
 
     // Reuse an existing source entry when the same file is already in the

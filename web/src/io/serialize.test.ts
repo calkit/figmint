@@ -218,3 +218,88 @@ describe('Stencila Markdown export', () => {
     expect(smd).toContain('```svg overlay')
   })
 })
+
+describe('explicit group layouts', () => {
+  const withGroup = (layout: import('../model/types').Layout) => {
+    const doc = loadExample()
+    doc.nodes.push({
+      id: 'panels',
+      type: 'group',
+      children: ['panel-a', 'panel-b'],
+      layout,
+      x: 12,
+      y: 36,
+      width: 444,
+      height: 162,
+    })
+    return doc
+  }
+
+  it('uses the declared grid instead of inferring one', () => {
+    const result = inferLayout(withGroup({ type: 'grid', columns: 2 }))
+    expect(result.layout).toBe('[2]')
+  })
+
+  it('emits declared column weights as Stencila ratios', () => {
+    const result = inferLayout(
+      withGroup({ type: 'grid', columns: 2, columnWidths: [30, 70] }),
+    )
+    expect(result.layout).toBe('[30 70]')
+  })
+
+  it('treats weights as relative when converting', () => {
+    const result = inferLayout(
+      withGroup({ type: 'grid', columns: 2, columnWidths: [3, 7] }),
+    )
+    expect(result.layout).toBe('[30 70]')
+  })
+
+  it('emits a row layout', () => {
+    expect(inferLayout(withGroup({ type: 'row' })).layout).toBe('[row]')
+  })
+
+  it('column layouts fall through to Stencila stacking', () => {
+    expect(inferLayout(withGroup({ type: 'column' })).layout).toBeNull()
+  })
+
+  it('orders panels by the group, not by position', () => {
+    const doc = loadExample()
+    doc.nodes.push({
+      id: 'panels',
+      type: 'group',
+      // Deliberately reversed relative to canvas order.
+      children: ['panel-b', 'panel-a'],
+      layout: { type: 'grid', columns: 2 },
+      x: 12,
+      y: 36,
+      width: 444,
+      height: 162,
+    })
+    expect(inferLayout(doc).order.map((p) => p.id)).toEqual([
+      'panel-b',
+      'panel-a',
+    ])
+  })
+
+  it('notes panels left outside the group', () => {
+    const doc = loadExample()
+    doc.nodes.push({
+      id: 'panels',
+      type: 'group',
+      children: ['panel-a'],
+      layout: { type: 'grid', columns: 1 },
+      x: 12,
+      y: 36,
+      width: 216,
+      height: 162,
+    })
+    const result = inferLayout(doc)
+    expect(result.order).toHaveLength(2)
+    expect(result.note).toMatch(/outside the group/)
+  })
+
+  it('groups contribute nothing to the overlay', () => {
+    const overlay = buildOverlay(withGroup({ type: 'grid', columns: 2 })) ?? ''
+    expect(overlay).not.toContain('panels')
+  })
+})
