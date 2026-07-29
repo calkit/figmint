@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from figmint import formats
-from figmint.cli import EXIT_OK, EXIT_STALE, main
+from figmint.cli import EXIT_ERROR, EXIT_OK, EXIT_STALE, main
 from figmint.formats import DrawioDocument, FigYamlDocument, open_document
 from figmint.formats.base import DocumentError, UnsupportedFormat
 from figmint.formats.drawio import (
@@ -110,7 +110,9 @@ class TestRealDrawioFile:
     def test_the_embedded_content_is_the_real_svg(self, document: DrawioDocument):
         embedded = document.components()[0].embedded
         assert embedded is not None
-        assert embedded.lstrip().startswith(b"<svg")
+        # An XML declaration and DOCTYPE may precede the root element, so look
+        # for the tag rather than requiring it first.
+        assert b"<svg" in embedded
         # It is a matplotlib plot, which is what makes this a realistic case.
         assert b"matplotlib" in embedded
 
@@ -510,3 +512,263 @@ class TestCli:
         shutil.copytree(EXAMPLES / "figures", tmp_path / "figures")
         assert main(["adopt", str(tmp_path / "d.fig.yaml")]) == EXIT_OK
         assert "nothing to adopt" in capsys.readouterr().out
+
+
+class TestReimport:
+    """Refreshing embedded copies when their source changes.
+
+    draw.io embeds a copy with no link back to the original, so a regenerated
+    plot can never propagate on its own. This is the operation that closes that
+    gap without disturbing anything the author arranged by hand.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / ".git").mkdir()
+        target = tmp_path / "d.drawio"
+        target.write_text(strip_provenance(DRAWIO.read_text()))
+
+        # Put the embedded plot on disk and link it, as `adopt` would.
+        document = open_document(target)
+        (tmp_path / "plot.svg").write_bytes(document.components()[0].embedded)
+        assert main(["adopt", str(target)]) == EXIT_OK
+        return tmp_path
+
+    def test_nothing_to_do_when_the_source_is_unchanged(self, project: Path):
+        document = open_document(project / "d.drawio")
+        assert document.reimport() == []
+
+    def test_a_changed_source_is_re_embedded(self, project: Path):
+        (project / "plot.svg").write_bytes(b"<svg>new content</svg>")
+
+        document = open_document(project / "d.drawio")
+        updated = document.reimport()
+        assert len(updated) == 1
+        document.save()
+
+        again = open_document(project / "d.drawio")
+        assert again.components()[0].embedded == b"<svg>new content</svg>"
+
+    def test_the_recorded_hash_is_updated(self, project: Path):
+        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+        document = open_document(project / "d.drawio")
+        document.reimport()
+        document.save()
+
+        component = open_document(project / "d.drawio").components()[0]
+        assert component.recorded_hash == component.embedded_hash()
+
+    def test_layout_survives_a_refresh(self, project: Path):
+        before = open_document(project / "d.drawio").nodes()[0]
+        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+
+        document = open_document(project / "d.drawio")
+        document.reimport()
+        document.save()
+
+        after = open_document(project / "d.drawio").nodes()[0]
+        assert (after["x"], after["y"], after["width"]) == (
+            before["x"],
+            before["y"],
+            before["width"],
+        )
+
+    def test_other_shapes_are_untouched(self, project: Path):
+        target = project / "d.drawio"
+        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+        document = open_document(target)
+        document.reimport()
+        document.save()
+
+        text = target.read_text()
+        # The LaTeX cell, the gear and the sketch rectangle must all survive.
+        assert "C_P" in text
+        assert "Gear_128x128" in text
+        assert "sketch=1" in text
+
+    def test_a_component_with_no_declared_source_is_skipped(self, tmp_path: Path):
+        target = tmp_path / "anon.drawio"
+        target.write_text(strip_provenance(DRAWIO.read_text()))
+        assert open_document(target).reimport() == []
+
+    def test_a_missing_source_is_skipped_not_erased(self, project: Path):
+        (project / "plot.svg").unlink()
+        document = open_document(project / "d.drawio")
+        assert document.reimport() == []
+        # The embedded copy is still the only version left; deleting it would
+        # destroy the figure.
+        assert document.components()[0].embedded is not None
+
+    def test_reimport_is_idempotent(self, project: Path):
+        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+        document = open_document(project / "d.drawio")
+        document.reimport()
+        document.save()
+        # A second run must be a no-op, or a pipeline stage would never settle.
+        assert open_document(project / "d.drawio").reimport() == []
+
+
+class TestReimportCli:
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / ".git").mkdir()
+        target = tmp_path / "d.drawio"
+        target.write_text(strip_provenance(DRAWIO.read_text()))
+        document = open_document(target)
+        (tmp_path / "plot.svg").write_bytes(document.components()[0].embedded)
+        main(["adopt", str(target)])
+        return tmp_path
+
+    def test_check_reports_without_writing(self, project: Path, capsys):
+        target = project / "d.drawio"
+        before = target.read_text()
+        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+
+        assert main(["reimport", str(target), "--check"]) == EXIT_STALE
+        assert "out of date" in capsys.readouterr().out
+        assert target.read_text() == before, "--check must not modify the file"
+
+    def test_check_passes_when_current(self, project: Path):
+        assert main(["reimport", str(project / "d.drawio"), "--check"]) == EXIT_OK
+
+    def test_output_leaves_the_source_untouched(self, project: Path):
+        # This is what keeps a DVC stage acyclic: the authored diagram stays a
+        # pure input and the refreshed one is a pure output.
+        target = project / "d.drawio"
+        before = target.read_text()
+        (project / "plot.svg").write_bytes(b"<svg>new</svg>")
+
+        derived = project / "built.drawio"
+        assert main(["reimport", str(target), "-o", str(derived)]) == EXIT_OK
+        assert target.read_text() == before
+        assert derived.exists()
+        assert open_document(derived).components()[0].embedded == b"<svg>new</svg>"
+
+    def test_reimport_on_a_fig_yaml_is_a_no_op(self, tmp_path: Path, capsys):
+        shutil.copy(EXAMPLES / "two-panel.fig.yaml", tmp_path / "d.fig.yaml")
+        shutil.copytree(EXAMPLES / "figures", tmp_path / "figures")
+        assert main(["reimport", str(tmp_path / "d.fig.yaml")]) == EXIT_OK
+        assert "referenced" in capsys.readouterr().out
+
+
+class TestPlace:
+    """Embedding a figure with provenance attached from the start.
+
+    The point of this path is that it never creates the problem `adopt` exists
+    to clean up: the shape arrives knowing where it came from.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / ".git").mkdir()
+        shutil.copy(EXAMPLES / "figures" / "cp_curve.svg", tmp_path / "plot.svg")
+        # With its sidecar, so the figure clears the default provenance bar —
+        # the refusal path gets its own test below.
+        shutil.copy(
+            EXAMPLES / "figures" / "cp_curve.svg.prov.yaml",
+            tmp_path / "plot.svg.prov.yaml",
+        )
+        return tmp_path
+
+    def test_creates_a_diagram_when_asked(self, project: Path):
+        target = project / "new.drawio"
+        assert (
+            main(["place", str(project / "plot.svg"), "--into", str(target), "--create"])
+            == EXIT_OK
+        )
+        assert target.exists()
+
+    def test_refuses_to_create_without_the_flag(self, project: Path, capsys):
+        target = project / "missing.drawio"
+        assert main(["place", str(project / "plot.svg"), "--into", str(target)]) != EXIT_OK
+        assert "--create" in capsys.readouterr().err
+        assert not target.exists()
+
+    def test_the_shape_carries_src_and_hash(self, project: Path):
+        target = project / "d.drawio"
+        main(["place", str(project / "plot.svg"), "--into", str(target), "--create"])
+
+        component = open_document(target).components()[0]
+        assert component.origin == "plot.svg"
+        assert component.recorded_hash == component.embedded_hash()
+
+    def test_the_figure_is_embedded_not_referenced(self, project: Path):
+        target = project / "d.drawio"
+        main(["place", str(project / "plot.svg"), "--into", str(target), "--create"])
+        component = open_document(target).components()[0]
+        assert component.is_embedded
+        assert component.embedded == (project / "plot.svg").read_bytes()
+
+    def test_size_comes_from_the_artwork(self, project: Path):
+        target = project / "d.drawio"
+        main(["place", str(project / "plot.svg"), "--into", str(target), "--create"])
+        # The SVG is 216x162pt, which is 300x225 in draw.io units.
+        node = open_document(target).nodes()[0]
+        assert node["width"] == pytest.approx(216, abs=1)
+        assert node["height"] == pytest.approx(162, abs=1)
+
+    def test_a_second_figure_does_not_land_on_the_first(self, project: Path):
+        target = project / "d.drawio"
+        main(["place", str(project / "plot.svg"), "--into", str(target), "--create"])
+        main(["place", str(project / "plot.svg"), "--into", str(target)])
+
+        nodes = open_document(target).nodes()
+        assert len(nodes) == 2
+        first, second = nodes
+        assert second["y"] >= first["y"] + first["height"], "should stack, not overlap"
+
+    def test_ids_do_not_collide(self, project: Path):
+        target = project / "d.drawio"
+        main(["place", str(project / "plot.svg"), "--into", str(target), "--create"])
+        main(["place", str(project / "plot.svg"), "--into", str(target)])
+        keys = [c.key for c in open_document(target).components()]
+        assert len(set(keys)) == len(keys)
+
+    def test_explicit_geometry_is_respected(self, project: Path):
+        target = project / "d.drawio"
+        main([
+            "place", str(project / "plot.svg"), "--into", str(target), "--create",
+            "--x", "50", "--y", "60", "--width", "120",
+        ])
+        node = open_document(target).nodes()[0]
+        assert node["x"] == pytest.approx(50 * 0.72)
+        assert node["y"] == pytest.approx(60 * 0.72)
+
+    def test_an_unidentified_figure_is_refused(self, project: Path, capsys):
+        anon = project / "anon.svg"
+        anon.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>')
+        target = project / "d.drawio"
+
+        assert (
+            main(["place", str(anon), "--into", str(target), "--create"]) == EXIT_STALE
+        )
+        assert "refusing to place" in capsys.readouterr().err
+
+    def test_force_overrides_the_policy(self, project: Path):
+        anon = project / "anon.svg"
+        anon.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>')
+        target = project / "d.drawio"
+        assert (
+            main([
+                "place", str(anon), "--into", str(target), "--create", "--force",
+            ])
+            == EXIT_OK
+        )
+
+    def test_a_missing_figure_is_an_error(self, project: Path, capsys):
+        assert main([
+            "place", str(project / "ghost.svg"),
+            "--into", str(project / "d.drawio"), "--create",
+        ]) == EXIT_ERROR
+        assert "no such file" in capsys.readouterr().err
+
+    def test_a_placed_figure_can_be_refreshed(self, project: Path):
+        # The whole point: placed with provenance, so `reimport` can find it.
+        target = project / "d.drawio"
+        main(["place", str(project / "plot.svg"), "--into", str(target), "--create"])
+        (project / "plot.svg").write_bytes(b"<svg>regenerated</svg>")
+
+        document = open_document(target)
+        assert len(document.reimport()) == 1
+        document.save()
+        assert open_document(target).components()[0].embedded == b"<svg>regenerated</svg>"

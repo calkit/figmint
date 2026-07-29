@@ -526,6 +526,191 @@ class DrawioDocument(FigureDocument):
 
         return written
 
+    @classmethod
+    def create(cls, path: Path, page: str = "Page-1") -> "DrawioDocument":
+        """An empty diagram, for placing components into."""
+        text = (
+            '<mxfile host="figmint">'
+            f'<diagram id="{path.stem}" name="{page}">'
+            '<mxGraphModel dx="850" dy="1100" grid="1" gridSize="10" guides="1" '
+            'tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" '
+            'pageWidth="850" pageHeight="1100" math="1" shadow="0">'
+            '<root><mxCell id="0"/><mxCell id="1" parent="0"/></root>'
+            "</mxGraphModel></diagram></mxfile>"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return cls.load(path)
+
+    def next_free_id(self) -> str:
+        """An id not already used by the diagram."""
+        root = self.model.find("root")
+        used = set()
+        for child in list(root) if root is not None else []:
+            used.add(child.get("id"))
+            for sub in child:
+                used.add(sub.get("id"))
+        n = 2
+        while str(n) in used:
+            n += 1
+        return str(n)
+
+    def content_bounds(self) -> tuple[float, float, float, float]:
+        """Bounding box of existing shapes, in draw.io units."""
+        root = self.model.find("root")
+        boxes = []
+        for child in list(root) if root is not None else []:
+            geometry = child.find(".//mxGeometry")
+            if geometry is None:
+                continue
+            try:
+                boxes.append(
+                    (
+                        float(geometry.get("x") or 0),
+                        float(geometry.get("y") or 0),
+                        float(geometry.get("width") or 0),
+                        float(geometry.get("height") or 0),
+                    )
+                )
+            except ValueError:
+                continue
+        if not boxes:
+            return (0.0, 0.0, 0.0, 0.0)
+        left = min(b[0] for b in boxes)
+        top = min(b[1] for b in boxes)
+        right = max(b[0] + b[2] for b in boxes)
+        bottom = max(b[1] + b[3] for b in boxes)
+        return (left, top, right, bottom)
+
+    def place(
+        self,
+        source: Path,
+        *,
+        x: float | None = None,
+        y: float | None = None,
+        width: float | None = None,
+        height: float | None = None,
+        attributes: dict[str, str] | None = None,
+    ) -> str:
+        """Embed a figure as a new shape, carrying its provenance from the start.
+
+        This is the alternative to importing through draw.io's UI, which drops
+        every trace of where the image came from. Placed this way the shape
+        arrives with `src` and `hash` already on it, so it can be checked and
+        refreshed without anyone having to reconstruct the link afterwards.
+        """
+        from ..assets import intrinsic_size
+
+        root = self.model.find("root")
+        if root is None:
+            raise DocumentError("diagram has no <root>")
+
+        data = source.read_bytes()
+        media = MEDIA_TYPES.get(source.suffix.lower(), "image/png")
+        payload = base64.b64encode(data).decode("ascii")
+
+        # Size from the artwork itself, converted out of points into draw.io's
+        # hundredths of an inch.
+        natural = intrinsic_size(source)
+        if width is None or height is None:
+            if natural:
+                width = width or from_points(natural["width"])
+                height = height or from_points(natural["height"])
+            else:
+                width = width or 200.0
+                height = height or 150.0
+        elif height is None and natural and natural["width"]:
+            height = width * (natural["height"] / natural["width"])
+
+        if x is None or y is None:
+            # Below whatever is already there, so a placed figure never lands on
+            # top of existing work.
+            _, _, _, bottom = self.content_bounds()
+            x = 40.0 if x is None else x
+            y = (bottom + 40.0) if y is None else y
+
+        cell_id = self.next_free_id()
+        wrapper = ET.SubElement(root, "object")
+        wrapper.set("label", "")
+        wrapper.set("id", cell_id)
+        for key, value in (attributes or {}).items():
+            wrapper.set(key, value)
+        wrapper.set(ATTR_SRC, attributes.get(ATTR_SRC, "") if attributes else "")
+        wrapper.set(
+            ATTR_HASH, f"sha256:{hashlib.sha256(data).hexdigest()}"
+        )
+
+        cell = ET.SubElement(wrapper, "mxCell")
+        cell.set(
+            "style",
+            "shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;"
+            "verticalAlign=top;aspect=fixed;imageAspect=0;"
+            f"image=data:{media},{payload};",
+        )
+        cell.set("vertex", "1")
+        cell.set("parent", "1")
+
+        geometry = ET.SubElement(cell, "mxGeometry")
+        geometry.set("x", f"{x:g}")
+        geometry.set("y", f"{y:g}")
+        geometry.set("width", f"{width:g}")
+        geometry.set("height", f"{height:g}")
+        geometry.set("as", "geometry")
+
+        return cell_id
+
+    def reimport(self, keys: list[str] | None = None) -> list[tuple[str, str, str]]:
+        """Re-embed components whose source file has changed.
+
+        draw.io embeds a *copy*, with nothing pointing back at the original, so
+        it can never notice that a plot was regenerated. This is the operation
+        that closes that gap: for every shape with a declared `src`, compare the
+        file on disk against the recorded `hash` and swap the data URI when they
+        differ.
+
+        Only the image payload and the hash change. Geometry, style, layers and
+        every other shape are untouched, so a diagram someone has arranged by
+        hand survives having its panels refreshed.
+
+        Returns `(key, old_hash, new_hash)` for each component updated.
+        """
+        root = self.model.find("root")
+        if root is None:
+            return []
+
+        updated: list[tuple[str, str, str]] = []
+        for cell in self.cells():
+            attributes = _provenance_attrs(
+                cell.wrapper.attrib if cell.wrapper is not None else {}
+            )
+            src = attributes.get(ATTR_SRC) or attributes.get("path")
+            if not src:
+                continue
+            if keys is not None and cell.cell_id not in keys:
+                continue
+
+            source = self._project_root / src
+            if not source.is_file():
+                continue
+
+            current = f"sha256:{hashlib.sha256(source.read_bytes()).hexdigest()}"
+            if current == attributes.get(ATTR_HASH):
+                continue
+
+            payload = base64.b64encode(source.read_bytes()).decode("ascii")
+            media = MEDIA_TYPES.get(source.suffix.lower(), "image/png")
+            style = cell.element.get("style") or ""
+            new_style = _DATA_URI.sub(f"image=data:{media},{payload}", style, count=1)
+            if new_style == style:
+                continue
+
+            cell.element.set("style", new_style)
+            if cell.wrapper is not None:
+                cell.wrapper.set(ATTR_HASH, current)
+            updated.append((cell.cell_id, attributes.get(ATTR_HASH, ""), current))
+
+        return updated
+
     def save(self) -> None:
         """Write the document back, preserving everything not touched."""
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")

@@ -405,6 +405,104 @@ still renders from the embedded copy, so nothing looks wrong — but the origina
 can never be re-derived or updated again. That is reported distinctly from a low
 provenance level.
 
+### Placing a figure without losing its origin
+
+`figmint place figures/cp_curve.svg --into composite.drawio` embeds the figure
+with `src` and `hash` already on the shape. It never creates the problem `adopt`
+exists to clean up, and the result stays fully editable in draw.io — move it,
+resize it, style it; the attributes survive, and `reimport` can refresh it
+later.
+
+It applies the same provenance bar the editor does on insert: an unidentified
+figure is refused before it is in a diagram, rather than discovered in one
+afterwards. `--force` overrides.
+
+So there are two ways in, and only one of them is lossy:
+
+| | Provenance |
+| --- | --- |
+| `figmint place …` | recorded up front |
+| draw.io's own import | destroyed; recoverable by `adopt` only if the bytes still match a project file |
+
+### Keeping embedded components fresh
+
+draw.io embeds a *copy* with nothing pointing back at the original, so a
+regenerated plot can never propagate on its own — there is no link for the app
+to follow, and no version of draw.io could notice. `figmint reimport` closes
+that gap: for each shape with a declared `src`, compare the file on disk against
+the recorded `hash` and swap in the current bytes. Only the image payload
+changes; geometry, styles, layers and every other shape are untouched, so a
+diagram someone arranged by hand survives having its panels refreshed.
+
+### As a Calkit pipeline
+
+The natural shape is two stages, and the reason is a constraint rather than a
+preference: **`reimport` reads and writes the same file, so making it one stage
+would put `.drawio` in both `inputs` and `outputs` — a cycle DVC rejects.**
+
+`reimport -o` exists for exactly this. The authored diagram stays a pure input,
+the refreshed one is a pure output, and the DAG is acyclic:
+
+```yaml
+pipeline:
+  stages:
+    plot-cp:
+      kind: python-script
+      script_path: scripts/plot_cp.py
+      environment: main
+      inputs: [data/processed/performance.csv]
+      outputs: [figures/cp_curve.svg]
+
+    embed-figure:
+      kind: command
+      command: >-
+        figmint reimport figures/composite.drawio
+        -o figures/composite.built.drawio
+      environment: main
+      inputs:
+        - figures/composite.drawio        # authored by hand, tracked in git
+        - from_stage_outputs: plot-cp
+      outputs:
+        - path: figures/composite.built.drawio
+          storage: git
+
+    export-figure:
+      kind: command
+      command: >-
+        drawio -x -f pdf -o figures/composite.pdf
+        figures/composite.built.drawio
+      environment: main
+      inputs:
+        - from_stage_outputs: embed-figure
+      outputs: [figures/composite.pdf]
+```
+
+The alternative — refreshing in place and declaring `.drawio` as an output — is
+tempting because it avoids a second file, but it hands the authored diagram to
+DVC as generated content. `dvc checkout` could then restore a cached version
+over someone's edits. Not worth the saved file.
+
+`reimport` is idempotent, which the two-stage form depends on: a second run over
+an already-fresh diagram changes nothing, so the pipeline settles instead of
+oscillating. There is a test pinning that.
+
+Worth noting the in-place form is still the right one for interactive use, and
+`figmint reimport --check` is the CI guard — it exits non-zero when a diagram is
+carrying stale copies, without modifying anything.
+
+### Should draw.io record the source itself?
+
+It would remove most of this. draw.io knows the filename at import time and
+already has the `<object>` mechanism to hang it on; recording `src` there would
+make `figmint adopt` unnecessary for the common case, and it is generically
+useful — "where did this image come from" is not a figmint-specific question.
+The change looks small and lands in the import path in the web app.
+
+Two caveats before treating it as the plan. Older draw.io versions will not have
+it, so content-hash matching stays as the fallback regardless. And a browser
+drag-and-drop only exposes the filename, not a path — so it would identify the
+file but not locate it, which still needs matching to resolve.
+
 **Not yet wired for `.drawio`:** `status`, `accept`, `build`, and the watcher
 still take the `.fig.yaml` path directly. Moving them onto the adapter is
 mechanical; `check` and `adopt` went first because they are what a draw.io user

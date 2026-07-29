@@ -51,7 +51,7 @@ src/figmint/         Python backend and CLI
   status.py          staleness checking
   build.py           composing to self-contained SVG/PDF/PNG
   server.py          HTTP API; also serves the built editor
-  cli.py             serve / status / build / accept / check / import
+  cli.py             serve / status / build / accept / check / import / adopt / reimport
 ```
 
 The backend owns everything that touches the filesystem, so provenance answers
@@ -77,6 +77,12 @@ figmint accept fig.fig.yaml    # "I've reviewed the change" — re-records hashe
 figmint build fig.fig.yaml     # compose into a self-contained SVG
 figmint build . --if-stale --to pdf --to svg
 figmint build fig.fig.yaml --sign   # + C2PA manifest naming every component
+
+# draw.io diagrams
+figmint place plot.svg --into fig.drawio   # embed, provenance attached
+figmint reimport fig.drawio                # refresh changed components
+figmint reimport fig.drawio --check        # CI guard: fails if stale
+figmint adopt fig.drawio                   # identify what draw.io imported blind
 ```
 
 `status` exits `1` when anything is stale and `2` on error, so it drops straight

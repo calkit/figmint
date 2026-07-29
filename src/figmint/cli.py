@@ -348,6 +348,152 @@ def cmd_adopt(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# place
+# ---------------------------------------------------------------------------
+
+
+def cmd_place(args: argparse.Namespace) -> int:
+    """Embed a figure into a diagram, provenance attached from the start.
+
+    Importing through draw.io's UI drops every trace of where the image came
+    from, leaving an anonymous blob that `adopt` then has to reverse-engineer.
+    Placing it this way records `src` and `hash` up front, and the shape stays
+    editable in draw.io afterwards — the attributes survive.
+    """
+    from . import formats
+
+    figure: Path = args.figure
+    if not figure.is_file():
+        print(f"no such file: {figure}", file=sys.stderr)
+        return EXIT_ERROR
+
+    target: Path = args.into
+    if not target.exists():
+        if not args.create:
+            print(
+                f"{target} does not exist (pass --create to start a new diagram)",
+                file=sys.stderr,
+            )
+            return EXIT_ERROR
+        document = formats.DrawioDocument.create(target)
+    else:
+        try:
+            document = formats.open_document(target)
+        except (formats.UnsupportedFormat, formats.base.DocumentError) as exc:
+            print(f"{exc}", file=sys.stderr)
+            return EXIT_ERROR
+        if not isinstance(document, formats.DrawioDocument):
+            print(f"{target}: not a draw.io diagram", file=sys.stderr)
+            return EXIT_ERROR
+
+    root = document.project_root
+    try:
+        policy = provenance_mod.load_policy(root)
+    except ValueError as exc:
+        print(f"{exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    # Same bar the editor applies on insert: an unidentified component should be
+    # stopped before it is in a figure, not discovered in one later.
+    creds = credentials_mod.read(figure)
+    project = calkit_mod.project_for(root)
+    stage = project.stage_for(figure) if project else None
+    from .assets import merge_provenance
+
+    recorded = merge_provenance(figure, root, creds)
+    assessment = provenance_mod.assess(
+        recorded, creds.to_dict() if creds else None, stage
+    )
+    if not policy.permits(assessment.level) and policy.enforce and not args.force:
+        print(
+            f"refusing to place {figure.name}: {assessment.level.slug}, but this "
+            f"project requires {policy.require.slug}",
+            file=sys.stderr,
+        )
+        print(f"  {assessment.reason}", file=sys.stderr)
+        print(
+            f"  fix: {provenance_mod.explain_fix(assessment.level, str(figure), policy.require)}",
+            file=sys.stderr,
+        )
+        print("  or pass --force to place it anyway", file=sys.stderr)
+        return EXIT_STALE
+
+    try:
+        relative = figure.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        relative = str(figure)
+
+    attributes = {"src": relative}
+    for key in ("doi", "url", "citation", "license"):
+        if recorded.get(key):
+            attributes[key] = str(recorded[key])
+
+    cell_id = document.place(
+        figure, x=args.x, y=args.y, width=args.width, attributes=attributes
+    )
+    document.save()
+
+    print(f"placed {relative} into {target} as shape {cell_id}")
+    print(f"  provenance: {assessment.level.slug} — {assessment.reason}")
+    return EXIT_OK
+
+
+# ---------------------------------------------------------------------------
+# reimport
+# ---------------------------------------------------------------------------
+
+
+def cmd_reimport(args: argparse.Namespace) -> int:
+    """Refresh embedded components from their declared sources."""
+    from . import formats
+
+    exit_code = EXIT_OK
+    for path in args.paths:
+        try:
+            document = formats.open_document(path)
+        except (formats.UnsupportedFormat, formats.base.DocumentError) as exc:
+            print(f"{exc}", file=sys.stderr)
+            exit_code = EXIT_ERROR
+            continue
+
+        if not isinstance(document, formats.DrawioDocument):
+            # Referencing formats read the file at build time; there is nothing
+            # cached to refresh.
+            print(f"{path}: components are referenced, nothing to re-embed")
+            continue
+
+        updated = document.reimport(args.source or None)
+
+        # Writing to a separate file keeps a DVC stage acyclic: the authored
+        # diagram stays a pure input, the refreshed one is a pure output. Same
+        # reason a compiler does not write over its own source.
+        if args.output:
+            document.path = args.output
+            document.save()
+            print(f"{path} -> {args.output} ({len(updated)} refreshed)")
+            continue
+
+        if not updated:
+            print(f"{path}: embedded components are up to date")
+            continue
+
+        if args.check:
+            print(f"{path}: {len(updated)} component(s) out of date")
+            for key, old, new in updated:
+                print(f"  {key}: {old or '(none)'} -> {new}")
+            exit_code = max(exit_code, EXIT_STALE)
+            continue
+
+        document.save()
+        print(f"{path}")
+        for key, old, new in updated:
+            print(f"  re-embedded {key}")
+            print(f"    {old or '(none)'} -> {new}")
+
+    return exit_code
+
+
+# ---------------------------------------------------------------------------
 # check
 # ---------------------------------------------------------------------------
 
@@ -663,6 +809,61 @@ def build_parser() -> argparse.ArgumentParser:
     )
     adopt_cmd.add_argument("paths", nargs="+", type=Path)
     adopt_cmd.set_defaults(func=cmd_adopt)
+
+    reimport_cmd = sub.add_parser(
+        "reimport",
+        help="re-embed changed components into a diagram",
+        description=(
+            "draw.io embeds a copy of each imported component with no link back "
+            "to the original, so it can never notice a regenerated plot. This "
+            "compares each declared `src` against its recorded `hash` and swaps "
+            "in the current bytes, leaving layout untouched."
+        ),
+    )
+    reimport_cmd.add_argument("paths", nargs="+", type=Path)
+    reimport_cmd.add_argument(
+        "--source", action="append", help="only refresh this shape id"
+    )
+    reimport_cmd.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help=(
+            "write the refreshed diagram here instead of in place, so a "
+            "pipeline stage can treat the authored file as a pure input"
+        ),
+    )
+    reimport_cmd.add_argument(
+        "--check",
+        action="store_true",
+        help=f"report what is out of date without writing; exits {EXIT_STALE} if any",
+    )
+    reimport_cmd.set_defaults(func=cmd_reimport)
+
+    place_cmd = sub.add_parser(
+        "place",
+        help="embed a figure into a draw.io diagram, with provenance attached",
+        description=(
+            "The alternative to importing through draw.io's UI, which discards "
+            "the source. The shape arrives carrying `src` and `hash`, stays "
+            "editable in draw.io, and can be refreshed later with `reimport`."
+        ),
+    )
+    place_cmd.add_argument("figure", type=Path)
+    place_cmd.add_argument(
+        "--into", type=Path, required=True, help="the .drawio diagram"
+    )
+    place_cmd.add_argument(
+        "--create", action="store_true", help="create the diagram if missing"
+    )
+    place_cmd.add_argument("--x", type=float, default=None, help="draw.io units")
+    place_cmd.add_argument("--y", type=float, default=None)
+    place_cmd.add_argument("--width", type=float, default=None)
+    place_cmd.add_argument(
+        "--force", action="store_true", help="place even if provenance is too weak"
+    )
+    place_cmd.set_defaults(func=cmd_place)
 
     return parser
 
