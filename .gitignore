@@ -210,3 +210,5 @@ __marimo__/
 node_modules/
 web/dist/
 *.fig.yaml.tmp
+
+.DS_Store

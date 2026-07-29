@@ -373,9 +373,51 @@ embedded, report staleness, re-embed on change, and sign the result. That is
 almost exactly the code that already exists.
 
 Proceed with the adapter, with the shape now known: components are embedded, not
-referenced, and `reimport` joins `accept` as a first-class operation.
+referenced, and recovering an origin joins `accept` as a first-class operation.
+
+### The adapter, as built
+
+`src/figmint/formats/` — a two-question interface (*which components, placed
+where*) with readers for `.fig.yaml` and `.drawio`. Units are normalised to
+points at the boundary, so nothing downstream knows draw.io measures in
+hundredths of an inch.
+
+Testing against a real file draw.io produced exposed the practical problem
+immediately: importing an SVG through the UI leaves an **anonymous base64 blob**
+with no `<object>` wrapper and no attributes. Provenance is not merely absent, it
+is destroyed at import.
+
+Two recovery routes, in priority order:
+
+1. **Declared attributes** — `figmint.path` / `figmint.hash` on an `<object>`
+   wrapper, which is what draw.io's own Edit Data panel writes and preserves.
+2. **Content-hash matching** — hash the embedded bytes and look for a file in the
+   project with the same hash. That identifies a blob nobody recorded, which is
+   what lets `figmint adopt` label a diagram somebody already drew.
+
+`figmint adopt <file>` does the matching and writes the answer back;
+`figmint check <file>` reports what is still anonymous. Verified round-trip: after
+adopting, draw.io's own CLI preserves the attributes and still exports to PDF.
+
+One case worth its own error, found by testing rather than reasoning: a component
+whose `figmint.path` points at a **file that has since been deleted**. The figure
+still renders from the embedded copy, so nothing looks wrong — but the original
+can never be re-derived or updated again. That is reported distinctly from a low
+provenance level.
+
+**Not yet wired for `.drawio`:** `status`, `accept`, `build`, and the watcher
+still take the `.fig.yaml` path directly. Moving them onto the adapter is
+mechanical; `check` and `adopt` went first because they are what a draw.io user
+needs before anything else is meaningful.
 
 ### Calkit compatibility
 
 We could have a `drawio` stage kind, and we fail to export if we see any
 images in there without provenance information.
+
+## Whose job is it to sign output artifacts?
+
+You could make it the plotting script's job, or you could make it Calkit's
+job to sign the PNG or PDF as part of the pipeline stage.
+I personally prefer the latter, since the former requires discipline by
+the user.

@@ -19,6 +19,7 @@ from . import accept as accept_mod
 from . import build as build_mod
 from . import calkit as calkit_mod
 from . import importer
+from . import credentials as credentials_mod
 from . import provenance as provenance_mod
 from . import sign as sign_mod
 from . import status as status_mod
@@ -284,12 +285,162 @@ def cmd_import(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# adopt
+# ---------------------------------------------------------------------------
+
+
+def cmd_adopt(args: argparse.Namespace) -> int:
+    """Record where a diagram's embedded components came from.
+
+    Importing an SVG through draw.io's UI leaves an anonymous base64 blob — the
+    origin is simply gone. This identifies those blobs by content hash against
+    the project and writes the answer back as `figmint.*` shape attributes, the
+    same ones draw.io's Edit Data panel shows and preserves.
+    """
+    from . import formats
+
+    exit_code = EXIT_OK
+    for path in args.paths:
+        try:
+            document = formats.open_document(path)
+        except (formats.UnsupportedFormat, formats.base.DocumentError) as exc:
+            print(f"{exc}", file=sys.stderr)
+            exit_code = EXIT_ERROR
+            continue
+
+        if not isinstance(document, formats.DrawioDocument):
+            print(f"{path}: nothing to adopt (components are referenced, not embedded)")
+            continue
+
+        assignments: dict[str, dict[str, str]] = {}
+        unidentified: list[str] = []
+        for component in document.components():
+            if not component.origin:
+                unidentified.append(component.key)
+                continue
+            assignments[component.key] = {
+                "src": component.origin,
+                "hash": component.recorded_hash or "",
+            }
+
+        print(f"{path}")
+        if assignments:
+            written = document.annotate(assignments)
+            document.save()
+            for key, attrs in assignments.items():
+                print(f"  identified {key} -> {attrs['src']}")
+            print(f"  wrote provenance onto {written} shape(s)")
+        for key in unidentified:
+            print(
+                f"  UNIDENTIFIED {key}: embedded content matches no file in the "
+                f"project",
+                file=sys.stderr,
+            )
+            print(
+                "    save the original alongside the project, or set "
+                "src via draw.io's Edit Data (Cmd+M)",
+                file=sys.stderr,
+            )
+        if unidentified:
+            exit_code = max(exit_code, EXIT_STALE)
+
+    return exit_code
+
+
+# ---------------------------------------------------------------------------
 # check
 # ---------------------------------------------------------------------------
 
 
+def _check_documents(args: argparse.Namespace) -> int:
+    """Check the components a specific document places.
+
+    Document-scoped rather than directory-scoped, because for an embedding format
+    the question "is this component identified?" is only answerable per diagram —
+    the bytes live in the document, not in the figures directory.
+    """
+    from . import formats
+
+    exit_code = EXIT_OK
+    for path in args.paths:
+        try:
+            document = formats.open_document(path)
+        except (formats.UnsupportedFormat, formats.base.DocumentError) as exc:
+            print(f"{exc}", file=sys.stderr)
+            exit_code = EXIT_ERROR
+            continue
+
+        root = (
+            document.project_root
+            if isinstance(document, formats.DrawioDocument)
+            else (args.root or path.parent).resolve()
+        )
+        try:
+            policy = provenance_mod.load_policy(root)
+        except ValueError as exc:
+            print(f"{exc}", file=sys.stderr)
+            exit_code = EXIT_ERROR
+            continue
+
+        project = calkit_mod.project_for(root)
+        print(f"{path}  [require {policy.require.slug}]")
+        failures = 0
+        for component in document.components():
+            stage = (
+                project.stage_for(component.resolved)
+                if project and component.resolved
+                else None
+            )
+            creds = (
+                credentials_mod.read(component.resolved)
+                if component.resolved and component.resolved.is_file()
+                else None
+            )
+            recorded = dict(component.provenance)
+            if component.origin:
+                recorded.setdefault("importedFrom", component.origin)
+            assessment = provenance_mod.assess(
+                recorded, creds.to_dict() if creds else component.credentials, stage
+            )
+            label = component.origin or "(anonymous embedded content)"
+
+            # A declared origin whose file has gone is a distinct problem from a
+            # low provenance level: there *is* a claim, but nothing can verify it
+            # and — for an embedded component — the original can never be
+            # recovered or updated. The figure still renders, which is exactly
+            # why this needs saying out loud.
+            if component.origin and (
+                component.resolved is None or not component.resolved.is_file()
+            ):
+                failures += 1
+                print(f"  FAIL  {component.key}: {label}  [origin missing]")
+                print(
+                    "        declared origin no longer exists; the embedded copy "
+                    "cannot be re-derived or updated"
+                )
+                continue
+
+            if policy.permits(assessment.level):
+                if args.verbose:
+                    print(f"  ok    {component.key}: {label}  [{assessment.level.slug}]")
+                continue
+            failures += 1
+            print(f"  FAIL  {component.key}: {label}  [{assessment.level.slug}]")
+            print(f"        {assessment.reason}")
+            if document.embeds_components and not component.origin:
+                print("        fix: figmint adopt " + str(path))
+
+        if failures and policy.enforce:
+            exit_code = max(exit_code, EXIT_STALE)
+        if not failures:
+            print("  all components satisfy the policy")
+    return exit_code
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     """Check components against the project's provenance policy."""
+    if getattr(args, "paths", None):
+        return _check_documents(args)
     root = (args.root or Path.cwd()).resolve()
     try:
         policy = provenance_mod.load_policy(root)
@@ -488,12 +639,30 @@ def build_parser() -> argparse.ArgumentParser:
             "something fails it."
         ),
     )
+    check_cmd.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        help="documents to check; omit to scan the project's components",
+    )
     check_cmd.add_argument("--root", type=Path, default=None)
     check_cmd.add_argument(
         "--figures", default=None, help="subdirectory to scan (default: all)"
     )
     check_cmd.add_argument("-v", "--verbose", action="store_true")
     check_cmd.set_defaults(func=cmd_check)
+
+    adopt_cmd = sub.add_parser(
+        "adopt",
+        help="identify a diagram's embedded components and record their origin",
+        description=(
+            "For .drawio files, whose imported components are anonymous base64 "
+            "blobs: match each one against the project by content hash and write "
+            "the result back as figmint.* shape attributes."
+        ),
+    )
+    adopt_cmd.add_argument("paths", nargs="+", type=Path)
+    adopt_cmd.set_defaults(func=cmd_adopt)
 
     return parser
 
