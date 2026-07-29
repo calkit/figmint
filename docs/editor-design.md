@@ -330,9 +330,52 @@ the adapter for `.fig.yaml` (trivial — it is the current code) and for
 if scientists take to draw.io, the core already works there; if they do not, we
 have lost nothing.
 
-The thing that should actually decide it is a question we have not answered:
-**does draw.io's SVG/PDF export preserve vector panel text and true page size?**
-If it rasterises panels or cannot produce a 6.5in-wide PDF, then figmint keeps
-owning the build regardless — and draw.io becomes purely the arranging UI, which
-is a perfectly good outcome and arguably the best of both. Worth testing on a
-real multi-panel figure before committing either way.
+### Export fidelity: tested (draw.io 31.0.2)
+
+The open question was whether draw.io's export preserves vector panels and true
+page size. Both answers are yes, with one significant catch.
+
+| | Result |
+| --- | --- |
+| Vector panel fidelity | **Preserved.** Plot text (`C_P`, `U/U∞`, axis labels) is selectable in the exported PDF — panels are not rasterised. |
+| Page size | **Controllable.** draw.io units are 1/100in, so units × 0.72 = points. Authoring at 650×292 produced a PDF with `MediaBox [0 0 468 210]` — exactly 6.5in. |
+| Custom `figmint.*` attributes | **Survive round-trips**, confirmed through the CLI's own XML export. |
+| Local file references | **Blocked.** The Electron sandbox refuses `file://` outside its own roots: *"Blocked loading file from file:///tmp/…"*. Relative paths resolve against draw.io's app bundle, not the document. |
+
+### The catch, and what it implies
+
+Because local references are blocked, **panels must be embedded in the `.drawio`
+as data URIs**. A draw.io figure is therefore a document containing *copies* of
+its components, not references to them. That changes the provenance model in a
+specific way:
+
+- The `figmint.hash` attribute becomes the record of *which version was
+  embedded*. Staleness is then "does the embedded copy still match the file on
+  disk?" — the same comparison as today, just against a copy rather than a
+  reference.
+- Updating a changed component means rewriting the `.drawio` to re-embed it.
+  That is exactly the "reimport" step anticipated in the framing above, and it
+  is a real operation figmint would need to own — `figmint reimport` alongside
+  `accept`.
+- Files grow with their panels. A figure with several vector plots carries them
+  all inline.
+
+None of that is disqualifying, and it is arguably *more* robust for archival —
+the figure travels with its components. But it means a draw.io-backed figure is
+a different kind of object from a `.fig.yaml`: self-contained rather than
+referential.
+
+### Verdict
+
+draw.io can own both the editing and the export. figmint's job in that world is
+the provenance layer: embed and track `figmint.*` attributes, hash what was
+embedded, report staleness, re-embed on change, and sign the result. That is
+almost exactly the code that already exists.
+
+Proceed with the adapter, with the shape now known: components are embedded, not
+referenced, and `reimport` joins `accept` as a first-class operation.
+
+### Calkit compatibility
+
+We could have a `drawio` stage kind, and we fail to export if we see any
+images in there without provenance information.
