@@ -117,3 +117,24 @@ moved — which would defeat the point of tracking staleness at all.
 The Stencila export is validated against the real CLI (2.15.0), and PDF output
 now goes through our own composed SVG rather than Stencila's PDF path — see
 [format.md](format.md).
+
+## Provenance issues for imported components
+
+Imported components are not produced directly by a human or agent, i.e.,
+they are not primary artifacts,
+and they are not produced by reproducible local processes in a project.
+
+Can we somehow prevent the user from inserting random images without
+a solid identifier if they were "imported" into the project?
+
+We could potentially allow imported assets or components so long as they
+are Calkit pipeline stage outputs, or some other unambiguous
+"proof of work" descriptor, but we need to think about the correct
+module boundaries between the two.
+
+Perhaps the figmint YAML and embed a pipeline stage definition in it,
+with a kind, script, environment, etc.?
+Calkit can then have a figmint stage kind, which reuses its way of
+tracking locked environments, DVC locks for I/O hashing, etc.?
+Calkit can compile a figmint figure into a DVC stage if all the inputs
+are part of the figmint file.
