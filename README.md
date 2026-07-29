@@ -76,6 +76,7 @@ figmint status -v figures/     # also list the healthy ones
 figmint accept fig.fig.yaml    # "I've reviewed the change" — re-records hashes
 figmint build fig.fig.yaml     # compose into a self-contained SVG
 figmint build . --if-stale --to pdf --to svg
+figmint build fig.fig.yaml --sign   # + C2PA manifest naming every component
 ```
 
 `status` exits `1` when anything is stale and `2` on error, so it drops straight

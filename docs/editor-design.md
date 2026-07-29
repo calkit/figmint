@@ -106,6 +106,13 @@ Against the walkthrough above:
 | 5. `figmint build` | done — composes to self-contained SVG/PDF/PNG |
 | 6. Build from the UI, then status is clean | done — the Build button composes from the saved file |
 
+`figmint build --sign` now signs the composite: each panel becomes a
+`componentOf` ingredient (carrying its own manifest where it has one, so the
+chain nests), and the figure discloses `compositeWithTrainedAlgorithmicMedia`
+whenever any panel declares generative-AI origin. Signing refuses when a
+component is below the provenance bar — a signature over a figure containing an
+anonymous panel would assert much less than it appears to.
+
 Building the demo surfaced a distinction the walkthrough glosses over: rebuilding
 does not clear a *changed-component* warning, only a *stale-output* one. Deciding
 that a regenerated panel still supports the claim it was placed to support is a
@@ -113,14 +120,22 @@ judgement, so it lives in a separate `figmint accept` step. Folding it into
 `build` would mean every rebuild silently erased the evidence that an input had
 moved — which would defeat the point of tracking staleness at all.
 
+### Decisions taken
+
+- **Signing is opt-in and gated.** `build --sign`, not every build. It refuses
+  when `check` would fail, so the signature means "these are the components, and
+  every one of them was identified" rather than merely "figmint wrote this file".
+- **The provenance policy enforces by default**, with no `figmint.toml` needed.
+  Blocking is the point, and "say where it came from" is a low bar; a project
+  that wants it advisory sets `enforce = false`.
+- **draw.io: build the adapter.** Keep the core format-agnostic and read both
+  `.fig.yaml` and `.drawio`, rather than committing to either editor now.
+
 ### Still open
 
-- **Signing the exported composite.** figmint reads Content Credentials but does
-  not write them. The decision is made (local cert now, cloud attestation
-  later — see Decisions above); the work is emitting a manifest with each panel
-  as a `componentOf` ingredient, and `compositeWithTrainedAlgorithmicMedia` when
-  any panel is AI-generated.
-- **Round-tripping `.smd`** back into the editor — export is one-way.
+- **The draw.io adapter** — next up, per the decision above.
+- **Round-tripping `.smd`** back into the editor — export is one-way, which
+  still looks like the right call while `.fig.yaml` is canonical.
 - **Composite-of-composite:** a source that points at another figmint document
   rather than an image. Closely related to the signing item above — C2PA
   ingredients and figmint sources want to become the same concept.

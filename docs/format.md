@@ -241,6 +241,48 @@ drop; `build` warns rather than letting an equation vanish from a PDF silently.
 PDF and PNG output shell out to `rsvg-convert`, `inkscape`, or ImageMagick,
 whichever is present. SVG needs nothing.
 
+## Signing a built figure
+
+```sh
+figmint build fig.fig.yaml --sign
+```
+
+Embeds a C2PA manifest in the output stating what the figure is made of:
+
+- **Each panel is a `componentOf` ingredient** — C2PA's own term for "composited
+  from". Where a panel carries its own manifest it comes along, so the chain
+  nests rather than flattening into a claim about the top file only.
+- **`digitalSourceType` is `composite`**, or
+  `compositeWithTrainedAlgorithmicMedia` when any panel declares generative-AI
+  origin. AI disclosure propagates upward automatically instead of relying on
+  someone remembering to note it.
+- **`org.figmint.composition`** records the figure id, canvas size and units,
+  and each component's path and digest — enough for a verifier to recompute the
+  build and compare. That is the groundwork for a future cloud attestation that
+  *the output reflects the inputs as described*.
+
+Signing **refuses** if any component is below the project's provenance bar. You
+still get the built figure; you just do not get a signature vouching for
+something figmint cannot vouch for. Exit code is `1`, so CI catches it.
+
+### Identity
+
+Resolved in order: `--cert`/`--key`, then `FIGMINT_SIGNING_CERT`/`_KEY`, then a
+local identity in figmint's config directory, then Stencila's local identity if
+present, then a freshly generated one. Signing is **offline by default** — pass
+`--tsa-url` for an RFC 3161 timestamp.
+
+Two things worth knowing if you supply your own certificate, both learned the
+hard way because c2pa reports them only as generic errors:
+
+- The signing algorithm follows the key (RSA → PS256, EC → ES256/384/512), and
+  ECDSA signatures must be raw `r||s`, not DER. A mismatch surfaces only as
+  "COSE signature invalid".
+- The chain needs **Subject Key Identifier and Authority Key Identifier**
+  extensions, and a leaf with `emailProtection` extended key usage. openssl adds
+  the key identifiers by default; most libraries do not, and their absence
+  surfaces only as "the certificate is invalid".
+
 ## Relationship to Stencila
 
 Stencila's schema (v2.15) covers more of this than expected, so the exporter

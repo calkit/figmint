@@ -20,7 +20,9 @@ from . import build as build_mod
 from . import calkit as calkit_mod
 from . import importer
 from . import provenance as provenance_mod
+from . import sign as sign_mod
 from . import status as status_mod
+from . import __version__
 from .assets import scan
 from .document import DOCUMENT_SUFFIX, DocumentError, discover, load
 
@@ -144,10 +146,75 @@ def cmd_build(args: argparse.Namespace) -> int:
         for result in results:
             size = result.output.stat().st_size
             print(f"built {result.output} ({size:,} bytes)")
+
+        if args.sign:
+            signed = _sign_outputs(document, results, args)
+            if signed != EXIT_OK:
+                exit_code = max(exit_code, signed)
         # Warnings are shared across outputs; report them once.
         for warning in results[0].warnings if results else []:
             print(f"  warning: {warning}", file=sys.stderr)
 
+    return exit_code
+
+
+def _sign_outputs(document, results, args) -> int:
+    """Sign built artifacts, refusing when a component fails the policy.
+
+    The refusal is the point. A signature over a figure containing an anonymous
+    panel asserts far less than it looks like it does, and a figure like that
+    should not be going out in the first place.
+    """
+    root = calkit_mod.find_project(document.path.parent) or document.path.parent
+    try:
+        policy = provenance_mod.load_policy(root)
+    except ValueError as exc:
+        print(f"{exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    project = calkit_mod.project_for(document.path.parent)
+    violations = sign_mod.policy_violations(document, policy, project)
+    if violations and policy.enforce:
+        print(
+            f"refusing to sign {document.path.name}: "
+            f"{len(violations)} component(s) below the `{policy.require.slug}` "
+            f"provenance bar",
+            file=sys.stderr,
+        )
+        for problem in violations:
+            print(f"  {problem}", file=sys.stderr)
+        print("  run `figmint check` for the fix", file=sys.stderr)
+        return EXIT_STALE
+    for problem in violations:
+        print(f"  warning: signing anyway (policy advisory): {problem}", file=sys.stderr)
+
+    try:
+        identity = sign_mod.resolve_identity(args.cert, args.key, args.tsa_url)
+    except sign_mod.SigningError as exc:
+        print(f"{exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    components = sign_mod.collect_components(document)
+    exit_code = EXIT_OK
+    for result in results:
+        if result.output.suffix.lower() not in (".svg", ".png", ".jpg", ".jpeg", ".pdf"):
+            continue
+        try:
+            signed = sign_mod.sign_file(
+                result.output, document, components, identity, __version__
+            )
+        except sign_mod.SigningError as exc:
+            print(f"{exc}", file=sys.stderr)
+            exit_code = EXIT_ERROR
+            continue
+        note = " (contains AI-generated material)" if signed.machine_generated else ""
+        print(
+            f"signed {signed.output} with {signed.components} component"
+            f"{'' if signed.components == 1 else 's'}{note}"
+        )
+        print(f"  identity: {signed.identity}")
+        for warning in signed.warnings:
+            print(f"  warning: {warning}", file=sys.stderr)
     return exit_code
 
 
@@ -349,6 +416,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--if-stale",
         action="store_true",
         help="only rebuild documents whose inputs have changed",
+    )
+    build_cmd.add_argument(
+        "--sign",
+        action="store_true",
+        help=(
+            "sign outputs with C2PA Content Credentials, recording each panel "
+            "as a componentOf ingredient; refuses if a component fails the "
+            "provenance policy"
+        ),
+    )
+    build_cmd.add_argument("--cert", type=Path, help="signing certificate chain (PEM)")
+    build_cmd.add_argument("--key", type=Path, help="signing private key (PEM)")
+    build_cmd.add_argument(
+        "--tsa-url",
+        default=None,
+        help="RFC 3161 timestamp authority; omit to sign offline without a timestamp",
     )
     build_cmd.set_defaults(func=cmd_build)
 

@@ -13,6 +13,7 @@ dependencies = [
     "pyyaml>=6.0",
     "c2pa-python>=0.37.2",
     "ruamel-yaml>=0.18",
+    "cryptography>=49.0.0",
 ]
 
 [project.scripts]
