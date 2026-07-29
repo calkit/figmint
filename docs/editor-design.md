@@ -214,3 +214,91 @@ are part of the figmint file.
 
 This produces a chain of provenance and the need to check staleness all the
 way through.
+
+## draw.io compatibility
+
+Can/should we use the draw.io format so we don't need our own editor?
+Imagine that we could allow users to use draw.io but still retain
+provenance inside.
+
+### It works, mechanically
+
+draw.io has a first-class extension point for exactly this. A shape can be
+wrapped in an `<object>` element carrying arbitrary XML attributes, editable in
+the UI via **Edit Data** (Cmd/Ctrl+M) and preserved across round-trips:
+
+```xml
+<object label="" figmint.source="cp-curve"
+        figmint.path="figures/cp_curve.svg"
+        figmint.hash="sha256:ff1f3f…"
+        figmint.level="reproducible">
+  <mxCell style="shape=image;image=figures/cp_curve.svg" vertex="1">
+    <mxGeometry x="12" y="36" width="216" height="162"/>
+  </mxCell>
+</object>
+```
+
+So "use draw.io but retain provenance inside" is not a hack — it is the
+mechanism draw.io provides for this.
+
+### The question is really "how much of figmint is the editor?"
+
+Not much, as it turns out. Of the current code:
+
+| | Lines | Editor-dependent? |
+| --- | --- | --- |
+| `src/figmint/` (hashing, credentials, provenance, Calkit, status, build, watch) | ~3000 | **No** |
+| `web/src/model/`, `web/src/io/` (format, solver, export) | ~2500 | Format-dependent, not UI-dependent |
+| `web/src/components/` (canvas) | ~2000 | Yes |
+
+The differentiated part — content hashing, C2PA reading, the provenance ladder
+and policy, the Calkit boundary, staleness, the build — is already independent
+of how pixels get arranged. Only the canvas is not. So this is less "throw away
+figmint" than "swap one of five layers".
+
+### What we would actually give up
+
+Worth being concrete, because these are not free:
+
+- **Print units.** draw.io is pixel-based with no notion of points or physical
+  size. The property that a 468pt canvas is exactly 6.5in in the PDF goes away
+  unless we impose a 1px = 1pt convention and police it.
+- **Prevention becomes detection.** The provenance policy currently blocks an
+  unidentified component *at the moment you place it*. We cannot hook draw.io's
+  insert, so the best available is flagging it afterwards in `figmint check`.
+  That is a real weakening of the feature that motivated it.
+- **Agent-editability.** `.drawio` defaults to base64+deflate-compressed XML;
+  even uncompressed it is mxGraph attribute soup with geometry split between
+  `<mxGeometry>` and a `style` string. An agent can edit it, but "open it in an
+  editor and understand it" — a stated goal — is much weaker than the YAML.
+- **Control of the build.** We would either shell out to the draw.io CLI
+  (Electron, headless, another dependency) or keep composing ourselves from the
+  parsed XML. The second is fine and probably right.
+
+### What we would gain
+
+Real things, not to be dismissed: no canvas to maintain, a tool scientists
+already know, shape libraries, connectors, alignment guides, layers, and a VS
+Code extension that keeps the file in the repo.
+
+### Recommendation
+
+**Don't choose yet — make the core format-agnostic and prototype the adapter.**
+
+Introduce a narrow document adapter with two questions:
+
+1. Which components does this document reference, with what recorded provenance?
+2. Where is each one placed, and how big is the canvas?
+
+`status`, `accept`, `check`, `watch`, and `build` need nothing else. Implement
+the adapter for `.fig.yaml` (trivial — it is the current code) and for
+`.drawio`. That is maybe a few hundred lines and it defers the bet entirely:
+if scientists take to draw.io, the core already works there; if they do not, we
+have lost nothing.
+
+The thing that should actually decide it is a question we have not answered:
+**does draw.io's SVG/PDF export preserve vector panel text and true page size?**
+If it rasterises panels or cannot produce a 6.5in-wide PDF, then figmint keeps
+owning the build regardless — and draw.io becomes purely the arranging UI, which
+is a perfectly good outcome and arguably the best of both. Worth testing on a
+real multi-panel figure before committing either way.

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useEditor } from '../state/store'
-import type { FigNode, NodeId, Rect } from '../model/types'
+import type { FigNode, GroupNode, NodeId, Rect } from '../model/types'
 import {
   HANDLES,
   HANDLE_ANCHOR,
@@ -12,6 +12,13 @@ import {
   roundTo,
   screenToDoc,
 } from '../model/geometry'
+import {
+  cellIndexAt,
+  governingGroup,
+  selectionTargetFor,
+  solveLayout,
+  solveWithPending,
+} from '../model/layout'
 import { NodeView } from './NodeView'
 
 /**
@@ -37,6 +44,13 @@ type Interaction =
       startRects: Record<string, Rect>
       startBounds: Rect
     }
+  | {
+      kind: 'reorder'
+      group: NodeId
+      childId: NodeId
+      /** Cell the pointer is currently over, previewed before committing. */
+      overIndex: number
+    }
   | { kind: 'marquee'; origin: { x: number; y: number }; current: { x: number; y: number } }
   | { kind: 'pan'; origin: { x: number; y: number }; startPan: { x: number; y: number } }
 
@@ -52,7 +66,7 @@ export function Canvas() {
   const zoomBy = useEditor((s) => s.zoomBy)
   const zoomToFit = useEditor((s) => s.zoomToFit)
   const insertAsset = useEditor((s) => s.insertAsset)
-  const resolveLayouts = useEditor((s) => s.resolveLayouts)
+  const reorderGroupChild = useEditor((s) => s.reorderGroupChild)
 
   const svgRef = useRef<SVGSVGElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -114,17 +128,36 @@ export function Canvas() {
     if (spaceDown || e.button !== 0 || node.locked) return
     e.stopPropagation()
 
+    // Clicking a panel inside a group grabs the group, not the panel — click
+    // again (or shift-click) to drill in. Without this you cannot pick up an
+    // arrangement without hunting for a gap between its panels.
+    const targetId = selectionTargetFor(doc.nodes, node.id, selection)
+
     let next = selection
     if (e.shiftKey) {
-      toggleSelect(node.id)
-      next = selection.includes(node.id)
-        ? selection.filter((x) => x !== node.id)
-        : [...selection, node.id]
-    } else if (!selection.includes(node.id)) {
-      select([node.id])
-      next = [node.id]
+      toggleSelect(targetId)
+      next = selection.includes(targetId)
+        ? selection.filter((x) => x !== targetId)
+        : [...selection, targetId]
+    } else if (!selection.includes(targetId)) {
+      select([targetId])
+      next = [targetId]
     }
     if (next.length === 0) return
+
+    // A panel whose position a layout owns cannot be dragged freely — the
+    // solver would overwrite it. Dragging it reorders it instead.
+    const layoutGroup = next.length === 1 ? governingGroup(doc.nodes, next[0]) : undefined
+    if (layoutGroup) {
+      ;(e.target as Element).setPointerCapture?.(e.pointerId)
+      setInteraction({
+        kind: 'reorder',
+        group: layoutGroup.id,
+        childId: next[0],
+        overIndex: layoutGroup.children.indexOf(next[0]),
+      })
+      return
+    }
 
     pushHistory()
     // Moving a group moves what it contains; otherwise the frame would slide
@@ -215,7 +248,19 @@ export function Canvas() {
           y: start.y + (lockY ? 0 : dy),
         }
       }
-      setNodeRects(next)
+      setNodeRects(solveWithPending(doc.nodes, next))
+      return
+    }
+
+    if (interaction.kind === 'reorder') {
+      const group = doc.nodes.find(
+        (n): n is GroupNode => n.id === interaction.group && n.type === 'group',
+      )
+      if (!group) return
+      const index = cellIndexAt(group, group.children.length, p)
+      if (index !== null && index !== interaction.overIndex) {
+        setInteraction({ ...interaction, overIndex: index })
+      }
       return
     }
 
@@ -257,15 +302,21 @@ export function Canvas() {
           height: start.height * sy,
         }
       }
-      setNodeRects(next)
+      setNodeRects(solveWithPending(doc.nodes, next))
     }
   }
 
   const onPointerUp = () => {
-    // Resizing a group changes its cells, so children need re-solving. Doing it
-    // on release rather than per frame keeps dragging cheap.
-    if (interaction.kind === 'resize' || interaction.kind === 'move') {
-      resolveLayouts()
+    if (interaction.kind === 'reorder') {
+      const group = doc.nodes.find(
+        (n): n is GroupNode => n.id === interaction.group && n.type === 'group',
+      )
+      const from = group?.children.indexOf(interaction.childId) ?? -1
+      if (group && interaction.overIndex >= 0 && interaction.overIndex !== from) {
+        reorderGroupChild(group.id, interaction.childId, interaction.overIndex)
+      }
+      setInteraction({ kind: 'idle' })
+      return
     }
     if (interaction.kind === 'marquee') {
       const box = normalize(interaction.origin, interaction.current)
@@ -441,6 +492,34 @@ export function Canvas() {
               })}
             </g>
           )}
+
+          {/* Where a reordered panel will land. */}
+          {interaction.kind === 'reorder' &&
+            (() => {
+              const group = doc.nodes.find(
+                (n): n is GroupNode =>
+                  n.id === interaction.group && n.type === 'group',
+              )
+              if (!group?.layout || interaction.overIndex < 0) return null
+              const cell = solveLayout(
+                group,
+                group.layout,
+                group.children.length,
+              )[interaction.overIndex]
+              if (!cell) return null
+              return (
+                <rect
+                  x={cell.x}
+                  y={cell.y}
+                  width={cell.width}
+                  height={cell.height}
+                  fill="rgba(139,92,246,0.12)"
+                  stroke="#8b5cf6"
+                  strokeWidth={px}
+                  pointerEvents="none"
+                />
+              )
+            })()}
 
           {marqueeBox && (
             <rect

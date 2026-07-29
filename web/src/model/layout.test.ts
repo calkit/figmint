@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyLayouts,
+  boundsForGrid,
   cellIndexAt,
   gapsOf,
   isLaidOut,
   placeInCell,
   reorderChild,
+  selectionTargetFor,
   solveLayout,
   solveTracks,
+  solveWithPending,
+  suggestColumns,
 } from './layout'
 import type { FigNode, GroupNode, ImageNode, Layout } from './types'
 
@@ -304,5 +308,145 @@ describe('isLaidOut', () => {
 
   it('is false for an ungrouped node', () => {
     expect(isLaidOut([panel('a')], 'a')).toBe(false)
+  })
+})
+
+describe('suggestColumns', () => {
+  const at = (x: number, y: number) => ({ x, y, width: 100, height: 80 })
+
+  it('a single row becomes one column per panel', () => {
+    expect(suggestColumns([at(0, 0), at(150, 0), at(300, 0)])).toBe(3)
+  })
+
+  it('a single column stays one column', () => {
+    expect(suggestColumns([at(0, 0), at(0, 150), at(0, 300)])).toBe(1)
+  })
+
+  it('a 2x2 arrangement gives two columns', () => {
+    expect(suggestColumns([at(0, 0), at(150, 0), at(0, 150), at(150, 150)])).toBe(2)
+  })
+
+  it('bands rows by overlap, not exact equality', () => {
+    // Slightly misaligned panels are still one row.
+    expect(suggestColumns([at(0, 0), at(150, 4)])).toBe(2)
+  })
+
+  it('one panel needs no grid', () => {
+    expect(suggestColumns([at(0, 0)])).toBe(1)
+  })
+})
+
+describe('boundsForGrid', () => {
+  const rects = [
+    { x: 0, y: 0, width: 100, height: 80 },
+    { x: 500, y: 0, width: 100, height: 80 },
+  ]
+
+  it('sizes to the panels, not to the space between them', () => {
+    // The scattered bounding box is 600 wide; a tight 2-column grid is not.
+    const bounds = boundsForGrid(
+      rects,
+      { type: 'grid', columns: 2, gap: 6 },
+      { x: 0, y: 0 },
+    )
+    expect(bounds.width).toBe(206)
+    expect(bounds.height).toBe(80)
+  })
+
+  it('accounts for wrapped rows', () => {
+    const bounds = boundsForGrid(
+      [...rects, { x: 0, y: 0, width: 100, height: 80 }],
+      { type: 'grid', columns: 2, gap: 6 },
+      { x: 0, y: 0 },
+    )
+    expect(bounds.height).toBe(166) // two rows of 80 plus one 6pt gap
+  })
+
+  it('uses the largest panel as the cell size', () => {
+    const bounds = boundsForGrid(
+      [
+        { x: 0, y: 0, width: 100, height: 80 },
+        { x: 0, y: 0, width: 250, height: 40 },
+      ],
+      { type: 'grid', columns: 2, gap: 0 },
+      { x: 0, y: 0 },
+    )
+    expect(bounds.width).toBe(500)
+  })
+})
+
+describe('solveWithPending', () => {
+  it('moves children while a group is being resized', () => {
+    // The bug: the frame grew during the drag while panels sat frozen until
+    // the pointer was released.
+    const nodes: FigNode[] = [
+      group(['a', 'b'], { type: 'grid', columns: 2, fit: 'stretch' }),
+      panel('a'),
+      panel('b'),
+    ]
+    const solved = solveWithPending(nodes, {
+      g: { x: 0, y: 0, width: 200, height: 100 },
+    })
+    expect(solved.a.width).toBe(100)
+    expect(solved.b.x).toBe(100)
+  })
+
+  it('the solver overrides a pending position it disagrees with', () => {
+    const nodes: FigNode[] = [
+      group(['a'], { type: 'grid', columns: 1, fit: 'stretch' }),
+      panel('a'),
+    ]
+    const solved = solveWithPending(nodes, {
+      a: { x: 999, y: 999, width: 5, height: 5 },
+    })
+    expect(solved.a).toEqual({ x: 0, y: 0, width: 100, height: 100 })
+  })
+
+  it('leaves ungoverned nodes exactly where the drag put them', () => {
+    const nodes: FigNode[] = [panel('a')]
+    const pending = { a: { x: 7, y: 9, width: 40, height: 40 } }
+    expect(solveWithPending(nodes, pending).a).toEqual(pending.a)
+  })
+})
+
+describe('selectionTargetFor', () => {
+  const nodes: FigNode[] = [
+    group(['a', 'b'], { type: 'row' }),
+    panel('a'),
+    panel('b'),
+  ]
+
+  it('clicking a panel grabs its group', () => {
+    // Otherwise you cannot pick up an arrangement without finding a gap.
+    expect(selectionTargetFor(nodes, 'a', [])).toBe('g')
+  })
+
+  it('clicking again drills in to the panel', () => {
+    expect(selectionTargetFor(nodes, 'a', ['g'])).toBe('a')
+  })
+
+  it('a panel already selected stays selected', () => {
+    expect(selectionTargetFor(nodes, 'a', ['a'])).toBe('a')
+  })
+
+  it('an ungrouped node selects itself', () => {
+    expect(selectionTargetFor([panel('z')], 'z', [])).toBe('z')
+  })
+
+  it('picks the outermost of nested groups', () => {
+    const nested: FigNode[] = [
+      { ...group(['inner'], null), id: 'outer', children: ['inner'] },
+      { ...group(['a'], { type: 'row' }), id: 'inner', children: ['a'] },
+      panel('a'),
+    ]
+    expect(selectionTargetFor(nested, 'a', [])).toBe('outer')
+  })
+
+  it('survives a cycle in hand-edited YAML', () => {
+    const cyclic: FigNode[] = [
+      { ...group(['g2'], null), id: 'g1', children: ['g2'] },
+      { ...group(['g1'], null), id: 'g2', children: ['g1'] },
+    ]
+    expect(() => selectionTargetFor(cyclic, 'g1', [])).not.toThrow()
   })
 })

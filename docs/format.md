@@ -189,6 +189,15 @@ With a `layout`, the solver owns each child's `x`/`y`/`width`/`height` — edit 
 grid, not the coordinates. Without one, a group is just a way to move several
 things at once, and children keep whatever positions they were dragged to.
 
+In the editor, clicking a panel inside a group selects the *group*; click again
+to drill in to the panel. Dragging a drilled-in panel reorders it into another
+cell rather than moving it freely, since the solver would otherwise overwrite
+the new position.
+
+Creating a grid reads the arrangement you already have — three panels in a row
+become three columns, a stack becomes one — and sizes the group to the panels
+so there is no dead space.
+
 Two behaviours worth knowing:
 
 - **`fit: preserve` centres a panel in its cell** rather than distorting it. A

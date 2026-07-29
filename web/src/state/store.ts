@@ -22,7 +22,12 @@ import {
 } from '../model/document'
 import { boundsOf } from '../model/geometry'
 import type { Viewport } from '../model/geometry'
-import { applyLayouts } from '../model/layout'
+import {
+  applyLayouts,
+  boundsForGrid,
+  reorderChild,
+  suggestColumns,
+} from '../model/layout'
 import { fetchAssets, fetchDocument, saveDocument } from '../io/api'
 import { fromYaml, toYaml } from '../io/serialize'
 
@@ -81,6 +86,8 @@ interface EditorState {
   setLayout: (id: NodeId, layout: Layout | null) => void
   /** Re-run every layout solver; called after geometry changes. */
   resolveLayouts: () => void
+  /** Move a child to a different slot in its group's order. */
+  reorderGroupChild: (groupId: NodeId, childId: NodeId, toIndex: number) => void
 
   // --- selection ---------------------------------------------------------
   select: (ids: NodeId[]) => void
@@ -337,18 +344,35 @@ export const useEditor = create<EditorState>((set, get) => ({
       set({ status: 'Select at least two nodes to group' })
       return
     }
-    const members = doc.nodes.filter((n) => selection.includes(n.id))
-    const bounds = boundsOf(members)
-    if (!bounds) return
+    // Children are ordered by position, not by click order, so a grid fills
+    // the way the panels already read on the page.
+    const members = [...doc.nodes.filter((n) => selection.includes(n.id))].sort(
+      (a, b) => a.y - b.y || a.x - b.x,
+    )
+    const scattered = boundsOf(members)
+    if (!scattered) return
+
+    // Match the arrangement the user already has rather than always using two
+    // columns, and size the group to the panels so there is no dead space.
+    const resolved: Layout | null = layout
+      ? {
+          ...layout,
+          columns:
+            layout.type === 'grid' && layout.columns === undefined
+              ? suggestColumns(members)
+              : (layout.columns ?? suggestColumns(members)),
+        }
+      : null
+    const bounds = resolved
+      ? boundsForGrid(members, resolved, scattered)
+      : scattered
 
     get().pushHistory()
     const group: GroupNode = {
       id: makeId('group'),
       type: 'group',
-      // Children keep document order, so a grid fills the way the layer list
-      // reads rather than in whatever order things happened to be clicked.
-      children: doc.nodes.filter((n) => selection.includes(n.id)).map((n) => n.id),
-      layout,
+      children: members.map((n) => n.id),
+      layout: resolved,
       ...bounds,
     }
     set((s) => ({
@@ -380,6 +404,20 @@ export const useEditor = create<EditorState>((set, get) => ({
       doc: produce(s.doc, (d) => {
         const node = d.nodes.find((n) => n.id === id)
         if (node && node.type === 'group') node.layout = layout
+      }),
+      dirty: true,
+    }))
+    get().resolveLayouts()
+  },
+
+  reorderGroupChild: (groupId, childId, toIndex) => {
+    get().pushHistory()
+    set((s) => ({
+      doc: produce(s.doc, (d) => {
+        const group = d.nodes.find((n) => n.id === groupId)
+        if (group?.type === 'group') {
+          group.children = reorderChild(group, childId, toIndex)
+        }
       }),
       dirty: true,
     }))

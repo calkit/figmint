@@ -183,7 +183,7 @@ export function Toolbar({ onExport }: { onExport: () => void }) {
       <div className="toolbar-group">
         <button
           className="btn"
-          onClick={() => groupSelection({ type: 'grid', columns: 2, gap: 6, fit: 'preserve' })}
+          onClick={() => groupSelection({ type: 'grid', gap: 6, fit: 'preserve' })}
           disabled={selection.length < 2}
           title="Arrange the selection in a grid (⌘G)"
         >
