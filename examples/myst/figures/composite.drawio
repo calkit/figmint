@@ -17,16 +17,19 @@
                         <mxGeometry x="360" y="71" width="300" height="163.636" as="geometry"/>
                     </mxCell>
                 </object>
-                <mxCell id="4" value="Text" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                <mxCell id="4" value="Text" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
                     <mxGeometry x="187" y="170" width="60" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="5" value="Text" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                <mxCell id="5" value="Text" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
                     <mxGeometry x="187" y="170" width="60" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="6" value="(a)" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                <mxCell id="6" value="(a)" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
                     <mxGeometry x="113" y="14" width="60" height="30" as="geometry"/>
                 </mxCell>
-            </root>
+                <mxCell id="7" value="(b)" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="375" y="26" width="60" height="30" as="geometry"/>
+                </mxCell>
+            <mxCell id="8" value="$$C_P = \frac{P}{\tfrac{1}{2}\rho A U_\infty^3}$$" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1"><mxGeometry x="180" y="272" width="340" height="40" as="geometry"/></mxCell></root>
         </mxGraphModel>
     </diagram>
 </mxfile>
