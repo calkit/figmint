@@ -6,6 +6,11 @@ project:
   # built by the same code that answers `figmint check` rather than a
   # reimplementation of it in JavaScript.
   plugins:
+    # MySTRA: pulls decisions, outputs and insights out of `astra.yaml` by
+    # reference, so the prose cannot drift from the spec. Pinned rather than
+    # tracking `latest` — the project is pre-1.0 and says its vocabulary may
+    # change without notice.
+    - https://github.com/LightconeResearch/MySTRA/releases/download/v0.0.7/mystra.mjs
     - type: executable
       path: ./.venv/bin/figmint-myst
   toc:

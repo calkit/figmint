@@ -83,16 +83,16 @@ stages:
       size: 4195964
     - path: figures/cp_fit.svg
       hash: md5
-      md5: c076427a1daf3e1402a79f8dfbed02fa
+      md5: 743ffd02cd9bf3a3b197c681e3682378
       size: 30080
     - path: index.md
       hash: md5
-      md5: 11cbbef0f70b924f5dc22f73c3415bf6
-      size: 11847
+      md5: c0379de0ae8259c7ce4726b00bce32b2
+      size: 11931
     - path: myst.yml
       hash: md5
-      md5: 7977dffa2b20f6bdbd96ada0cecb4d05
-      size: 382
+      md5: 989e95732e719a53c67a8b44749b9924
+      size: 728
     - path: results/peak.json
       hash: md5
       md5: 659f50535143755f5cf89891efb2ee95
@@ -123,7 +123,7 @@ stages:
     outs:
     - path: figures/cp_fit.svg
       hash: md5
-      md5: c076427a1daf3e1402a79f8dfbed02fa
+      md5: 743ffd02cd9bf3a3b197c681e3682378
       size: 30080
     - path: results/peak.json
       hash: md5

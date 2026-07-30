@@ -58,6 +58,11 @@ universe:  ## Select an ASTRA universe and rerun: make universe U=cubic_fit
 	$(RUN) python scripts/set_params.py --universe $(U) \
 	  $$($(RUN) python -c "import yaml,sys; d=yaml.safe_load(open('universes/$(U).yaml'))['decisions']; \
 	     print(' '.join(f'--{k.replace(\"_\",\"-\")} {v}' for k,v in d.items()))")
+	@# MyST caches executed cells against the *content* of the markdown, and
+	@# never sees that `results/peak.json` changed — so the numbers quoted in
+	@# the prose would keep reporting the previous universe. Touching the page
+	@# does not help here (the hash is unchanged); the execution cache has to go.
+	@rm -rf _build/execute
 	$(MAKE) --no-print-directory -s run
 
 .PHONY: run

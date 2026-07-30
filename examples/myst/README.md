@@ -99,6 +99,46 @@ Drop `stencila` from `[tool.uv] default-groups` to make the example install fast
 again. The panel then reports the graph as unavailable and nothing else
 changes.
 
+## ASTRA, and MySTRA
+
+`astra.yaml` records the methodological decisions — the polynomial degree, how
+the peak is located, whether the low-λ tail is cut — each with its alternatives
+and reasoning. Switch between them:
+
+```sh
+make universes            # list them
+make universe U=cubic_fit # select one and rerun the pipeline
+```
+
+[MySTRA](https://github.com/LightconeResearch/MySTRA) is the official MyST
+plugin for ASTRA, and `index.md` uses it to pull the decisions and the Betz-limit
+insight straight out of the spec instead of restating them. It sits alongside
+figmint's plugin in `myst.yml`; the two answer different questions and do not
+overlap.
+
+| | Answers | Reads |
+| --- | --- | --- |
+| MySTRA | which decisions, which option is selected, why | `astra.yaml`, `universes/` |
+| figmint | which bytes are in the figure, from where, still current | the diagram, `calkit.yaml`, `dvc.lock` |
+
+Two rough edges, both from MySTRA being pre-1.0 (it says so itself — the plugin
+is pinned to `v0.0.7` rather than tracking `latest`):
+
+- **It resolves the first universe in `universes/`** and offers no documented way
+  to select another. So `make universe U=cubic_fit` reruns the pipeline under the
+  cubic fit while the rendered decision block still reads "selected: Quartic".
+  Alphabetical order makes `baseline` the one shown, which is right by accident.
+- **Output embeds need MySTRA's results layout**, `results/<universe>/<id>/<id>.<ext>`.
+  This project writes `results/peak.json`, so `:::{astra} outputs.cp_fit` renders
+  the card without the artifact. It degrades quietly rather than failing. Figures
+  here are figmint's job anyway, which is the sharper division.
+
+A third edge is MyST's, not MySTRA's: the execution cache is keyed on the
+*content* of the markdown, so it never notices that `results/peak.json` changed
+and the numbers quoted in the prose keep reporting the previous universe.
+`touch index.md` does not help — the hash is unchanged. `make universe` clears
+`_build/execute` for that reason.
+
 ## What this example is demonstrating
 
 - **Provenance in the document, not just the terminal.** The `:::{figmint}`

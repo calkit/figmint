@@ -112,16 +112,21 @@ the diagram itself.
 ## The decisions behind the number
 
 `astra.yaml` records the methodological choices this analysis makes, each with
-its alternatives and the reasoning:
+its alternatives and the reasoning. They are not restated here — the blocks
+below are pulled from the spec at build time, so the prose cannot drift from it:
 
-| Decision | Default | Range across options |
-| --- | --- | --- |
-| `fit_degree` | quartic | λ* 2.63 → 2.93, Cp* 0.302 → 0.399 |
-| `peak_method` | argmax of the fit | λ* 2.70 → 2.80 |
-| `tsr_min` | no cut | — |
+:::{astra} decisions.fit_degree
+:::
 
-Every one of those was a literal in a code cell before. The polynomial degree
-alone moves peak Cp by 32%, which is the number an engineer would quote.
+:::{astra} decisions.peak_method
+:::
+
+:::{astra} decisions.tsr_min
+:::
+
+Every one of those was a literal in a code cell before. {astra}`decisions.fit_degree`
+alone moves peak Cp by 32%, which is the number an engineer would quote — and it
+is bounded above by {astra}`prior_insights.betz_limit`.
 
 ASTRA does not run anything, and it does not restate the pipeline. Each output's
 recipe hands execution to `calkit run <stage>`; the only thing crossing the seam
