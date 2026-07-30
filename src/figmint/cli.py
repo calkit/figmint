@@ -53,13 +53,34 @@ def _documents(paths: list[Path]) -> list[Path]:
     return out
 
 
+def _all_documents(paths: list[Path]) -> list[Path]:
+    """Every figure document, in any supported format."""
+    from . import formats
+
+    if paths and all(not p.is_dir() for p in paths):
+        return paths
+    roots = paths or [Path.cwd()]
+    out: list[Path] = []
+    for root in roots:
+        if not root.is_dir():
+            out.append(root)
+            continue
+        for candidate in sorted(root.rglob("*")):
+            if not candidate.is_file() or not formats.is_document(candidate):
+                continue
+            if any(part in {".git", "node_modules", "_build"} for part in candidate.parts):
+                continue
+            out.append(candidate)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # status
 # ---------------------------------------------------------------------------
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    documents = _documents(args.paths)
+    documents = _all_documents(args.paths)
     if not documents:
         print("no figmint documents found", file=sys.stderr)
         return EXIT_ERROR
@@ -312,6 +333,15 @@ def cmd_adopt(args: argparse.Namespace) -> int:
             print(f"{path}: nothing to adopt (components are referenced, not embedded)")
             continue
 
+        if document.rendered:
+            print(
+                f"{path}: rendered .drawio.svg files are read-only — adopt the "
+                f".drawio source and re-export",
+                file=sys.stderr,
+            )
+            exit_code = max(exit_code, EXIT_ERROR)
+            continue
+
         assignments: dict[str, dict[str, str]] = {}
         unidentified: list[str] = []
         for component in document.components():
@@ -462,6 +492,15 @@ def cmd_reimport(args: argparse.Namespace) -> int:
             print(f"{path}: components are referenced, nothing to re-embed")
             continue
 
+        if document.rendered and not args.check and not args.output:
+            print(
+                f"{path}: rendered .drawio.svg files are read-only — refresh the "
+                f".drawio source and re-export",
+                file=sys.stderr,
+            )
+            exit_code = max(exit_code, EXIT_ERROR)
+            continue
+
         updated = document.reimport(args.source or None)
 
         # Writing to a separate file keeps a DVC stage acyclic: the authored
@@ -584,7 +623,14 @@ def _check_documents(args: argparse.Namespace) -> int:
             failures += 1
             print(f"  FAIL  {component.key}: {label}  [{assessment.level.slug}]")
             print(f"        {assessment.reason}")
-            if document.embeds_components and not component.origin:
+            if getattr(document, "rendered", False):
+                # A rendered .drawio.svg cannot be written to, so pointing at
+                # `adopt` here would send the user into a refusal.
+                print(
+                    "        fix: declare it in the .drawio source, then "
+                    "re-export the .drawio.svg"
+                )
+            elif document.embeds_components and not component.origin:
                 print(f"        fix: figmint adopt {path}")
             else:
                 print(

@@ -38,6 +38,7 @@ READERS: dict[str, type[FigureDocument]] = {
     ".fig.yaml": FigYamlDocument,
     ".drawio": DrawioDocument,
     ".drawio.xml": DrawioDocument,
+    ".drawio.svg": DrawioDocument,
 }
 
 

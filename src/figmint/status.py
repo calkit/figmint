@@ -137,12 +137,121 @@ def check(document: Document) -> DocumentReport:
     return report
 
 
+#: Artifacts a diagram is expected to produce, by source extension.
+_DIAGRAM_OUTPUTS = (".drawio.svg", ".svg", ".png", ".pdf")
+
+
+def check_any(document) -> DocumentReport:
+    """Staleness for any figure document, via the format adapter.
+
+    The two questions are the same whichever format the figure is written in —
+    has a component changed, and is the built artifact behind its inputs — so
+    this works off `components()` rather than off either format's internals.
+    """
+    from . import formats
+
+    report = DocumentReport(document=document.path)
+    inputs = [document.path]
+
+    for component in document.components():
+        relative = component.origin or component.key
+        path = component.resolved
+
+        if not component.origin:
+            report.sources.append(
+                SourceReport(
+                    component.key,
+                    "(anonymous embedded content)",
+                    SourceState.UNKNOWN,
+                    "no declared origin, so freshness cannot be judged",
+                )
+            )
+            continue
+        if path is None or not path.is_file():
+            report.sources.append(
+                SourceReport(
+                    component.key, relative, SourceState.MISSING, "file not found"
+                )
+            )
+            continue
+
+        inputs.append(path)
+        if not component.recorded_hash:
+            report.sources.append(
+                SourceReport(
+                    component.key, relative, SourceState.UNKNOWN, "no hash recorded"
+                )
+            )
+            continue
+
+        current = hash_file(path)
+        if current == component.recorded_hash:
+            report.sources.append(
+                SourceReport(component.key, relative, SourceState.OK)
+            )
+            continue
+
+        # Signing rewrites a file without changing its content; Stencila records
+        # the pre-signing digest, so check that before crying stale.
+        creds = credentials_mod.read(path)
+        if creds and creds.stencila and creds.stencila.contentDigest == component.recorded_hash:
+            report.sources.append(
+                SourceReport(
+                    component.key,
+                    relative,
+                    SourceState.OK,
+                    "unchanged; file was signed since placement",
+                )
+            )
+            continue
+
+        report.sources.append(
+            SourceReport(
+                component.key,
+                relative,
+                SourceState.STALE,
+                "content changed on disk"
+                + (
+                    "; the embedded copy is out of date"
+                    if component.is_embedded
+                    else ""
+                ),
+            )
+        )
+
+    # A `.drawio.svg` is its own artifact — the embedded copies above already
+    # answer whether it is behind its inputs, so there is no separate output.
+    if not getattr(document, "rendered", False):
+        newest = max((p.stat().st_mtime for p in inputs if p.exists()), default=0.0)
+        stem = document.path.name
+        for suffix in formats.supported_suffixes():
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        for suffix in _DIAGRAM_OUTPUTS:
+            output = document.path.with_name(f"{stem}{suffix}")
+            if output == document.path or not output.exists():
+                continue
+            if output.stat().st_mtime < newest:
+                report.outdated_outputs.append(output)
+
+    return report
+
+
 def check_path(path: Path) -> DocumentReport:
-    """Load and check a document, turning load errors into a failed report."""
+    """Load and check a document, whatever format it is written in."""
+    from . import formats
     from .document import DocumentError, load
 
+    reader = formats.reader_for(path)
+    if reader is formats.FigYamlDocument or reader is None:
+        try:
+            document = load(path)
+        except DocumentError as exc:
+            return DocumentReport(document=path, error=str(exc))
+        return check(document)
+
     try:
-        document = load(path)
-    except DocumentError as exc:
+        return check_any(formats.open_document(path))
+    except (formats.UnsupportedFormat, formats.base.DocumentError) as exc:
         return DocumentReport(document=path, error=str(exc))
-    return check(document)

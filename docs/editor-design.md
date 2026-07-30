@@ -529,11 +529,35 @@ Stencila-signed PNG (`IHDR caBX pHYs IDAT IEND`, zero bytes removed, still
 SVG is worse and has no escape: C2PA lives in `<metadata><c2pa:manifest>`, a
 namespaced element, and draw.io strips those wholesale when it re-serializes.
 
-**There is a config switch.** `Editor.removeImageMetadata` is read from the
-desktop config (`~/Library/Application Support/draw.io/config.json`), and
-`stripImageMetadata` returns early when it is false. Setting
-`"removeImageMetadata": false` should preserve credentials on import. Worth
-confirming with a real UI import before relying on it.
+**There is a config switch, and it is not enough.** `Editor.removeImageMetadata`
+is read from the desktop config and `stripImageMetadata` returns early when it is
+false — but there is a second, worse path that ignores it entirely.
+
+#### Large images are re-encoded, not merely stripped
+
+draw.io resizes anything exceeding `maxImageSize = 1200` px (or
+`maxImageBytes = 2 MB`) by drawing it to a canvas and re-encoding. A canvas
+export produces a fresh PNG with no ancillary chunks at all, so every trace of
+provenance is destroyed regardless of the metadata setting.
+
+Measured on a real Gemini-generated PNG imported through the UI:
+
+| | Source | After draw.io import |
+| --- | --- | --- |
+| dimensions | 1408 × 768 | **1200 × 655** |
+| chunks | `IHDR caBX IDAT×185 IEND` | `IHDR IDAT×315 IEND` |
+| C2PA | `Valid`, AI disclosed | **gone** |
+
+This also defeats content-hash recovery: the bytes are not the original bytes, so
+`adopt` cannot match them against the source file either. The component is
+unrecoverably anonymous, and figmint correctly reports it as such — the safety
+net holds, but only as a refusal, not a repair.
+
+**The practical rule: never import a credentialed image through draw.io's UI.**
+`figmint place` embeds verbatim; verified on the same file, the embedded copy is
+byte-identical and still reports `Valid` with the AI disclosure intact. This is
+the strongest argument yet for `place` being the supported path in rather than a
+convenience.
 
 One thing no setting fixes: draw.io's **export** rasterises the whole diagram
 into a fresh PNG, so component-level credentials never reach the exported
@@ -605,3 +629,114 @@ You could make it the plotting script's job, or you could make it Calkit's
 job to sign the PNG or PDF as part of the pipeline stage.
 I personally prefer the latter, since the former requires discipline by
 the user.
+
+## MyST compatibility
+
+How do we allow users to easily use these diagrams in MyST,
+see that they are up-to-date, each imported element has sufficient
+provenance, etc.?
+draw.io can save the working file as svg with the XML embedded inside,
+so there's only one file, and we could embed the svg directly in MyST?
+
+### The `.drawio.svg` idea works, and figmint now reads it
+
+draw.io's SVG export can carry the whole diagram in a `content` attribute on the
+root `<svg>`. That single file is simultaneously a picture anything can display
+and an editable draw.io source — and crucially, the `<object src= hash=>`
+provenance attributes ride along inside the embedded XML.
+
+Verified end to end:
+
+- **MyST embeds it directly.** `:::{figure} figures/turbine.drawio.svg` builds
+  with caption and cross-reference intact; the asset is copied to the site with
+  the diagram XML still in it.
+- **figmint reads it.** `.drawio.svg` dispatches to the draw.io reader, which
+  unwraps the `content` attribute. `figmint check` and `figmint reimport --check`
+  both work on the published file, so CI can answer "is every component
+  identified, and is any of them stale?" against the artifact itself.
+- **draw.io reads it back**, and re-exports it with the attributes preserved —
+  which is what makes a single-file workflow possible rather than a dead end.
+
+### One constraint, made explicit
+
+figmint will **not** write to a `.drawio.svg` in place. Updating the embedded
+diagram is trivial; regenerating the rendered picture around it requires draw.io.
+An in-place write would leave a file whose image and whose metadata disagree —
+worse than refusing, because it looks fine.
+
+So refreshing a single-file diagram is a two-step handoff, and `reimport -o`
+writes a plain `.drawio` for exactly this:
+
+```sh
+figmint reimport fig.drawio.svg --check          # CI guard, read-only
+figmint reimport fig.drawio.svg -o .tmp.drawio   # figmint updates the diagram
+drawio -x -f svg --embed-diagram \
+       -o fig.drawio.svg .tmp.drawio             # draw.io re-renders the picture
+```
+
+Which is the same two-stage shape the Calkit pipeline already wants, so it
+composes rather than adding a special case.
+
+### The cost
+
+Embedding doubles the file: components appear once rendered in the SVG body and
+once inside the diagram XML. The example built for this test came out at 3.9 MB,
+which is a lot to serve on a web page. Two other things worth knowing before
+adopting it wholesale:
+
+- The embedded XML **ships to the published site**, including the local `src`
+  paths. That is arguably good for provenance and mildly leaky about directory
+  structure.
+- A plain SVG export is half the size but carries *no* provenance at all, since
+  our attributes live on mxCells that do not survive into rendered output. So the
+  choice is: publish the heavier self-describing file, or publish a light one and
+  keep the `.drawio` beside it for figmint to check.
+
+### Should compiling the document be the last pipeline stage?
+
+Yes, but with **no declared outputs**.
+
+The appeal is real: `calkit run` then goes from data to published document in one
+command, and Calkit already treats document compilation as in-scope (it has a
+`latex` stage kind). The problem is that a MyST build is not reproducible —
+measured over two consecutive builds of the same input, 1255 files were
+identical in name and all but two in content, and those two (`index.html`,
+`index.json`) differ because **MyST assigns random node keys on every build**:
+
+```
+-"key":"qQYT5zYw4H"
++"key":"P2tBLUajG8"
+```
+
+So declaring `_build/` as an output would leave the stage permanently dirty:
+DVC would hash it, see a different hash every time, and never consider it up to
+date. Tracking buys nothing and costs a misleading signal.
+
+A stage with `inputs` and `always_run: true` gets the useful half — it runs last,
+after the figure is refreshed and provenance is checked — without pretending the
+output is content-addressable. `examples/myst/calkit.yaml` does this.
+
+Worth noting the stage ordering encodes something: `check-provenance` sits
+*before* `build-site`, so a document containing an unidentified component fails
+the pipeline rather than getting published.
+
+### Where does figmint end and Calkit begin?
+
+An open question, and the boundary has already been crossed once by accident.
+While building the MyST example it became obvious that `data/performance.csv`
+had no provenance — not a stage output, not a declared dataset. figmint grew a
+check for it, which meant teaching figmint to read Calkit's `datasets:` and
+`inputs:` schema: exactly the duplication the boundary note above argues
+against. It was reverted; auditing whether a project's input data is declared is
+Calkit's question about its own pipeline.
+
+But the fact that it happened is evidence. The questions are adjacent enough
+that the seam keeps wanting to move, which is an argument for figmint's
+provenance machinery eventually living inside Calkit rather than beside it.
+Parked for now — the prototype is easier to move fast on as a separate tool, and
+nothing here forecloses merging later, since the format adapters and the
+provenance ladder do not depend on being a separate process.
+
+Signing the published SVG with C2PA would be a third option — provenance without
+the embedded XML — and `figmint build --sign` already does this for `.fig.yaml`
+figures. Extending it to draw.io exports is not yet done.

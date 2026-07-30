@@ -212,3 +212,9 @@ web/dist/
 *.fig.yaml.tmp
 
 .DS_Store
+
+# MyST build outputs
+_build
+
+# MyST build output
+_build/

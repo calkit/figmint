@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -165,3 +166,84 @@ class TestBuildCli:
         doc.write_text(doc.read_text().replace("figures/cp_curve.svg", "figures/gone.svg"))
         assert main(["build", str(doc)]) == EXIT_OK
         assert "warning" in capsys.readouterr().err
+
+
+class TestStatusOnDiagrams:
+    """`figmint status` through the format adapter.
+
+    The two questions are identical whichever format the figure is written in —
+    has a component changed, and is the built artifact behind its inputs — so
+    status works off `components()` rather than either format's internals.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / ".git").mkdir()
+        shutil.copy(EXAMPLES / "figures" / "cp_curve.svg", tmp_path / "plot.svg")
+        shutil.copy(
+            EXAMPLES / "figures" / "cp_curve.svg.prov.yaml",
+            tmp_path / "plot.svg.prov.yaml",
+        )
+        assert (
+            main([
+                "place", str(tmp_path / "plot.svg"),
+                "--into", str(tmp_path / "d.drawio"), "--create",
+            ])
+            == EXIT_OK
+        )
+        return tmp_path
+
+    def test_a_fresh_diagram_is_up_to_date(self, project: Path, capsys):
+        assert main(["status", str(project / "d.drawio")]) == EXIT_OK
+        assert "up to date" in capsys.readouterr().out
+
+    def test_a_changed_component_makes_it_stale(self, project: Path, capsys):
+        (project / "plot.svg").write_bytes(b"<svg>changed</svg>")
+        assert main(["status", str(project / "d.drawio")]) == EXIT_STALE
+        out = capsys.readouterr().out
+        assert "STALE" in out
+        # For an embedding format the wording should say what is actually wrong.
+        assert "embedded copy is out of date" in out
+
+    def test_a_deleted_component_is_missing(self, project: Path, capsys):
+        (project / "plot.svg").unlink()
+        assert main(["status", str(project / "d.drawio")]) == EXIT_STALE
+        assert "GONE" in capsys.readouterr().out
+
+    def test_an_anonymous_component_is_unknown_not_stale(self, tmp_path: Path, capsys):
+        # Freshness cannot be judged without knowing what the source is, and
+        # guessing either way would be wrong.
+        (tmp_path / ".git").mkdir()
+        anon = tmp_path / "anon.svg"
+        anon.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"/>')
+        main([
+            "place", str(anon), "--into", str(tmp_path / "d.drawio"),
+            "--create", "--force",
+        ])
+        # Strip the provenance so nothing identifies it.
+        target = tmp_path / "d.drawio"
+        target.write_text(
+            re.sub(r'\ssrc="[^"]*"', "", target.read_text())
+        )
+        anon.unlink()  # and remove it, so hash matching cannot recover it
+
+        assert main(["status", str(target)]) == EXIT_OK
+        assert "no declared origin" in capsys.readouterr().out
+
+    def test_status_finds_diagrams_when_given_a_directory(
+        self, project: Path, capsys
+    ):
+        assert main(["status", str(project)]) == EXIT_OK
+        assert "d.drawio" in capsys.readouterr().out
+
+    def test_a_stale_output_is_reported(self, project: Path, capsys):
+        import os
+        import time
+
+        rendered = project / "d.svg"
+        rendered.write_text("<svg/>")
+        old = time.time() - 3600
+        os.utime(rendered, (old, old))
+
+        assert main(["status", str(project / "d.drawio")]) == EXIT_STALE
+        assert "older than its inputs" in capsys.readouterr().out
