@@ -43,6 +43,11 @@ pipeline:
       inputs:
         - figures/composite.drawio.svg
         - from_stage_outputs: plot-cp
+        # An imported panel is a real dependency too: replace the file and the
+        # embedded copy goes stale exactly like a regenerated plot. It is listed
+        # by path rather than by stage because nothing in this project produces
+        # it — `figures/turbine.png.prov.yaml` is the only claim about it.
+        - figures/turbine.png
       outputs:
         - path: .build/composite.drawio
           storage: git

@@ -1,0 +1,8 @@
+# Provenance for an imported component, written by `figmint import`.
+# This file states where the artifact came from. Without it, figmint
+# treats the artifact as unidentified and (by default) refuses to place
+# it in a figure.
+importedFrom: Generated with Google Gemini
+note: Illustrative schematic, not a measurement. Carries C2PA Content Credentials
+  disclosing AI generation; embedded byte-for-byte so they survive.
+importedAt: '2026-07-30T13:28:36.161136+00:00'
