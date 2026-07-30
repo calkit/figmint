@@ -1,0 +1,6 @@
+# Every component in this project must at least say where it came from.
+# `figmint check` enforces this, and the editor refuses to place anything below
+# the bar. Set enforce = false to warn instead of block.
+[provenance]
+require = "declared"
+enforce = true

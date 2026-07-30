@@ -1,0 +1,91 @@
+# The pipeline. figmint references these stages; it never defines or runs them.
+# Data that came from outside the project. Declaring it here is what makes the
+# provenance chain complete: without it the figure is a verified pipeline output
+# whose own input appeared from nowhere, which `figmint check` reports as an
+# unaccounted chain root.
+datasets:
+  performance:
+    path: data/performance.csv
+    title: Measured turbine performance
+    description: >-
+      Power coefficient against tip speed ratio, from towing-tank measurements.
+      Synthetic values for this example.
+
+environments:
+  main:
+    kind: uv-venv
+    path: pyproject.toml
+    python: "3.12"
+
+pipeline:
+  stages:
+    # 1. An ordinary plotting script. It knows nothing about figmint.
+    plot-cp:
+      kind: python-script
+      script_path: scripts/plot_cp.py
+      environment: main
+      inputs:
+        - data/performance.csv
+      outputs:
+        - path: figures/cp_curve.svg
+          storage: git
+
+    # 2. Re-embed changed components into the diagram.
+    #
+    # Split from the render step because `figmint reimport` reads and writes the
+    # same document: doing both in one stage would make the .drawio.svg an input
+    # and an output at once, which DVC rejects as a cycle. `-o` writes the
+    # refreshed diagram elsewhere, keeping the DAG acyclic.
+    embed-figure:
+      kind: command
+      command: figmint reimport figures/composite.drawio.svg -o .build/composite.drawio
+      environment: main
+      inputs:
+        - figures/composite.drawio.svg
+        - from_stage_outputs: plot-cp
+      outputs:
+        - path: .build/composite.drawio
+          storage: git
+
+    # 3. draw.io re-renders the picture around the updated diagram. figmint
+    #    cannot do this itself, which is exactly why the handoff exists.
+    #
+    #    Note this is the one stage whose tool is not in the environment:
+    #    draw.io is a desktop app, so `main` cannot pin it. A `docker`
+    #    environment would close that gap if the pipeline needs to be hermetic.
+    render-figure:
+      kind: command
+      command: >-
+        drawio -x -f svg --embed-diagram --yes
+        -o figures/composite.drawio.svg .build/composite.drawio
+      environment: main
+      inputs:
+        - from_stage_outputs: embed-figure
+      outputs:
+        - path: figures/composite.drawio.svg
+          storage: git
+
+    # 4. Refuse to publish a figure whose components are not identified.
+    check-provenance:
+      kind: command
+      command: figmint check figures/composite.drawio.svg
+      environment: main
+      inputs:
+        - from_stage_outputs: render-figure
+      always_run: true
+
+    # 5. Build the document.
+    #
+    # Deliberately declares no outputs. MyST assigns random node keys on every
+    # build, so `_build/` never hashes the same twice — declaring it would leave
+    # the stage permanently dirty and tell you nothing. Tracking buys nothing
+    # here; running it last is the point.
+    build-site:
+      kind: command
+      command: myst build --html
+      environment: main
+      inputs:
+        - index.md
+        - myst.yml
+        - from_stage_outputs: render-figure
+      always_run: true

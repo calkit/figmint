@@ -1,0 +1,5 @@
+# Written by the pipeline stage that produced this file, not by the script.
+generatedBy: scripts/plot_cp.py
+command: uv run python scripts/plot_cp.py
+derivedFrom:
+  - data/performance.csv

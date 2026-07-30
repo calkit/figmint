@@ -1,0 +1,20 @@
+[project]
+# A real project environment for the example, so `uv run figmint …` works here
+# and Calkit has an environment it can lock. figmint comes from the repo two
+# levels up, editable, so changes to the tool are picked up immediately.
+name = "figmint-myst-example"
+version = "0.1.0"
+description = "MyST document driven by figmint-tracked figures"
+requires-python = ">=3.12"
+dependencies = [
+    "figmint",
+    "matplotlib>=3.8",
+    # mystmd ships on PyPI as a wrapper around the Node CLI, so the document
+    # builder can live in the same environment as everything else — which is
+    # what makes the `build-site` pipeline stage reproducible rather than
+    # dependent on whatever `myst` happens to be on PATH.
+    "mystmd>=1.6",
+]
+
+[tool.uv.sources]
+figmint = { path = "../..", editable = true }

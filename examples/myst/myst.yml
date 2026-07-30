@@ -1,0 +1,8 @@
+version: 1
+project:
+  id: figmint-example
+  title: figmint + MyST
+  toc:
+    - file: index.md
+site:
+  template: book-theme
