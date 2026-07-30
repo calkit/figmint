@@ -56,11 +56,16 @@ class Stage:
     environment: str | None
     #: Whatever identifies the work: script path, command, notebook.
     entrypoint: str | None
-    #: Whether `dvc.lock` still matches the stage's dependencies on disk.
-    #: `None` means unknown — no lock file, so the stage has never run here.
+    #: Whether `dvc.lock` still matches this stage's dependencies *and* those of
+    #: every stage upstream of it. `None` means unknown — no lock file, so the
+    #: stage has never run here.
     current: bool | None = None
     #: Dependencies that no longer match what the lock recorded.
     changed_deps: tuple[str, ...] = ()
+    #: The stage those dependencies belong to, which is not always this one:
+    #: editing a diagram makes `embed-figure` stale while `render-figure`, whose
+    #: only input is a file `embed-figure` has yet to rewrite, still looks fine.
+    stale_stage: str | None = None
     #: Every declared dependency, whether or not it changed. Used by `watch`, so
     #: that editing a plotting script updates a preview even though the script
     #: is not itself a component.
@@ -85,8 +90,10 @@ class Stage:
                 f"of it ever running here"
             )
         changed = ", ".join(self.changed_deps) or "its dependencies"
+        blamed = self.stale_stage or self.name
+        via = "" if blamed == self.name else f" (upstream of `{self.name}`)"
         return (
-            f"stage `{self.name}` is out of date: {changed} changed since it "
+            f"stage `{blamed}`{via} is out of date: {changed} changed since it "
             f"last ran, so this file is the output of a previous version"
         )
 
@@ -270,6 +277,61 @@ class Project:
     def lock(self) -> Path:
         return self.root / LOCK_NAME
 
+    def _stages(self) -> dict[str, Any]:
+        config = self.config
+        if not config.is_file():
+            return {}
+        try:
+            data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            return {}
+        stages = (data.get("pipeline") or {}).get("stages") or {}
+        return stages if isinstance(stages, dict) else {}
+
+    def _ancestry(self, name: str) -> list[str]:
+        """This stage and every stage it transitively depends on."""
+        stages = self._stages()
+        order: list[str] = []
+        queue = [name]
+        while queue:
+            current = queue.pop()
+            if current in order:
+                continue
+            order.append(current)
+            spec = stages.get(current)
+            if isinstance(spec, dict):
+                _, upstream = _stage_input_paths(spec.get("inputs"))
+                queue.extend(upstream)
+        return order
+
+    def _freshness_transitive(
+        self, name: str, spec: dict[str, Any] | None = None
+    ) -> tuple[bool | None, tuple[str, ...], tuple[str, ...], str | None]:
+        """Freshness of a stage *and its whole ancestry*.
+
+        Checking a stage alone is not enough, and the failure is quiet. Edit
+        `figures/composite.drawio` and `embed-figure` goes stale — but
+        `render-figure`, which produces the published picture, depends only on a
+        file `embed-figure` has yet to rewrite, so in isolation it still looks
+        current. The document would then be reported as up to date while showing
+        a rendering of a diagram that no longer exists.
+
+        A stage can only be vouched for if everything behind it can be too.
+        """
+        stages = self._stages()
+        deps: list[str] = []
+        for stage_name in self._ancestry(name):
+            current, changed, stage_deps = self._freshness(
+                stage_name, stages.get(stage_name)
+            )
+            deps.extend(stage_deps)
+            if current is False:
+                return False, changed, tuple(dict.fromkeys(deps)), stage_name
+        # Unknown only matters for the stage itself; an ancestor with no lock
+        # entry says nothing about whether this output is current.
+        own_current, _, _ = self._freshness(name, spec or stages.get(name))
+        return own_current, (), tuple(dict.fromkeys(deps)), None
+
     def _freshness(
         self, name: str, spec: dict[str, Any] | None = None
     ) -> tuple[bool | None, tuple[str, ...], tuple[str, ...]]:
@@ -330,7 +392,7 @@ class Project:
             return None
 
         spec = self._stage_spec(names[0])
-        current, changed, deps = self._freshness(names[0], spec)
+        current, changed, deps, blamed = self._freshness_transitive(names[0], spec)
         return Stage(
             name=names[0],
             kind=spec.get("kind"),
@@ -338,6 +400,7 @@ class Project:
             entrypoint=_entrypoint(spec),
             current=current,
             changed_deps=changed,
+            stale_stage=blamed,
             deps=deps,
         )
 

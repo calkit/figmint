@@ -110,11 +110,34 @@ class FigureReport:
     components: list[ComponentReport] = field(default_factory=list)
     #: Built artifacts older than their inputs.
     outdated_outputs: list[Path] = field(default_factory=list)
+    #: The stage that produces this document, when the pipeline declares one.
+    document_stage: str | None = None
+    #: Whether that stage and everything upstream of it are current.
+    document_stage_current: bool | None = None
+    #: What changed, and in which stage.
+    document_stage_changed: tuple[str, ...] = ()
+    document_stage_blamed: str | None = None
     error: str | None = None
 
     @property
+    def behind_source(self) -> bool:
+        """The published figure is older than the diagram it was rendered from.
+
+        A separate question from any component being stale. Editing the authored
+        `.drawio` changes nothing about the components — they are embedded, and
+        they still match their files — but the picture on the page is now a
+        rendering of a diagram that no longer exists. Nothing else in this report
+        can see that, because everything else looks *inside* the figure.
+        """
+        return self.document_stage_current is False
+
+    @property
     def stale(self) -> bool:
-        return any(c.stale for c in self.components) or bool(self.outdated_outputs)
+        return (
+            any(c.stale for c in self.components)
+            or bool(self.outdated_outputs)
+            or self.behind_source
+        )
 
     @property
     def upstream_stale(self) -> list[ComponentReport]:
@@ -160,6 +183,9 @@ class FigureReport:
             "components": [c.to_dict() for c in self.components],
             "stale": self.stale,
             "upstreamStale": [c.key for c in self.upstream_stale],
+            "behindSource": self.behind_source,
+            "documentStage": self.document_stage,
+            "documentStageChanged": list(self.document_stage_changed),
             "unaccountedInputs": list(self.unaccounted_inputs),
             "publishable": self.publishable,
             "weakest": self.weakest.slug,
@@ -309,6 +335,15 @@ def inspect_document(path: Path, *, root: Path | None = None) -> FigureReport:
     report = FigureReport(
         document=path, policy=policy, outdated_outputs=list(staleness.outdated_outputs)
     )
+
+    # Is the document itself behind whatever renders it? Asked of the document,
+    # not of its components, because that is where the answer lives.
+    document_stage = project.stage_for(path.resolve()) if project else None
+    if document_stage is not None:
+        report.document_stage = document_stage.name
+        report.document_stage_current = document_stage.current
+        report.document_stage_changed = document_stage.changed_deps
+        report.document_stage_blamed = document_stage.stale_stage
     for component in document.components():
         report.components.append(
             inspect_component(

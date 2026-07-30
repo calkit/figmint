@@ -26,8 +26,8 @@ stages:
     deps:
     - path: figures/composite.drawio
       hash: md5
-      md5: 8242e849a465e7e58a1238255043f62f
-      size: 2062193
+      md5: c7112b78eb0886bb7683e43de120c70b
+      size: 2062361
     - path: figures/cp_curve.svg
       hash: md5
       md5: 25c0f0d94371cd8dae5e99e2a3665684
@@ -43,16 +43,16 @@ stages:
     outs:
     - path: .build/composite.drawio
       hash: md5
-      md5: 668f73cb3bbc38c9cfcac5807ba8a052
-      size: 2062193
+      md5: 1f25bbefee12085658e796a45af66a71
+      size: 2062365
   render-figure:
     cmd: calkit xenv -n main --no-check -- drawio -x -f svg --embed-diagram 
       --yes -o figures/composite.drawio.svg .build/composite.drawio
     deps:
     - path: .build/composite.drawio
       hash: md5
-      md5: 668f73cb3bbc38c9cfcac5807ba8a052
-      size: 2062193
+      md5: 1f25bbefee12085658e796a45af66a71
+      size: 2062365
     - path: uv.lock
       hash: md5
       md5: 31a7da82044b69ad053c48142596124b
@@ -83,8 +83,8 @@ stages:
       size: 4147859
     - path: index.md
       hash: md5
-      md5: 7d6c704bc7446e15f25643430251b5d2
-      size: 8390
+      md5: 3411fdf41a9dcbb030db2dd63689b498
+      size: 9363
     - path: myst.yml
       hash: md5
       md5: 7977dffa2b20f6bdbd96ada0cecb4d05

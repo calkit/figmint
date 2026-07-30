@@ -272,6 +272,79 @@ class TestProvenancePanel:
         # The embedded copy really does still match; that is a separate question.
         assert not report.components[0].stale
 
+    def test_a_figure_behind_its_own_source_is_reported(
+        self, figure: Path, monkeypatch
+    ):
+        """Editing the authored diagram must show up, and nothing else can see it.
+
+        Every component is still embedded, still matches its file, still
+        identified — the figure is internally perfect. What changed is the
+        diagram it was rendered *from*, so the picture on the page is a
+        rendering of something that no longer exists. Checks that look inside
+        the figure are structurally blind to this.
+        """
+        import hashlib
+
+        root = figure.parent.parent
+        monkeypatch.chdir(root)
+        rendered = figure.with_name("diagram.drawio.svg")
+        shutil.copy(figure, rendered)
+
+        (root / "calkit.yaml").write_text(
+            "pipeline:\n"
+            "  stages:\n"
+            "    embed:\n"
+            "      kind: command\n"
+            "      command: figmint reimport\n"
+            "      inputs:\n"
+            "        - figures/diagram.drawio\n"
+            "      outputs:\n"
+            "        - .build/diagram.drawio\n"
+            "    render:\n"
+            "      kind: command\n"
+            "      command: drawio -x\n"
+            "      inputs:\n"
+            "        - from_stage_outputs: embed\n"
+            "      outputs:\n"
+            "        - figures/diagram.drawio.svg\n"
+        )
+        # The lock remembers a *different* authored diagram. Note that `render`
+        # itself looks perfectly current: its only input is the intermediate,
+        # which `embed` has not rewritten yet. The staleness is one stage back.
+        stale = hashlib.md5(b"an older diagram").hexdigest()
+        build = hashlib.md5(
+            (root / ".build" / "diagram.drawio").read_bytes()
+            if (root / ".build" / "diagram.drawio").is_file()
+            else b""
+        ).hexdigest()
+        (root / ".build").mkdir(exist_ok=True)
+        (root / ".build" / "diagram.drawio").write_text("intermediate")
+        build = hashlib.md5(b"intermediate").hexdigest()
+        (root / "dvc.lock").write_text(
+            "schema: '2.0'\nstages:\n"
+            "  embed:\n    cmd: figmint reimport\n    deps:\n"
+            f"    - path: figures/diagram.drawio\n      hash: md5\n      md5: {stale}\n"
+            "  render:\n    cmd: drawio -x\n    deps:\n"
+            f"    - path: .build/diagram.drawio\n      hash: md5\n      md5: {build}\n"
+        )
+
+        report = inspect_document(rendered)
+        assert report.behind_source
+        assert report.stale
+        assert report.document_stage == "render"
+        # Blame the stage that is actually out of date, not the one asked about.
+        assert report.document_stage_blamed == "embed"
+        assert report.document_stage_changed == ("figures/diagram.drawio",)
+        # Components are untouched by this; the figure is stale for a different
+        # reason entirely.
+        assert not any(c.stale for c in report.components)
+
+        nodes = run_directive(directive_payload("figures/diagram.drawio.svg"))
+        panel = find(nodes, "admonition")
+        assert panel["kind"] == "danger"
+        assert "out of date" in all_text(panel)
+        assert "figures/diagram.drawio" in all_text(panel)
+
     def test_unaccounted_input_data_is_reported(self, figure: Path, monkeypatch):
         """The gap every other check is structurally unable to see.
 

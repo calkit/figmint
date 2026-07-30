@@ -219,6 +219,17 @@ def headline(report: FigureReport) -> tuple[str, str]:
     if not report.components:
         return "warning", "No tracked components in this figure"
 
+    # Checked before the components, because when the figure itself is behind
+    # its source the picture on the page is wrong, and that outranks anything
+    # about what is embedded inside it.
+    if report.behind_source:
+        changed = ", ".join(report.document_stage_changed) or "its source"
+        return (
+            "danger",
+            f"This figure is out of date — {changed} changed since it was "
+            f"rendered, so the picture above is not what the source says",
+        )
+
     stale = [c for c in report.components if c.stale]
     if stale:
         names = ", ".join(c.label for c in stale)
@@ -319,7 +330,12 @@ def action_paragraph(
             actions.append(text("Source: "))
             actions.append(code(shown_path(target)))
 
-    if report.upstream_stale:
+    if report.behind_source:
+        if actions:
+            actions.append(text(" · "))
+        actions.append(text("re-render with "))
+        actions.append(code("calkit run"))
+    elif report.upstream_stale:
         # Re-embedding would faithfully copy an out-of-date file, so the
         # pipeline has to run first. Suggesting `make refresh` here would send
         # someone in a circle.

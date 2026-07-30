@@ -88,6 +88,8 @@ def _all_documents(paths: list[Path]) -> list[Path]:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
+    from .report import inspect_document
+
     documents = _all_documents(args.paths)
     if not documents:
         print("no figmint documents found", file=sys.stderr)
@@ -102,8 +104,22 @@ def cmd_status(args: argparse.Namespace) -> int:
             exit_code = EXIT_ERROR
             continue
 
-        headline = "stale" if report.stale else "up to date"
+        # Whether the rendered figure is behind the diagram it came from is a
+        # question about the document, not about anything inside it, so it has
+        # to be asked separately or it is never asked at all.
+        full = inspect_document(path)
+        behind = full.behind_source
+
+        headline = "stale" if (report.stale or behind) else "up to date"
         print(f"{path}  [{headline}]")
+
+        if behind:
+            changed = ", ".join(full.document_stage_changed) or "its inputs"
+            print(f"  STALE  behind its source: {changed} changed")
+            print(
+                f"         stage `{full.document_stage_blamed or full.document_stage}`"
+                f" has not been re-run"
+            )
 
         for source in report.sources:
             if source.state is status_mod.SourceState.OK and not args.verbose:
@@ -119,7 +135,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             counts = ", ".join(f"{v} {k}" for k, v in sorted(report.counts.items()))
             print(f"  {counts}")
 
-        if report.stale:
+        if report.stale or behind:
             exit_code = max(exit_code, EXIT_STALE)
 
     return exit_code
@@ -497,6 +513,14 @@ def watch_targets(paths: list[Path]) -> dict[Path, str]:
         report = inspect_document(path)
         project = calkit_mod.project_for(Path(path))
         if project:
+            # The document's own inputs, not just its components'. Editing the
+            # authored `.drawio` changes nothing inside the rendered figure, so
+            # without this the preview would never learn that the picture it is
+            # showing has been superseded.
+            own = project.stage_for(resolved)
+            for dep in getattr(own, "deps", ()) or ():
+                target = (project.root / dep).resolve()
+                targets.setdefault(target, f"{dep} (figure input)")
             # The panel's verdict is read out of these, so a change to either
             # changes what the preview should say — even when no component byte
             # moves. Running the pipeline updates `dvc.lock` and nothing else
