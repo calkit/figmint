@@ -180,6 +180,9 @@ Figures can also carry their provenance into a rendered document:
 [docs/myst-plugin.md](docs/myst-plugin.md) describes the MyST plugin, which shows
 where each component came from and whether the picture is still current — and how
 it was built, including the approaches that did not work.
+[docs/stencila-integration.md](docs/stencila-integration.md) covers what
+Stencila's SDK offers figmint — provenance graphs, structured credential
+verification, and signing — and what it cannot yet do.
 
 Export currently produces Stencila Markdown (`.smd`) alongside the native YAML.
 Panels become a `::: figure` with an inferred grid layout, annotations become a

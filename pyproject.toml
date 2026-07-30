@@ -34,6 +34,27 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
 ]
+# The Stencila SDK, from a local checkout. Kept in its own group rather than in
+# `dependencies` because `stencila` is a maturin/pyo3 package: installing it
+# compiles a sizeable slice of Stencila's Rust workspace, and requiring that of
+# everyone who installs figmint would be a steep price for an optional
+# integration. Opt in with `uv sync --group stencila`.
+stencila = [
+    "stencila",
+    "stencila-types",
+]
+
+[tool.uv.sources]
+# `editable = true` means different things for these two.
+#
+# `stencila_types` is pure Python, so edits in the checkout are live immediately.
+#
+# `stencila` wraps Rust through pyo3. Editable covers the Python source under its
+# `python-source` directory; the compiled `_stencila` extension is a build
+# artifact. Changing Rust needs a rebuild — `uv sync --reinstall-package stencila`
+# or `maturin develop` in that directory — before the change is visible here.
+stencila = { path = "../stencila/python/stencila", editable = true }
+stencila-types = { path = "../stencila/python/stencila_types", editable = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
