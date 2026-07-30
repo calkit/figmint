@@ -8,7 +8,7 @@ by the pipeline stage that runs it, not by the script itself.
 import csv
 from pathlib import Path
 
-import matplotlibbb
+import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt

@@ -586,6 +586,10 @@ dev = [
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
 ]
+stencila = [
+    { name = "stencila", editable = "../../../stencila/python/stencila" },
+    { name = "stencila-types", editable = "../../../stencila/python/stencila_types" },
+]
 
 [[package]]
 name = "figmint-myst-example"
