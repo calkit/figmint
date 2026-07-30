@@ -292,6 +292,29 @@ pipeline:
         stage = calkit.Project(project).stage_for(project / "figures/cp_curve.svg")
         assert stage.current is False
 
+    def test_a_hand_regenerated_output_does_not_hide_a_stale_stage(
+        self, project: Path
+    ):
+        """Regenerating the plot by hand does not make the stage current.
+
+        The stage is still one DVC would re-run, and this is exactly when the
+        warning earns its keep: the script changed, and nothing recorded that.
+        """
+        import os
+
+        (project / "scripts").mkdir()
+        (project / "scripts" / "plot_cp.py").write_text("print(2)")
+        self.lock(project, {"scripts/plot_cp.py": "print(1)"})
+
+        # Output written after the lock, as a manual re-run would leave it.
+        output = project / "figures" / "cp_curve.svg"
+        lock_time = (project / "dvc.lock").stat().st_mtime
+        os.utime(output, (lock_time + 10, lock_time + 10))
+
+        stage = calkit.Project(project).stage_for(output)
+        assert stage.current is False
+        assert stage.changed_deps == ("scripts/plot_cp.py",)
+
     def test_a_stage_absent_from_the_lock_is_unknown(self, project: Path):
         (project / "dvc.lock").write_text(
             "schema: '2.0'\nstages:\n  other:\n    cmd: true\n    deps: []\n"

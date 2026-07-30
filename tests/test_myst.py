@@ -178,7 +178,7 @@ class TestFigureNode:
 
 
 class TestProvenancePanel:
-    def test_a_clean_figure_reports_nothing_stale(self, figure: Path, monkeypatch):
+    def test_a_clean_figure_reports_everything_up_to_date(self, figure: Path, monkeypatch):
         monkeypatch.chdir(figure.parent.parent)
         nodes = run_directive(directive_payload("figures/diagram.drawio"))
         panel = find(nodes, "admonition")
@@ -186,7 +186,7 @@ class TestProvenancePanel:
         # Collapsed when there is nothing wrong, so a long document does not turn
         # into a wall of metadata.
         assert panel["class"] == "dropdown"
-        assert "nothing out of date" in all_text(panel)
+        assert "everything up to date" in all_text(panel)
 
     def test_the_two_freshness_questions_get_their_own_columns(
         self, figure: Path, monkeypatch
@@ -200,11 +200,11 @@ class TestProvenancePanel:
         nodes = run_directive(directive_payload("figures/diagram.drawio"))
         header = find(find(nodes, "admonition"), "tableRow")
         headings = [all_text(c) for c in header["children"]]
-        assert headings == ["Panel", "Provenance", "Source", "In figure", "Basis"]
+        assert headings == ["Component", "Provenance", "Source", "In figure", "Basis"]
         # "current" overclaims for a column that only compares two files.
         assert "current" not in all_text(find(nodes, "admonition")).lower().replace(
             "not generated here", ""
-        ).replace("nothing out of date", "")
+        ).replace("everything up to date", "").replace("up to date", "")
 
     def test_a_changed_component_turns_it_red(self, figure: Path, monkeypatch):
         monkeypatch.chdir(figure.parent.parent)
@@ -286,32 +286,34 @@ class TestProvenancePanel:
         assert find(nodes, "admonition") is None
         assert find(nodes, "container") is not None
 
-    def test_without_an_opener_it_offers_a_command_not_a_link(
+    def test_without_an_opener_it_names_the_file_rather_than_linking(
         self, figure: Path, monkeypatch
     ):
-        """A published build must not carry a link to somebody's laptop.
+        """No link at all beats either alternative here.
 
-        And a `vscode://` link would be worse than nothing where this is most
-        often read: VS Code's Simple Browser is a webview, and a webview does
-        not follow non-http schemes — it navigates to the URL and shows a blank
-        page. So with no opener running, the panel offers a command instead.
+        A `vscode://` link is dead in VS Code's Simple Browser, which is a
+        webview and will not follow a non-http scheme. A markdown link to the
+        source is worse: MyST copies a linked project file into the build under
+        a content-hashed name, so clicking it hands the reader a duplicate, and
+        editing that duplicate is lost work.
         """
         monkeypatch.delenv(OPEN_URL_ENV, raising=False)
         monkeypatch.chdir(figure.parent.parent)
         nodes = run_directive(directive_payload("figures/diagram.drawio"))
         panel = find(nodes, "admonition")
         assert find(panel, "link") is None
-        assert "drawio figures/diagram.drawio" in all_text(panel)
+        assert "figures/diagram.drawio" in all_text(panel)
 
-    def test_make_edit_is_preferred_when_the_project_has_it(
+    def test_it_does_not_assume_the_project_has_a_makefile(
         self, figure: Path, monkeypatch
     ):
+        """`make edit` is one project's idiom, not a figmint convention."""
         monkeypatch.delenv(OPEN_URL_ENV, raising=False)
         root = figure.parent.parent
         monkeypatch.chdir(root)
         (root / "Makefile").write_text("edit:\n\tdrawio figures/diagram.drawio\n")
         nodes = run_directive(directive_payload("figures/diagram.drawio"))
-        assert "make edit" in all_text(find(nodes, "admonition"))
+        assert "make edit" not in all_text(find(nodes, "admonition"))
 
     def test_with_an_opener_it_emits_a_clickable_http_link(
         self, figure: Path, monkeypatch

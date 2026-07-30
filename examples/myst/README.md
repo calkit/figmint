@@ -72,9 +72,12 @@ Content` — which browsers treat as "stay where you are", making the link behav
 like a button instead of navigating away.
 
 The link only appears when `FIGMINT_OPEN_URL` is set, which `make preview` does.
-A published build gets a plain `make edit` command instead, rather than a dead
-link to a port on the author's laptop. Set `FIGMINT_EDITOR` to override what
-opens the file; otherwise it prefers `code -r` and falls back to `drawio`.
+A published build names the source path instead, rather than carrying a dead
+link to a port on the author's laptop. It is deliberately not a markdown link to
+the source: MyST copies a linked project file into the build under a
+content-hashed name, so clicking it would hand the reader a duplicate — and
+editing that duplicate is lost work. Set `FIGMINT_EDITOR` to override what opens
+the file; otherwise it prefers `code -r` and falls back to `drawio`.
 
 ## What this example is demonstrating
 

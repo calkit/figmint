@@ -194,18 +194,30 @@ class Project:
     def lock(self) -> Path:
         return self.root / LOCK_NAME
 
-    def _freshness(self, name: str) -> tuple[bool | None, tuple[str, ...], tuple[str, ...]]:
+    def _freshness(
+        self, name: str, spec: dict[str, Any] | None = None
+    ) -> tuple[bool | None, tuple[str, ...], tuple[str, ...]]:
         """Whether a stage's recorded dependencies still match the disk.
 
         Returns `(current, changed, all_deps)`. `current` is None when the stage
         has no lock entry, which means it has never run in this working copy —
         distinct from "ran, and something changed since".
+
+        Read straight from the lock, with no cleverness about whether the lock
+        might be mid-update. An earlier version guarded against that by treating
+        a lock older than the stage's outputs as unusable, on the theory that a
+        stage running inside a pipeline would read the previous run's lock. DVC
+        turns out to write `dvc.lock` incrementally, after each stage, so the
+        guard never fired for the case it was written for — and it did fire when
+        someone regenerated an output by hand after editing the script, which is
+        precisely when the staleness warning is worth having.
         """
         lock = self.lock
         if not lock.is_file():
             return None, (), ()
 
-        recorded = _load_lock(lock, lock.stat().st_mtime).get(name)
+        lock_mtime = lock.stat().st_mtime
+        recorded = _load_lock(lock, lock_mtime).get(name)
         if recorded is None:
             return None, (), ()
 
@@ -242,7 +254,7 @@ class Project:
             return None
 
         spec = self._stage_spec(names[0])
-        current, changed, deps = self._freshness(names[0])
+        current, changed, deps = self._freshness(names[0], spec)
         return Stage(
             name=names[0],
             kind=spec.get("kind"),

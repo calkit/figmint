@@ -496,6 +496,15 @@ def watch_targets(paths: list[Path]) -> dict[Path, str]:
             targets[resolved] = str(path)
         report = inspect_document(path)
         project = calkit_mod.project_for(Path(path))
+        if project:
+            # The panel's verdict is read out of these, so a change to either
+            # changes what the preview should say — even when no component byte
+            # moves. Running the pipeline updates `dvc.lock` and nothing else
+            # when a script edit does not alter its output, and without this the
+            # preview would sit there reporting the stage as stale forever.
+            for meta in (project.lock, project.config):
+                if meta.is_file():
+                    targets.setdefault(meta.resolve(), meta.name)
         for component in report.components:
             if component.resolved:
                 targets[component.resolved.resolve()] = component.label

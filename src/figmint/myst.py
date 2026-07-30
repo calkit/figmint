@@ -2,7 +2,7 @@
 
 MyST already embeds `figures/composite.drawio.svg` perfectly well. What it
 cannot do is answer the questions a reader of a research document actually has:
-where did each panel come from, is any of it machine-generated, and is the
+where did each component come from, is any of it machine-generated, and is the
 picture still consistent with the files it was built from. That information
 exists — it is in the diagram and in `calkit.yaml` — but nothing carries it into
 the rendered document, so it stops at the command line.
@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -143,7 +142,7 @@ def source_word(component: ComponentReport) -> str:
     """The "Source" column: the file on disk, against whatever produces it.
 
     Separate from the "In figure" column because they are separate questions and
-    can disagree — which is exactly the case worth showing. A panel embedded
+    can disagree — which is exactly the case worth showing. A component embedded
     faithfully from a file that itself needs regenerating is up to date in one
     sense and out of date in the one that matters.
     """
@@ -162,8 +161,8 @@ def embedded_word(component: ComponentReport) -> str:
 
     A faithful copy of a file that itself needs regenerating does not earn a
     green tick. The comparison genuinely passed, but a ✅ in a row whose
-    provenance is broken reads as "this panel is fine" — which is the opposite
-    of what the rest of the row says. The mark tracks whether the panel can be
+    provenance is broken reads as "this component is fine" — the opposite of
+    what the rest of the row says. The mark tracks whether the component can be
     trusted, and the words stay precise about what was actually compared.
     """
     if component.state is SourceState.OK and component.upstream_stale:
@@ -201,7 +200,7 @@ def component_row(component: ComponentReport) -> dict[str, Any]:
 def provenance_table(report: FigureReport) -> dict[str, Any]:
     return table(
         row(
-            cell(strong("Panel"), header=True),
+            cell(strong("Component"), header=True),
             cell(strong("Provenance"), header=True),
             # Two freshness columns, because there are two ways to be out of
             # date and one can be fine while the other is not.
@@ -225,10 +224,11 @@ def headline(report: FigureReport) -> tuple[str, str]:
         names = ", ".join(c.label for c in stale)
         return (
             "danger",
-            f"Out of date — {len(stale)} panel(s) changed since this was built: {names}",
+            f"Out of date — {len(stale)} component(s) changed since this was "
+            f"built: {names}",
         )
 
-    # A panel can match its file exactly and still be out of date, because the
+    # A component can match its file exactly and still be out of date, because
     # file itself is the output of a stage that has not been re-run. Nothing
     # about the figure looks wrong in that case, which is why it needs saying.
     upstream = report.upstream_stale
@@ -245,15 +245,12 @@ def headline(report: FigureReport) -> tuple[str, str]:
     if violations:
         return (
             "warning",
-            f"{len(violations)} panel(s) below the project's `{report.policy.require.slug}` bar",
+            f"{len(violations)} component(s) below the project's "
+            f"`{report.policy.require.slug}` bar",
         )
 
     n = len(report.components)
-    return (
-        "note",
-        f"{n} panel(s), nothing out of date — weakest provenance: "
-        f"{report.weakest.slug}",
-    )
+    return "note", f"{n} component(s), everything up to date"
 
 
 def editable_source(target: Path) -> Path:
@@ -271,21 +268,12 @@ def editable_source(target: Path) -> Path:
     return target
 
 
-def edit_command_for(target: Path) -> str:
-    """The command that opens this diagram, in this project's idiom."""
-    makefile = Path.cwd() / "Makefile"
+def shown_path(target: Path) -> str:
+    """The source path, as someone would type it."""
     try:
-        if makefile.is_file() and re.search(
-            r"^edit:", makefile.read_text(encoding="utf-8"), re.MULTILINE
-        ):
-            return "make edit"
-    except OSError:
-        pass
-    try:
-        shown = target.relative_to(Path.cwd())
+        return target.relative_to(Path.cwd()).as_posix()
     except ValueError:
-        shown = target
-    return f"drawio {shown}"
+        return str(target)
 
 
 def action_paragraph(
@@ -304,19 +292,21 @@ def action_paragraph(
             # navigates to the URL and shows a blank page. The endpoint answers
             # 204, so clicking it opens the editor without moving the reader
             # off the document.
-            try:
-                relative = target.relative_to(Path.cwd()).as_posix()
-            except ValueError:
-                relative = str(target)
             actions.append(
-                link(f"{opener}?path={quote(relative)}", "✎ Open in draw.io")
+                link(f"{opener}?path={quote(shown_path(target))}", "✎ Open in draw.io")
             )
         else:
-            # No opener running, so any link would be dead. A published build
-            # lands here, and a command someone can run beats a link that goes
-            # nowhere.
-            actions.append(text("Edit: "))
-            actions.append(code(edit_command_for(target)))
+            # Nothing to click, so name the file instead.
+            #
+            # Deliberately not a markdown link to the source: MyST resolves a
+            # relative link to a project file by copying it into the build under
+            # a content-hashed name, so the link would hand the reader a
+            # duplicate. Editing that duplicate is lost work — a worse outcome
+            # than having no link at all. A path someone can open themselves
+            # makes no promise it cannot keep, and unlike a command it does not
+            # assume this project has a Makefile.
+            actions.append(text("Source: "))
+            actions.append(code(shown_path(target)))
 
     if report.upstream_stale:
         # Re-embedding would faithfully copy an out-of-date file, so the
