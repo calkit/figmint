@@ -83,8 +83,8 @@ stages:
       size: 4161146
     - path: index.md
       hash: md5
-      md5: 63a15a8262b4e403607640350c12ba20
-      size: 9485
+      md5: 62af5fa6425d24e9793f30b99ca414c9
+      size: 10123
     - path: myst.yml
       hash: md5
       md5: 7977dffa2b20f6bdbd96ada0cecb4d05

@@ -103,7 +103,10 @@ class TestProtocol:
         assert main([]) == 0
         spec = json.loads(capsys.readouterr().out)
         assert spec["name"] == "figmint"
-        assert [d["name"] for d in spec["directives"]] == ["figmint"]
+        assert [d["name"] for d in spec["directives"]] == [
+            "figmint",
+            "figmint-provenance",
+        ]
 
     def test_the_spec_is_json_serialisable(self):
         # Enum values or Path objects would sneak past a unit test and fail only
@@ -130,6 +133,18 @@ class TestProtocol:
         )
         nodes = json.loads(result.stdout)
         assert find(nodes, "container")["kind"] == "figure"
+
+    def test_the_document_directive_answers_too(self, figure: Path, tmp_path: Path):
+        """Both directives go through the same executable, dispatched by name."""
+        result = subprocess.run(
+            [sys.executable, "-m", "figmint.myst", "--directive", "figmint-provenance"],
+            input=json.dumps({"options": {}, "node": {}, "arg": ""}),
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+            check=True,
+        )
+        assert find(json.loads(result.stdout), "admonition") is not None
 
     def test_an_unknown_request_fails_loudly(self, monkeypatch, capsys):
         monkeypatch.setattr("sys.stdin", io.StringIO("{}"))

@@ -488,9 +488,211 @@ SPEC: dict[str, Any] = {
                 },
             },
             "body": {"type": "parsed", "doc": "The caption."},
-        }
+        },
+        {
+            "name": "figmint-provenance",
+            "doc": (
+                "Summarise the provenance of the whole document: every tracked "
+                "figure, what produced it, and what it ultimately rests on."
+            ),
+            "arg": {
+                "type": "string",
+                "doc": (
+                    "The document this is about. Inferred from the pipeline "
+                    "when omitted."
+                ),
+            },
+            "options": {
+                "graph": {
+                    "type": "string",
+                    "doc": "Render the combined graph. Defaults to true.",
+                },
+                "graph-detail": {"type": "string", "doc": "low, medium, high."},
+                "table": {"type": "boolean", "doc": "Show the figure table."},
+            },
+            "body": {"type": "parsed", "doc": "Optional lead-in text."},
+        },
     ],
 }
+
+
+def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """The document as a composite, one level up from a figure.
+
+    A published document is a composite of artifacts in the same sense a figure
+    is, several stages deep. Everything needed to say so is already computed per
+    figure; this collects it.
+    """
+    from . import formats
+    from .calkit import find_project
+    from .graph import GraphUnavailable, document_graph, project as project_graph
+    from .graph import to_mermaid
+
+    options = data.get("options") or {}
+    cwd = Path.cwd()
+    root = find_project(cwd) or cwd
+
+    documents = sorted(
+        candidate
+        for candidate in root.rglob("*")
+        if candidate.is_file()
+        and formats.is_document(candidate)
+        and not any(
+            part in {".git", "node_modules", "_build", ".build", ".venv"}
+            for part in candidate.parts
+        )
+    )
+
+    # An authored `.drawio` beside its rendered `.drawio.svg` is a source, not a
+    # published figure. Listing both says the document has two figures and
+    # reports the source as stale, which it always is — it holds the embedded
+    # copies from before the last reimport, by design.
+    rendered = {d for d in documents if d.name.endswith(".drawio.svg")}
+    sources = {d.with_name(d.name[: -len(".svg")]) for d in rendered}
+
+    reports = []
+    for document in documents:
+        if document in sources:
+            continue
+        report = inspect_document(document)
+        if not report.error and report.components:
+            reports.append((document, report))
+
+    if not reports:
+        return [
+            admonition(
+                "warning",
+                "No tracked figures found in this project",
+            )
+        ]
+
+    children: list[dict[str, Any]] = []
+    if as_bool(options.get("table")):
+        children.append(document_table(root, reports))
+
+    unaccounted: list[str] = []
+    for _, report in reports:
+        for path in report.unaccounted_inputs:
+            if path not in unaccounted:
+                unaccounted.append(path)
+    if unaccounted:
+        detail: list[dict[str, Any]] = [strong("Unaccounted input data: ")]
+        for index, path in enumerate(unaccounted):
+            if index:
+                detail.append(text(", "))
+            detail.append(code(path))
+        detail.append(
+            text(". Nothing in the project says where these came from.")
+        )
+        children.append(paragraph(*detail))
+
+    if as_bool(options.get("graph")):
+        page = _page_path(data, root)
+        try:
+            graph = document_graph(root, [d for d, _ in reports], page)
+            view = project_graph(
+                graph,
+                preset="figure",
+                detail=str(options.get("graph-detail") or "medium"),
+            )
+            if view.empty:
+                raise GraphUnavailable("no relationships to show")
+            children.append(mermaid(to_mermaid(view, direction="LR")))
+        except GraphUnavailable as exc:
+            children.append(paragraph(emphasis(f"Provenance graph unavailable: {exc}")))
+        except Exception as exc:  # noqa: BLE001
+            children.append(paragraph(emphasis(f"Provenance graph failed: {exc}")))
+
+    stale = [d.name for d, r in reports if r.stale]
+    unpublishable = [d.name for d, r in reports if not r.publishable]
+    if unpublishable:
+        kind, title = "danger", f"{len(unpublishable)} figure(s) below the policy"
+    elif stale:
+        kind, title = "danger", f"{len(stale)} figure(s) out of date: {', '.join(stale)}"
+    elif unaccounted:
+        kind, title = "warning", "Provenance chain incomplete"
+    else:
+        kind, title = "note", f"{len(reports)} tracked figure(s), everything up to date"
+
+    return [admonition(kind, title, *children, dropdown=(kind == "note"))]
+
+
+#: Document sources a pipeline stage might consume.
+_PAGE_SUFFIXES = (".md", ".myst.md", ".qmd", ".smd", ".tex", ".ipynb")
+
+
+def _page_path(data: dict[str, Any], root: Path) -> Path | None:
+    """Which document this summary is about.
+
+    MyST does not tell an executable directive which file it is in — the payload
+    carries `type`, `name`, `value`, `position`, and `children`, and nothing
+    else. So the page is identified the way the rest of figmint identifies
+    things: by asking the pipeline. A stage that consumes a document source is
+    the stage that builds the document, and its input is the page.
+
+    That is a better answer than the one MyST could have given, because it is
+    the *declared* relationship rather than a filename — and it is the chain the
+    summary is trying to show.
+    """
+    explicit = (data.get("arg") or "").strip()
+    if explicit:
+        return root / explicit
+
+    from .calkit import _stage_input_paths, project_for
+
+    project_ = project_for(root)
+    if project_ is None:
+        return None
+
+    candidates: list[str] = []
+    for _, spec in (project_._stages() or {}).items():
+        if not isinstance(spec, dict):
+            continue
+        paths, _unused = _stage_input_paths(spec.get("inputs"))
+        for path in paths:
+            if path.lower().endswith(_PAGE_SUFFIXES) and path not in candidates:
+                candidates.append(path)
+
+    # Only when it is unambiguous. Guessing between two documents would put the
+    # wrong one at the top of somebody's provenance chain.
+    return root / candidates[0] if len(candidates) == 1 else None
+
+
+def document_table(root: Path, reports) -> dict[str, Any]:
+    rows = [
+        row(
+            cell(strong("Figure"), header=True),
+            cell(strong("Components"), header=True),
+            cell(strong("Weakest"), header=True),
+            cell(strong("State"), header=True),
+        )
+    ]
+    for document, report in reports:
+        try:
+            shown = document.resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            shown = document.name
+        if report.behind_source:
+            state = "⚠️ behind its source"
+        elif report.stale:
+            state = "⚠️ a component changed"
+        elif report.upstream_stale:
+            state = "⚠️ needs regenerating"
+        else:
+            state = "✅ up to date"
+        rows.append(
+            row(
+                cell(code(shown)),
+                cell(text(str(len(report.components)))),
+                cell(
+                    text(
+                        f"{LEVEL_MARK[report.weakest]} {report.weakest.slug}"
+                    )
+                ),
+                cell(text(state)),
+            )
+        )
+    return table(*rows)
 
 
 def caption_children(node: dict[str, Any]) -> list[dict[str, Any]]:
@@ -601,6 +803,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if kind == "--directive" and name == "figmint":
         json.dump(run_directive(payload), sys.stdout)
+        return 0
+
+    if kind == "--directive" and name == "figmint-provenance":
+        json.dump(document_directive(payload), sys.stdout)
         return 0
 
     # Anything else is a mystmd/figmint version mismatch rather than a user

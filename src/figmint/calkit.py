@@ -404,6 +404,24 @@ class Project:
             deps=deps,
         )
 
+    def stages_consuming(self, path: str) -> tuple[str, ...]:
+        """Stages that declare `path` among their inputs.
+
+        The inverse of `stage_for`. A document is not usually anybody's declared
+        *output* — the stage that builds a MyST site deliberately has none — so
+        the only way to place it in the pipeline is by what consumes it.
+        """
+        stages = self._stages()
+        target = path.lstrip("./")
+        found = []
+        for name, spec in stages.items():
+            if not isinstance(spec, dict):
+                continue
+            paths, _ = _stage_input_paths(spec.get("inputs"))
+            if any(p.lstrip("./") == target for p in paths):
+                found.append(str(name))
+        return tuple(sorted(found))
+
     def unaccounted_inputs(self, stage: str) -> tuple[str, ...]:
         """Inputs the pipeline consumes but nothing in the project accounts for.
 

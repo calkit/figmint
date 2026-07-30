@@ -122,12 +122,19 @@ class TestVocabulary:
 
 
 class TestProjection:
-    def test_auto_picks_data_flow_when_a_generation_edge_exists(self, graph):
-        assert project(graph).preset == "data-flow"
+    def test_auto_picks_the_figure_view_when_data_flows(self, graph):
+        """`figure` leads the auto order; it is the question this tool answers."""
+        assert project(graph).preset == "figure"
 
     def test_auto_falls_through_to_dependencies(self, graph):
         graph.edges = [e for e in graph.edges if e.kind not in ("Generated", "DerivedInto")]
         assert project(graph).preset == "software-dependencies"
+
+    def test_auto_prefers_figure_over_data_flow(self, graph):
+        """They share an edge table, so order decides — and figure keeps data."""
+        from figmint.graph import AUTO_PRESETS
+
+        assert AUTO_PRESETS.index("figure") < AUTO_PRESETS.index("data-flow")
 
     def test_auto_falls_back_to_full(self, graph):
         graph.edges = [e for e in graph.edges if e.kind == STRUCTURE_EDGE_KIND]
@@ -272,3 +279,35 @@ class TestDirectiveOption:
         node = graph_block(report, tmp_path / "f.drawio", "auto", "medium")
         assert node["type"] == "paragraph"
         assert "unavailable" in str(node).lower()
+
+
+class TestFigurePreset:
+    """figmint's one deliberate divergence from Stencila's projection policy."""
+
+    def test_data_flow_hides_the_dataset(self, graph):
+        """Stencila's rule, and it is right for its original setting."""
+        graph.edges.append(FakeEdge("datatable:data/raw.csv", "code:scripts/plot.py", "ReadBy"))
+        graph.nodes.append(FakeNode("datatable:data/raw.csv", {"type": "Datatable", "name": "raw.csv"}))
+        view = project(graph, preset="data-flow", detail="medium")
+        assert "datatable:data/raw.csv" not in {n.id for n in view.nodes}
+
+    def test_figure_keeps_it(self, graph):
+        """A figure has one or two inputs, and the data is the point of it."""
+        graph.edges.append(FakeEdge("datatable:data/raw.csv", "code:scripts/plot.py", "ReadBy"))
+        graph.nodes.append(FakeNode("datatable:data/raw.csv", {"type": "Datatable", "name": "raw.csv"}))
+        view = project(graph, preset="figure", detail="medium")
+        assert "datatable:data/raw.csv" in {n.id for n in view.nodes}
+
+    def test_figure_still_hides_symbols(self, graph):
+        """Keeping the dataset must not bring `HERE` and `out` back with it."""
+        view = project(graph, preset="figure", detail="medium")
+        assert not any(n.kind == "symbol" for n in view.nodes)
+
+    def test_figure_shares_the_data_flow_edge_table(self, graph):
+        """It is data-flow plus a filter change, not a new relationship set."""
+        assert {(e.source, e.target) for e in project(graph, preset="figure").edges} >= {
+            ("code:scripts/plot.py", "asset:figures/plot.svg")
+        }
+
+    def test_auto_prefers_figure(self, graph):
+        assert project(graph).preset == "figure"

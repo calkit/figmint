@@ -30,6 +30,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from .calkit import _is_project_source, _stage_input_paths
+
 # --------------------------------------------------------------------------
 # Vocabulary — ported from web/src/graphs/vocabulary.ts
 # --------------------------------------------------------------------------
@@ -63,8 +65,21 @@ EDGE_PRESETS_BY_KIND: dict[str, tuple[str, ...]] = {
     "Pins": ("software-dependencies",),
 }
 
-#: The order `auto` tries, most common authoring question first.
-AUTO_PRESETS = ("data-flow", "software-dependencies", "citations", "reactivity")
+#: The order `auto` tries, most common authoring question first. `figure` leads,
+#: because it is the question this tool exists to answer.
+AUTO_PRESETS = ("figure", "data-flow", "software-dependencies", "citations", "reactivity")
+
+#: figmint's own preset, and the one deliberate divergence from Stencila's
+#: policy. `figure` shows exactly what `data-flow` shows — it shares the edge
+#: table — but keeps datatable nodes that `data-flow` hides at anything below
+#: `high` detail.
+#:
+#: That filter is right for its original setting, a document threaded with
+#: dataframes where every intermediate would swamp the view. It is wrong here.
+#: A figure has one or two inputs, and the dataset the figure is *of* is the
+#: most interesting node in the graph — hiding it leaves "a script made a
+#: picture", which the reader could already see.
+FIGURE_PRESET = "figure"
 
 #: Graph id namespace -> display category.
 _NAMESPACE_KINDS = {
@@ -246,6 +261,15 @@ def _include_for_detail(
     if preset in ("full", "reactivity", "citations") or detail == "high":
         return True
 
+    if preset == FIGURE_PRESET:
+        # Symbols stay hidden — `HERE`, `out` and friends are real edges and
+        # useless to a reader. Datatables stay visible; see FIGURE_PRESET.
+        return not _is_local_code_internal(
+            edge.source, node_kind(nodes_by_id.get(edge.source))
+        ) and not _is_local_code_internal(
+            edge.target, node_kind(nodes_by_id.get(edge.target))
+        )
+
     source_kind = node_kind(nodes_by_id.get(edge.source))
     target_kind = node_kind(nodes_by_id.get(edge.target))
     source_internal = _is_local_code_internal(edge.source, source_kind)
@@ -283,7 +307,8 @@ def _include_primary(
         return False
     if preset == "reactivity":
         return _is_reactive(edge, nodes_by_id)
-    if preset != "full" and preset not in EDGE_PRESETS_BY_KIND.get(edge.kind, ()):
+    lookup = "data-flow" if preset == FIGURE_PRESET else preset
+    if preset != "full" and lookup not in EDGE_PRESETS_BY_KIND.get(edge.kind, ()):
         return False
     return _include_for_detail(edge, preset, detail, nodes_by_id)
 
@@ -478,6 +503,113 @@ class _Merged:
     edges: list[Any] = field(default_factory=list)
 
 
+#: Extensions Stencila models as tabular data. Matching its namespace keeps a
+#: figmint-supplied node identical to one the analyzer would have produced.
+_TABULAR = (".csv", ".tsv", ".parquet", ".arrow", ".feather", ".xlsx")
+
+
+@dataclass
+class _SyntheticNode:
+    """A node figmint knows about that Stencila's analysis did not find."""
+
+    id: str
+    node: dict[str, Any]
+
+
+def _input_node_id(path: str) -> str:
+    namespace = "datatable" if path.lower().endswith(_TABULAR) else "file"
+    return f"{namespace}:{path}"
+
+
+def _augment_from_calkit(merged, report, project_, root: Path) -> None:
+    """Add the edges figmint can prove and static analysis cannot see.
+
+    Stencila derives data flow by reading the source, which works when a script
+    names its files literally and fails the moment one composes a path — 
+    `HERE / "data" / x` is beyond constant folding, and that is ordinary Python.
+    The example's own plotting script defeats it, so the graph came out saying
+    "a script made a picture" while omitting the dataset the picture is *of*.
+
+    figmint does not have to infer any of this. `calkit.yaml` declares the
+    stage's inputs and outputs, and `dvc.lock` records that it ran with them.
+    That is stronger evidence than static analysis, so it is added here rather
+    than hoped for — as `Declared`, which is what it is.
+    """
+    if project_ is None:
+        return
+
+    existing_nodes = {n.id for n in merged.nodes}
+    existing_edges = {(e.source, e.target, e.kind) for e in merged.edges}
+
+    def add_node(node_id: str, payload: dict[str, Any]) -> None:
+        if node_id not in existing_nodes:
+            existing_nodes.add(node_id)
+            merged.nodes.append(_SyntheticNode(node_id, payload))
+
+    def add_edge(source: str, target: str, kind: str) -> None:
+        key = (source, target, kind)
+        if key not in existing_edges:
+            existing_edges.add(key)
+            merged.edges.append(ViewEdge(source, target, kind))
+
+    # The figure itself. Stencila graphs an *asset*, and a composite is several
+    # assets, so without this the graph shows one panel's ancestry and never the
+    # thing on the page — including an imported panel with no stage, which has
+    # no chain of its own but is still part of the picture.
+    document_id = f"asset:{report.document.name}"
+    add_node(
+        document_id,
+        {"type": "ImageObject", "name": report.document.name, "path": str(report.document)},
+    )
+
+    for component in report.components:
+        if not component.origin:
+            continue
+        asset_id = f"asset:{component.origin}"
+        if asset_id not in existing_nodes:
+            add_node(
+                asset_id,
+                {"type": "ImageObject", "name": Path(component.origin).name,
+                 "path": component.origin},
+            )
+        add_edge(asset_id, document_id, "UsedBy")
+
+        if component.stage is None:
+            continue
+
+        stage = project_.stage_for(component.resolved) if component.resolved else None
+        if stage is None:
+            continue
+
+        code_id = f"code:{stage.entrypoint}" if stage.entrypoint else None
+        if code_id:
+            add_node(
+                code_id,
+                {
+                    "type": "SoftwareSourceCode",
+                    "name": Path(stage.entrypoint).name,
+                    "path": stage.entrypoint,
+                },
+            )
+            add_edge(code_id, asset_id, "Generated")
+
+        for dep in stage.deps:
+            if dep == stage.entrypoint or _is_project_source(dep):
+                continue
+            node_id = _input_node_id(dep)
+            add_node(
+                node_id,
+                {
+                    "type": "Datatable"
+                    if node_id.startswith("datatable:")
+                    else "File",
+                    "name": Path(dep).name,
+                    "path": dep,
+                },
+            )
+            add_edge(node_id, code_id or asset_id, "ReadBy")
+
+
 def figure_graph(report, root: Path, *, profile: str = "public") -> Any:
     """One graph for a whole figure, merged from its components.
 
@@ -541,6 +673,8 @@ def figure_graph(report, root: Path, *, profile: str = "public") -> Any:
 
     if not built:
         raise GraphUnavailable("no components with files on disk")
+
+    _augment_from_calkit(merged, report, project_, root)
     return merged
 
 
@@ -557,3 +691,110 @@ def figure_mermaid(
     if view.empty:
         raise GraphUnavailable("no relationships to show at this preset")
     return to_mermaid(view, direction=direction)
+
+
+# --------------------------------------------------------------------------
+# Document-level provenance
+# --------------------------------------------------------------------------
+
+
+def document_graph(
+    root: Path, documents: Iterable[Path], page: Path | None = None
+) -> Any:
+    """The provenance of a whole document, not one figure.
+
+    A published document is a composite in the same sense a figure is: several
+    artifacts, each with its own chain, several stages deep. The difference is
+    that the document is usually nobody's declared *output* — a stage that
+    builds a MyST site has none on purpose, because the builder emits fresh node
+    keys and would never hash the same twice — so it is placed in the pipeline
+    by what consumes it rather than by what produces it.
+
+    Every figure's graph is merged, then the page is added above them, then
+    whatever else the stage that reads the page also reads.
+    """
+    from . import calkit as calkit_mod
+    from .report import inspect_document
+
+    project_ = calkit_mod.project_for(root)
+    merged = _Merged()
+    seen_nodes: set[str] = set()
+    seen_edges: set[tuple[str, str, str]] = set()
+
+    def absorb(graph: Any) -> None:
+        for node in graph.nodes:
+            if node.id not in seen_nodes:
+                seen_nodes.add(node.id)
+                merged.nodes.append(node)
+        for edge in graph.edges:
+            key = (edge.source, edge.target, edge.kind)
+            if key not in seen_edges:
+                seen_edges.add(key)
+                merged.edges.append(edge)
+
+    figures: list[Path] = []
+    for document in documents:
+        report = inspect_document(document)
+        if report.error or not report.components:
+            continue
+        try:
+            absorb(figure_graph(report, root))
+        except GraphUnavailable:
+            continue
+        figures.append(document)
+
+    if page is None:
+        if not figures:
+            raise GraphUnavailable("no figures with provenance to summarise")
+        return merged
+
+    try:
+        relative = page.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        relative = page.name
+    page_id = f"document:{relative}"
+    if page_id not in seen_nodes:
+        seen_nodes.add(page_id)
+        merged.nodes.append(
+            _SyntheticNode(page_id, {"type": "Article", "name": page.name, "path": relative})
+        )
+
+    for figure in figures:
+        try:
+            figure_rel = figure.resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            figure_rel = figure.name
+        source = f"asset:{Path(figure_rel).name}"
+        if source not in seen_nodes:
+            source = f"asset:{figure_rel}"
+        key = (source, page_id, "IncludedBy")
+        if source in seen_nodes and key not in seen_edges:
+            seen_edges.add(key)
+            merged.edges.append(ViewEdge(source, page_id, "IncludedBy"))
+
+    # Whatever else the stage that reads this page also reads — configuration,
+    # bibliography, anything declared alongside it.
+    if project_ is not None:
+        for stage_name in project_.stages_consuming(relative):
+            spec = project_._stage_spec(stage_name)
+            paths, _ = _stage_input_paths(spec.get("inputs"))
+            for dep in paths:
+                clean = dep.lstrip("./")
+                if clean == relative or _is_project_source(clean):
+                    continue
+                node_id = _input_node_id(clean)
+                if node_id in seen_nodes or f"asset:{clean}" in seen_nodes:
+                    continue
+                seen_nodes.add(node_id)
+                merged.nodes.append(
+                    _SyntheticNode(
+                        node_id,
+                        {"type": "File", "name": Path(clean).name, "path": clean},
+                    )
+                )
+                key = (node_id, page_id, "IncludedBy")
+                if key not in seen_edges:
+                    seen_edges.add(key)
+                    merged.edges.append(ViewEdge(node_id, page_id, "IncludedBy"))
+
+    return merged

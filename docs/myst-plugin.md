@@ -263,6 +263,64 @@ so in one line rather than failing the build or silently omitting the diagram �
 a figure with no graph and a figure whose graph could not be built are different
 situations.
 
+### Making the graph say anything useful
+
+Two things had to change before the graph was worth showing.
+
+**Static analysis loses the data input.** Stencila derives data flow by reading
+the source, and it does that well — `open("data/raw.csv")` produces a
+`datatable:data/raw.csv --ReadBy--> code` edge. But it cannot constant-fold
+`HERE / "data" / "performance.csv"`, and composing paths like that is ordinary
+Python. The example's own script defeats it, so the first graph said "a script
+made a picture" while omitting the dataset the picture is *of*.
+
+figmint does not have to infer this. `calkit.yaml` declares the stage's inputs
+and outputs and `dvc.lock` records that it ran with them — stronger evidence than
+static analysis — so those edges are added directly, as `Declared`.
+
+**Stencila's `data-flow` preset hides datatable nodes** at anything below `high`
+detail, and `high` brings symbols (`HERE`, `out`) back as noise. That rule is
+right for a document threaded with dataframes, where every intermediate would
+swamp the view. It is wrong for a figure, which has one or two inputs and where
+the dataset is the most interesting node. So figmint adds a `figure` preset:
+`data-flow`'s edge table, without the datatable filter. It leads the `auto`
+order.
+
+That is the only place figmint's projection deliberately disagrees with
+Stencila's.
+
+## The document's own provenance
+
+`:::{figmint-provenance}` does the same one level up. A published document is a
+composite of artifacts in the same sense a figure is, several stages deep:
+
+```mermaid
+graph LR
+  datatable_data_performance_csv[("performance.csv")] -->|"Read By"| code_scripts_plot_cp_py["plot_cp.py"]
+  code_scripts_plot_cp_py -->|"Generated"| asset_figures_cp_curve_svg("cp_curve.svg")
+  asset_figures_cp_curve_svg -->|"Used By"| asset_composite_drawio_svg("composite.drawio.svg")
+  asset_figures_turbine_png("turbine.png") -->|"Used By"| asset_composite_drawio_svg
+  asset_composite_drawio_svg -->|"Included By"| document_index_md["index.md"]
+  file_myst_yml("myst.yml") -->|"Included By"| document_index_md
+```
+
+It discovers every tracked figure under the project root, merges their graphs,
+and puts the page above them. Options: `:table:` for a per-figure summary,
+`:graph:`, `:graph-detail:`.
+
+**Identifying the page took a detour.** MyST does not tell an executable
+directive which file it is in — the payload carries `type`, `name`, `value`,
+`position`, and `children`, and nothing else. So the page is found the way the
+rest of figmint finds things: by asking the pipeline which stage consumes a
+document source. That is the better answer anyway, because it is the *declared*
+relationship rather than a filename, and it is exactly the chain the summary
+exists to show. An explicit argument overrides it, and ambiguity (two candidate
+documents) resolves to nothing rather than a guess.
+
+An authored `.drawio` sitting beside its rendered `.drawio.svg` is skipped: it is
+a source, not a published figure, and it is permanently "stale" by design because
+it holds the embedded copies from before the last reimport.
+
 ## Input data with no stated origin
 
 A figure can be `reproducible` in every component and still rest on a CSV that
