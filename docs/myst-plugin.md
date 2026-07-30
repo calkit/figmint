@@ -228,6 +228,41 @@ The link also resolves to the **authored** `.drawio` when one sits beside the
 rendered `.drawio.svg`. Editing a build artifact works right up until the next
 pipeline run overwrites it.
 
+## The provenance graph
+
+With `:graph:` the panel also carries a Mermaid diagram of where the figure came
+from:
+
+```markdown
+:::{figmint} figures/composite.drawio.svg
+:graph: true              # or: data-flow, software-dependencies, full
+:graph-detail: medium     # low | medium | high
+:::
+```
+
+```mermaid
+graph LR
+  asset_figures_cp_curve_svg("cp_curve.svg")
+  code_scripts_plot_cp_py["plot_cp.py"]
+  code_scripts_plot_cp_py -->|"Generated"| asset_figures_cp_curve_svg
+```
+
+The graph comes from Stencila's SDK, which builds it per asset; figmint merges
+the per-component graphs and supplies each `source` from the Calkit stage,
+because the SDK does not infer one for a file subject and without it the graph is
+three nodes of directory containment.
+
+The *projection* — which relationships each view shows, that `PartOf` is
+scaffolding, how nodes are labelled — is ported from Stencila's TypeScript rather
+than invented, and the rendering is Mermaid because MyST draws it natively.
+`docs/stencila-integration.md` explains why not the Cytoscape component Stencila
+ships.
+
+`:graph:` requires the Stencila SDK, which is optional. Without it the panel says
+so in one line rather than failing the build or silently omitting the diagram —
+a figure with no graph and a figure whose graph could not be built are different
+situations.
+
 ## Input data with no stated origin
 
 A figure can be `reproducible` in every component and still rest on a CSV that
@@ -283,6 +318,12 @@ produced a confident and completely wrong account of a bug that was not there.
 - **The verdict is a snapshot.** A published build bakes the panel into HTML,
   correct as of the build. A reader opening the page next week sees the state as
   of the build, not as of their visit. Only the live preview is reactive.
+- **The graph is only as good as Stencila's analysis.** For the example figure
+  it finds the script, the packages, and the generation edge — but not
+  `data/performance.csv`, because nothing in the script's static analysis links
+  the read to the output. figmint knows that dependency from `calkit.yaml`, so
+  the graph is currently *weaker* than the provenance table beside it. Feeding
+  figmint's own edges in is the obvious next step.
 - **One directive, no roles or transforms.** A transform could upgrade existing
   `:::{figure}` blocks automatically; a new directive was chosen so that opting
   in is explicit and a plain `figure` still means a plain figure.

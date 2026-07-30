@@ -117,6 +117,15 @@ def table(*rows: dict[str, Any]) -> dict[str, Any]:
     return {"type": "table", "children": list(rows)}
 
 
+def mermaid(value: str) -> dict[str, Any]:
+    """MyST parses ```{mermaid} into this node and draws it with no help from us."""
+    return {"type": "mermaid", "value": value}
+
+
+def emphasis(value: str) -> dict[str, Any]:
+    return {"type": "emphasis", "children": [text(value)]}
+
+
 def admonition(
     kind: str, title: str, *children: dict[str, Any], dropdown: bool = False
 ) -> dict[str, Any]:
@@ -359,11 +368,46 @@ def action_paragraph(
     return paragraph(*actions) if actions else None
 
 
-def render(report: FigureReport, source: Path, *, editor: bool) -> dict[str, Any]:
+def graph_block(
+    report: FigureReport, source: Path, preset: str, detail: str
+) -> dict[str, Any]:
+    """The provenance graph, or a line saying why there is not one.
+
+    Only reached when the author asked for it, so a reason is more useful than
+    silence — a missing optional dependency should not look like a figure with
+    no provenance.
+    """
+    from .graph import GraphUnavailable, figure_mermaid
+
+    root = source.parent
+    from . import calkit as calkit_mod
+
+    project_root = calkit_mod.find_project(root) or Path.cwd()
+    try:
+        return mermaid(
+            figure_mermaid(report, project_root, preset=preset, detail=detail)
+        )
+    except GraphUnavailable as exc:
+        return paragraph(emphasis(f"Provenance graph unavailable: {exc}"))
+    except Exception as exc:  # noqa: BLE001 - never fail a document build over a diagram
+        return paragraph(emphasis(f"Provenance graph failed: {exc}"))
+
+
+def render(
+    report: FigureReport,
+    source: Path,
+    *,
+    editor: bool,
+    graph_preset: str | None = None,
+    graph_detail: str = "medium",
+) -> dict[str, Any]:
     kind, title = headline(report)
     children: list[dict[str, Any]] = []
     if report.components:
         children.append(provenance_table(report))
+
+    if graph_preset:
+        children.append(graph_block(report, source, graph_preset, graph_detail))
 
     # Said in the body as well as the headline, because when something else is
     # wrong the headline is spent on that and this would otherwise vanish.
@@ -429,6 +473,19 @@ SPEC: dict[str, Any] = {
                     "type": "boolean",
                     "doc": "Show an 'open in draw.io' link. Defaults to true.",
                 },
+                "graph": {
+                    "type": "string",
+                    "doc": (
+                        "Render the provenance graph as Mermaid. `true` picks a "
+                        "view automatically; or name one: data-flow, "
+                        "software-dependencies, citations, reactivity, full. "
+                        "Requires the Stencila SDK."
+                    ),
+                },
+                "graph-detail": {
+                    "type": "string",
+                    "doc": "low, medium (default), or high.",
+                },
             },
             "body": {"type": "parsed", "doc": "The caption."},
         }
@@ -447,6 +504,31 @@ def caption_children(node: dict[str, Any]) -> list[dict[str, Any]]:
         if child.get("type") == "mystDirectiveBody":
             return child.get("children") or []
     return []
+
+
+#: Presets the projection understands, plus `auto`.
+GRAPH_PRESETS = (
+    "auto",
+    "full",
+    "data-flow",
+    "software-dependencies",
+    "citations",
+    "reactivity",
+)
+
+
+def graph_option(value: Any) -> str | None:
+    """`:graph:` takes a boolean or a preset name; None means do not render."""
+    if value is None or value is False:
+        return None
+    if value is True:
+        return "auto"
+    text_value = str(value).strip().lower()
+    if text_value in ("false", "no", "0", "off", ""):
+        return None
+    if text_value in ("true", "yes", "1", "on"):
+        return "auto"
+    return text_value if text_value in GRAPH_PRESETS else "auto"
 
 
 def as_bool(value: Any, default: bool = True) -> bool:
@@ -488,7 +570,15 @@ def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
 
     if as_bool(options.get("provenance")):
         report = inspect_document(source)
-        out.append(render(report, source, editor=as_bool(options.get("editor"))))
+        out.append(
+            render(
+                report,
+                source,
+                editor=as_bool(options.get("editor")),
+                graph_preset=graph_option(options.get("graph")),
+                graph_detail=str(options.get("graph-detail") or "medium"),
+            )
+        )
 
     return out
 

@@ -94,39 +94,84 @@ control, not a verbosity one. At `public` the author node carries
 A figure published from a repository should almost certainly stay at `public`.
 Anything else leaks contributor email addresses into an artifact that travels.
 
-### Rendering it — the gap
+### Rendering it
 
-The user-facing goal is to put the graph *into* the figure panel that the MyST
-plugin renders. Stencila can render a graph: `rust/graph/src/dot.rs` has
-`to_dot(&GraphView)`, emitting Graphviz DOT with a projected view (`preset`,
-`detail`).
+Stencila has **two** graph renderers, and they are not equally useful here.
 
-**It is not reachable from Python.** The native surface is exactly:
+**Graphviz DOT**, in Rust: `rust/graph/src/dot.rs` exposes `to_dot(&GraphView)`.
 
-```
-_stencila.graph        → prepare
-_stencila.credentials  → init, inspect, sign_prepared, verify
-```
+**Cytoscape**, in TypeScript, and this is the real one. `web/src/views/graph.ts`
+defines a `<stencila-graph-view>` Lit element backed by cytoscape.js, and the
+interesting part is not the drawing but `web/src/graphs/project.ts`:
 
-So there are three options, in rough order of preference:
+| Concept | Values |
+| --- | --- |
+| preset | `auto`, `full`, `data-flow`, `software-dependencies`, `citations`, `reactivity` |
+| detail | `low`, `medium`, `high` |
+| layout | `breadthfirst`, `cose`, `grid`, `circle` |
 
-1. **Render to Mermaid in figmint.** MyST renders ```` ```mermaid ```` blocks
-   natively (see `docs/myst-plugin.md`), so a `Graph` → Mermaid function needs no
-   new dependency, no Graphviz binary, and no build step. The `Graph` is plain
-   typed data — `nodes`, `edges`, `kind`, `evidence` — so this is a
-   straightforward projection. Filtering matters more than drawing: 9 nodes for a
-   one-script figure will not stay at 9 for a real composite, and the symbol-level
-   nodes are almost certainly too fine-grained for a reader.
-2. **Ask Stencila to expose `to_dot`.** One pyo3 binding on a function that
-   already exists. Better long-term — the projection presets are theirs to
-   define, and it keeps the rendering consistent with Stencila's own tooling —
-   but it needs an upstream change and a rebuild.
-3. **Render DOT ourselves and shell out to Graphviz.** Adds a system dependency
-   for a picture; hard to justify against option 1.
+Presets "describe the question a reader is asking of the graph"; `auto` picks the
+first useful one from the relationships actually present. `PartOf` is singled out
+as `STRUCTURE_EDGE_KIND` — containment, useful in some views and noise in most —
+and `vocabulary.ts` supplies human labels per node and edge kind.
 
-Recommendation: option 1 now, option 2 as an upstream request. They are not
-exclusive — a `to_dot` binding would slot in behind the same figmint-side
-interface.
+That is precisely the filtering problem worth worrying about, already solved and
+already thought through. A 9-node graph for a one-script figure will not stay at
+9 for a real composite, and the symbol-level nodes are too fine-grained for a
+reader.
+
+There is also `Format::Cytoscape` (`application/vnd.cytoscape.v3+json`), one of
+Stencila's *visualization* formats alongside Mermaid, Plotly, and VegaLite — the
+media type an `ImageObject` carries when it holds a spec rather than pixels. And
+`rust/convert/src/html_to_png.rs` knows how to wait for a cytoscape view to
+settle before screenshotting it, so a static raster path exists.
+
+#### Why figmint cannot just use it
+
+**The projection is TypeScript-only.** There is no Rust `Graph` → Cytoscape
+conversion — `rust/graph/src/` contains `dot.rs` and nothing else for rendering.
+The sole Python binding is `graph.prepare`. So the preset logic, the vocabulary,
+and the Cytoscape adapter are all on the far side of a language boundary from
+figmint.
+
+**The bundle is not self-contained.** `web/dist/views/graph.js` is 20 KB but
+imports sibling chunks — cytoscape itself, a decorators chunk, a theme chunk —
+totalling roughly 680 KB. Vendoring that into a MyST site is possible but is a
+real commitment, and it would have to be kept in step with the Stencila version
+that produced the graph.
+
+**MyST can host raw HTML, but script execution is unproven.** A `raw` node with
+`lang: html` does reach `_build/html/index.html` with an inline `<script>` intact
+— verified. Whether that script *executes* under MyST's React theme is not
+verified; inline scripts inserted through React's `dangerouslySetInnerHTML` do
+not run, and only a browser test would settle it. That check has not been done.
+
+**Mermaid needs none of this.** MyST parses a `{mermaid}` block into a
+first-class `mermaid` AST node that survives into the built HTML — verified. Zero
+extra JavaScript, no vendoring, no version coupling.
+
+#### Recommendation
+
+Unchanged in destination, better informed in route:
+
+1. **Render `Graph` → Mermaid in figmint**, but **port the projection's intent
+   rather than inventing filtering**. `project.ts` and `vocabulary.ts` are the
+   valuable artifacts here, not the Cytoscape adapter: which edge kinds belong in
+   which view, that `PartOf` is structural, and what each kind should be called.
+   Reimplementing ~200 lines of preset logic in Python is a smaller and more
+   honest cost than vendoring 680 KB of JS to avoid it.
+2. **Ask Stencila to expose the projection in Rust**, not just `to_dot`. If
+   `GraphView` projection moved behind a pyo3 binding, figmint could ask for
+   `preset="data-flow", detail="low"` and render the result — and the presets
+   would stay Stencila's to define, which is where they belong. This is the
+   upstream request worth making, and it is a larger one than a `to_dot` binding.
+3. **Cytoscape web component** only if figmint ever wants an *interactive* graph
+   in an HTML document, and only after testing whether MyST executes injected
+   scripts. Interactivity is worthless in the PDF that most of these figures are
+   ultimately for.
+4. **`html_to_png`** is the interesting one for print: a rasterised Cytoscape view
+   embedded as an image sidesteps both the bundling and the script-execution
+   questions. Untested, and it implies a headless browser in the pipeline.
 
 ## Credentials validation
 
@@ -248,11 +293,12 @@ knows into the graph rather than accepting the weaker inference.
 
 ## Where this leaves the integration
 
-Ordered by value-to-effort, all of it unstarted:
+Ordered by value-to-effort:
 
-1. **`Graph` → Mermaid**, rendered into the MyST panel behind an option
-   (`:graph: true`). Needs no new dependency at render time beyond the SDK, and
-   MyST draws it natively.
+1. ~~**`Graph` → Mermaid**, rendered into the MyST panel behind an option
+   (`:graph: true`).~~ **Done** — `src/figmint/graph.py` ports the projection
+   policy and renders Mermaid; `:graph:` and `:graph-detail:` are directive
+   options. Two things surfaced while building it, below.
 2. **Adopt `verify()`** for the credential axes figmint currently flattens, and
    surface `trusted` separately in the panel. The turbine image is the motivating
    case: valid, untrusted, and currently shown as neither.
@@ -261,6 +307,31 @@ Ordered by value-to-effort, all of it unstarted:
    merely declared.
 4. **Signing** last. figmint's `sign.py` works; the gain is `signing_mode`,
    `init()`, and the two-digest contract, not new capability.
+
+### What building it surfaced
+
+**Every graph names its own subject `asset:signed`.** Merging per-component
+graphs without renaming silently fuses two panels into one node — a composite
+figure would come out claiming its panels were the same file. `graph.subject`
+carries the distinguishing id (`asset:figures/cp_curve.svg`), so the merge
+rewrites `asset:signed` to that.
+
+**An optional dependency group cannot stay optional under `calkit run`.** `uv
+run` re-syncs the environment to the *default* groups, so a group installed with
+`uv sync --group stencila` is uninstalled the first time a pipeline stage runs
+through `calkit xenv`. The published document then loses its graph with no error
+anywhere — the panel's "SDK not installed" line is correct and completely
+unexplanatory. The example lists the group in `[tool.uv] default-groups` for that
+reason, which means the Rust build is not really optional once the graph is in
+use.
+
+**The graph misses the data dependency.** For the example figure, Stencila finds
+the script, its packages, and the `Generated` edge — but not
+`data/performance.csv`. Nothing in the static analysis links the CSV read to the
+output. figmint knows that edge from `calkit.yaml`, so as it stands the graph is
+*weaker* than the provenance table printed beside it. That makes item 3 below
+more valuable than it first looked: figmint has evidence the SDK cannot see, and
+the graph should carry it.
 
 The open question underneath all of it: figmint currently reads C2PA itself and
 would then read it two ways. That is tolerable while only the AI-disclosure walk

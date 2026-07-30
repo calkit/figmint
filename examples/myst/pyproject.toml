@@ -24,3 +24,27 @@ dependencies = [
 
 [tool.uv.sources]
 figmint = { path = "../..", editable = true }
+
+# The Stencila SDK, enabling `:graph:` on the figmint directive.
+#
+# In its own group because it compiles a slice of Stencila's Rust workspace —
+# several minutes on a cold cache — but listed in `default-groups` because it
+# has to be. `uv run` re-syncs the environment to the default groups, so a
+# non-default group is uninstalled the moment `calkit run` invokes a stage
+# through `calkit xenv`, and the published document silently loses its graph.
+#
+# Drop it from `default-groups` to make the example install fast again; the
+# panel then reports the graph as unavailable and nothing else changes.
+[dependency-groups]
+stencila = ["stencila", "stencila-types"]
+
+[tool.uv]
+default-groups = ["stencila"]
+
+[tool.uv.sources.stencila]
+path = "../../../stencila/python/stencila"
+editable = true
+
+[tool.uv.sources.stencila-types]
+path = "../../../stencila/python/stencila_types"
+editable = true

@@ -79,6 +79,26 @@ content-hashed name, so clicking it would hand the reader a duplicate — and
 editing that duplicate is lost work. Set `FIGMINT_EDITOR` to override what opens
 the file; otherwise it prefers `code -r` and falls back to `drawio`.
 
+## Optional: the provenance graph
+
+`index.md` sets `:graph: true` on the figure, which renders a Mermaid diagram of
+where it came from — script, packages, generation edge. That needs Stencila's
+Python SDK:
+
+```sh
+uv sync --group stencila
+```
+
+It is a separate group because installing it compiles a slice of Stencila's Rust
+workspace — minutes on a cold cache — but it is listed in `default-groups`,
+which it has to be: `uv run` re-syncs the environment to the default groups, so a
+non-default group is uninstalled the moment `calkit run` invokes a stage through
+`calkit xenv`, and the published document loses its graph without saying why.
+
+Drop `stencila` from `[tool.uv] default-groups` to make the example install fast
+again. The panel then reports the graph as unavailable and nothing else
+changes.
+
 ## What this example is demonstrating
 
 - **Provenance in the document, not just the terminal.** The `:::{figmint}`
