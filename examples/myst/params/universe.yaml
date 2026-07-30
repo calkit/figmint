@@ -1,0 +1,10 @@
+# Written by scripts/set_params.py from an ASTRA universe.
+# Declared as an input to the `fit-peak` stage, so DVC invalidates on change.
+universe: baseline
+fit_degree: 4
+peak_method: fit_grid_argmax
+tsr_min: 0.0
+options:
+  fit_degree: quartic
+  peak_method: fit_grid_argmax
+  tsr_min: no_cut

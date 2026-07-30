@@ -1,0 +1,6 @@
+id: peak_region
+description: Fit only the region around the peak, and solve for the stationary point analytically.
+decisions:
+  fit_degree: quartic
+  peak_method: fit_derivative_root
+  tsr_min: above_1_5

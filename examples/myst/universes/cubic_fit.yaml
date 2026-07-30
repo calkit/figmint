@@ -1,0 +1,6 @@
+id: cubic_fit
+description: A cubic fit — the option furthest from the default, moving lambda* to 2.93.
+decisions:
+  fit_degree: cubic
+  peak_method: fit_grid_argmax
+  tsr_min: no_cut

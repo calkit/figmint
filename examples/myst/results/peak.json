@@ -1,0 +1,8 @@
+{
+  "lambda_star": 2.7111,
+  "cp_star": 0.3691,
+  "fit_degree": 4,
+  "peak_method": "fit_grid_argmax",
+  "tsr_min": 0.0,
+  "n_points_fitted": 10
+}

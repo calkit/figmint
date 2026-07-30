@@ -32,6 +32,25 @@ pipeline:
         - path: figures/cp_curve.svg
           storage: git
 
+    # 1b. Locate the peak, under the decisions the selected universe made.
+    #
+    # `params/universe.yaml` is an ordinary declared input, which is the whole
+    # trick: ASTRA writes it, DVC hashes it, and changing a decision invalidates
+    # this stage and everything downstream without either tool knowing about the
+    # other. `calkit.yaml` never mentions ASTRA; `astra.yaml` names this stage.
+    fit-peak:
+      kind: python-script
+      script_path: scripts/fit_peak.py
+      environment: main
+      inputs:
+        - data/performance.csv
+        - params/universe.yaml
+      outputs:
+        - path: figures/cp_fit.svg
+          storage: git
+        - path: results/peak.json
+          storage: git
+
     # 2. Re-embed changed components into the diagram.
     #
     # The authored diagram and the published picture have to be two different
@@ -105,4 +124,5 @@ pipeline:
         - index.md
         - myst.yml
         - from_stage_outputs: render-figure
+        - from_stage_outputs: fit-peak
       always_run: true

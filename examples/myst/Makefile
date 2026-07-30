@@ -50,6 +50,26 @@ refresh:  ## Re-embed changed panels, then re-render the published picture
 	drawio -x -f svg --embed-diagram --yes -o $(RENDERED) $(HANDOFF)
 	@echo "refreshed $(RENDERED)"
 
+.PHONY: universe
+universe:  ## Select an ASTRA universe and rerun: make universe U=cubic_fit
+	@test -n "$(U)" || { echo "usage: make universe U=<id>   (see universes/)"; exit 1; }
+	@# Materialising a universe is the runner's job, not the spec's — `astra.yaml`
+	@# only says which stage produces what, and never how the decisions get there.
+	$(RUN) python scripts/set_params.py --universe $(U) \
+	  $$($(RUN) python -c "import yaml,sys; d=yaml.safe_load(open('universes/$(U).yaml'))['decisions']; \
+	     print(' '.join(f'--{k.replace(\"_\",\"-\")} {v}' for k,v in d.items()))")
+	$(MAKE) --no-print-directory -s run
+
+.PHONY: run
+run:  ## Run the whole pipeline
+	ck run
+
+.PHONY: universes
+universes:  ## List the available universes
+	@for f in universes/*.yaml; do \
+	  $(RUN) python -c "import yaml,sys; d=yaml.safe_load(open('$$f')); \
+	    print(f\"  {d['id']:<14} {d.get('description','')}\")"; done
+
 .PHONY: break
 break:  ## Change the data so the figure goes stale
 	@python3 -c "import pathlib; p=pathlib.Path('data/performance.csv'); \

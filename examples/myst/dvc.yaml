@@ -11,6 +11,22 @@ stages:
           persist: false
     desc: Automatically generated from the 'plot-cp' stage in 
       calkit.yaml. Changes made here will be overwritten.
+  fit-peak:
+    cmd: calkit xenv -n main --no-check -- python scripts/fit_peak.py
+    deps:
+      - scripts/fit_peak.py
+      - data/performance.csv
+      - params/universe.yaml
+      - uv.lock
+    outs:
+      - figures/cp_fit.svg:
+          cache: false
+          persist: false
+      - results/peak.json:
+          cache: false
+          persist: false
+    desc: Automatically generated from the 'fit-peak' stage in 
+      calkit.yaml. Changes made here will be overwritten.
   embed-figure:
     cmd: calkit xenv -n main --no-check -- figmint reimport 
       figures/composite.drawio -o .build/composite.drawio
@@ -55,6 +71,8 @@ stages:
       - myst.yml
       - uv.lock
       - figures/composite.drawio.svg
+      - figures/cp_fit.svg
+      - results/peak.json
     outs: []
     always_changed: true
     desc: Automatically generated from the 'build-site' stage in 

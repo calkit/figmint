@@ -1,0 +1,224 @@
+# ASTRA analysis for the cross-flow turbine example.
+#
+# Three layers, three questions, one seam each:
+#
+#   ASTRA   why is the number *this* number, and what else was defensible?
+#   Calkit  how is it run, in what environment, and what needs re-running?
+#   figmint which bytes are in the figure, where from, and are they current?
+#
+# ASTRA does not restate the pipeline. Every recipe is `calkit run <stage>`,
+# which already owns the stage graph, the environments, and the caching — the
+# same boundary figmint draws when it references a Calkit stage rather than
+# defining one. `calkit.yaml` never mentions ASTRA and `astra.yaml` never
+# restates a stage; either file stands alone.
+#
+# The seam is one file. `params/universe.yaml` holds the selected options and is
+# declared as an input to `fit-peak`, so DVC invalidates exactly the stages a
+# changed decision reaches. Materialising a universe into that file is the
+# *runner's* job, not the spec's — ASTRA never executes anything, and encoding
+# how to write the file here would bake one runner into the analysis. In this
+# project that runner is one Make target:
+#
+#     make universe U=cubic_fit
+#
+# which writes the params and calls `calkit run`.
+
+version: "0.0.12"
+name: "Cross-flow turbine performance"
+description: |
+  Locate the peak of the measured power coefficient curve, and publish it as a
+  figure and a number in a MyST document.
+
+  The analysis is deliberately small, and that is the point: with ten
+  measurements and one polynomial fit there are already three choices that move
+  the headline result, and none of them were visible before this file existed.
+  Fitting a cubic rather than a quartic moves lambda* from 2.71 to 2.93 and peak
+  Cp from 0.369 to 0.318 — a 14% swing in the number an engineer would quote,
+  produced by a literal `4` in a code cell.
+
+  Kept as a single flat analysis. There are five pipeline stages, but one
+  objective, one shared decision space, and one end product; splitting by stage
+  would produce zero-decision sub-analyses that only pass data through.
+
+inputs:
+  - id: performance
+    type: data
+    label: "Measured performance"
+    description: |
+      Power coefficient against tip speed ratio, ten points, from towing-tank
+      measurements. Synthetic for this example. Declared in `calkit.yaml` under
+      `datasets:` with an `imported_from`, which is what stops it being a file
+      that simply appeared — `figmint check` warns when that declaration is
+      missing.
+
+  - id: schematic
+    type: data
+    label: "Turbine schematic"
+    description: |
+      An illustrative diagram of a horizontal-axis machine, generated with
+      Google Gemini and imported. Carries C2PA Content Credentials disclosing
+      that it is machine-generated; figmint surfaces that disclosure in the
+      document rather than leaving it in the file.
+
+outputs:
+  - id: cp_curve
+    type: figure
+    label: "Cp curve"
+    description: |
+      The measured curve, plotted as-is. No decisions parameterize it: it draws
+      the data and nothing else, which is why it can be `reproducible` without
+      any of the ambiguity the fit carries.
+    inputs: [performance]
+    recipe:
+      command: calkit run plot-cp
+
+  - id: peak_performance
+    type: metric
+    label: "Peak performance"
+    description: |
+      lambda* and Cp* at the peak, written to `results/peak.json` along with the
+      decisions that produced them. The document reads the number from here
+      rather than restating it, so prose and figure cannot drift apart.
+    inputs: [performance]
+    decisions: [fit_degree, peak_method, tsr_min]
+    recipe:
+      command: calkit run fit-peak
+
+  - id: cp_fit
+    type: figure
+    label: "Fitted curve"
+    description: "The fit and the located peak, produced alongside the metric."
+    inputs: [performance]
+    decisions: [fit_degree, peak_method, tsr_min]
+    recipe:
+      command: calkit run fit-peak
+
+  - id: composite
+    type: figure
+    label: "Composite figure"
+    description: |
+      The published figure: the measured curve beside the imported schematic,
+      arranged by hand in draw.io. figmint records where each panel came from
+      and whether the rendering still matches the diagram it was drawn from.
+    inputs: [cp_curve, schematic]
+    recipe:
+      command: calkit run render-figure
+
+  - id: document
+    type: report
+    label: "The document"
+    description: |
+      The MyST document. Declares no tracked outputs of its own — the builder
+      assigns fresh node keys on every run, so it would never hash the same
+      twice — which is why it is placed in the pipeline by what it consumes.
+    inputs: [composite, cp_fit, peak_performance]
+    recipe:
+      command: calkit run build-site
+
+decisions:
+  fit_degree:
+    label: "Polynomial degree for the Cp curve fit"
+    tags: [stats]
+    rationale: |
+      Ten points constrain a low-order polynomial well and a high-order one
+      badly, but there is no single right answer between them. Measured across
+      this dataset the choice moves lambda* between 2.63 and 2.93 and peak Cp
+      between 0.302 and 0.399 — the largest single source of variation in the
+      analysis, and until now a literal in a code cell.
+
+      Quartic is the default because it is the lowest order that captures the
+      asymmetric roll-off after the peak without oscillating through the
+      near-zero tail.
+    default: quartic
+    options:
+      quadratic:
+        label: "Quadratic"
+        description: |
+          Symmetric by construction, so it cannot represent the sharper drop
+          after the peak. Included as the conservative floor; gives 2.63.
+      cubic:
+        label: "Cubic"
+        description: |
+          Allows asymmetry with one inflection. Defensible, and the furthest
+          from the default at 2.93.
+      quartic:
+        label: "Quartic"
+        description: "Captures the roll-off without ringing. Gives 2.71."
+      quintic:
+        label: "Quintic"
+        description: |
+          Follows the data more closely at the cost of curvature between
+          points. Gives 2.81; arguably over-fitted at ten points.
+
+  peak_method:
+    label: "How the peak is located"
+    tags: [stats]
+    rationale: |
+      Three readings of "where does it peak", differing by about 0.1 in
+      lambda*. This is the decision that produced a visible contradiction in the
+      document before it existed: the prose said 2.8 (the raw measurement) while
+      the figure said 2.71 (the fit), and both were reproducible.
+
+      The fitted grid argmax is the default because it is what the published
+      figure already showed.
+    default: fit_grid_argmax
+    options:
+      fit_grid_argmax:
+        label: "Argmax of the fitted curve"
+        description: |
+          Evaluate the fit on a dense grid and take the maximum. Resolution
+          dependence is negligible — 50 to 2000 points moves lambda* by 0.01 —
+          which is why the grid size is not itself a decision.
+      fit_derivative_root:
+        label: "Root of the fit's derivative"
+        description: |
+          Solve for the stationary point analytically. Grid-independent and
+          marginally different at 2.70. Falls back to the grid argmax when the
+          fit has no interior stationary point, and the metric records which
+          method actually ran.
+      raw_argmax:
+        label: "Argmax of the measurements"
+        description: |
+          The largest measured point, 2.80. Makes no smoothness assumption and
+          cannot resolve better than the sampling interval.
+
+  tsr_min:
+    label: "Lower tip speed ratio cut"
+    tags: [preprocessing]
+    rationale: |
+      The measurements run down to lambda = 0.5, where Cp is near zero and the
+      turbine is not meaningfully operating. Including that tail forces the
+      polynomial to bend through points that carry no information about the
+      peak. Excluding it is defensible; so is keeping it, since it constrains
+      the low-lambda side of the curve.
+
+      No cut is the default, because that is what the published figure did.
+    default: no_cut
+    options:
+      no_cut:
+        label: "No cut"
+        description: "Fit every measurement."
+      above_1:
+        label: "Above lambda = 1"
+        description: "Drop the near-zero start-up region."
+      above_1_5:
+        label: "Above lambda = 1.5"
+        description: |
+          Keep only the region around the peak. Fewest points, so the highest
+          degrees become untenable — a constraint worth seeing in a sweep.
+
+prior_insights:
+  betz_limit:
+    label: "Betz limit"
+    claim: |
+      The power coefficient of any open-flow turbine is bounded above by
+      16/27 ~= 0.593, so a fit implying a peak Cp above that is wrong regardless
+      of how well it matches the measurements. Every option in `fit_degree`
+      yields a peak Cp between 0.30 and 0.40 here, so the bound does not
+      discriminate between them — it is recorded because it is the constraint
+      that would rule one out, and a sweep producing 0.61 should fail rather
+      than be published.
+    created_at: "2026-07-30T00:00:00Z"
+    evidence:
+      - id: measured_peak_under_limit
+        artifact: peak_performance

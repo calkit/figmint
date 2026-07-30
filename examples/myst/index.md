@@ -13,6 +13,15 @@ This document is a playground for the editing loop: a figure you can open in
 draw.io, edit, and save, while figmint keeps track of where each panel came from
 and tells you when one has gone stale.
 
+```{code-cell} python
+:tags: [remove-cell]
+
+# The analysis result, loaded once so prose anywhere in the document can quote
+# it. Nothing here is a literal: every number below comes from the pipeline.
+import json
+peak = json.load(open("results/peak.json"))
+```
+
 ## The figure
 
 :::{figmint} figures/composite.drawio.svg
@@ -29,71 +38,58 @@ left-hand panel back through the script that drew it.
 :::
 
 As [](#fig-performance) shows, the power coefficient peaks near a tip speed
-ratio of 2.8.
+ratio of {eval}`round(peak["lambda_star"], 2)` — a number read from the
+pipeline's own output rather than typed here. It used to say 2.8, which
+disagreed with the 2.71 the figure showed; both were reproducible, and nothing
+could see the contradiction. [](#astra) is about why.
 
 The two panels have very different standing, which is the point of the example.
 The plot is a pipeline output: `calkit.yaml` says which stage made it, so it can
 be remade. The schematic came from a model, and the only reason anyone knows
 that is the Content Credentials embedded in the PNG.
 
-## A third kind of figure: computed by the document
+## A figure that had to leave the document
 
-Not every figure needs a file. This one is computed while the document builds,
-from the same CSV, and never exists on disk at all:
+This one used to be computed inline, in a `{code-cell}` that read the CSV and
+fitted a quartic while the document built. That is a legitimate third mode, and
+for a while it was the best one here: the code was visible to the reader, and
+`myst build --execute` remade it every time. No provenance tracking needed,
+because there was no provenance problem to solve.
 
-```{code-cell} python
-:tags: [hide-input]
-:label: cell-fit
+It stopped being adequate the moment the polynomial degree turned out to matter.
+An inline literal cannot be swept: there is nowhere for a universe to put a
+different value, and nothing downstream can record which value was used. So the
+fit moved into a pipeline stage, and the figure became an artifact:
 
-import csv
-import matplotlib.pyplot as plt
-import numpy as np
+```{figure} figures/cp_fit.svg
+:name: fig-fit
+:width: 80%
 
-with open("data/performance.csv") as fh:
-    rows = [(float(r["tip_speed_ratio"]), float(r["power_coefficient"]))
-            for r in csv.DictReader(fh)]
-
-tsr, cp = np.array(rows).T
-fit = np.polynomial.Polynomial.fit(tsr, cp, 4)
-grid = np.linspace(tsr.min(), tsr.max(), 200)
-peak = grid[np.argmax(fit(grid))]
-
-fig, ax = plt.subplots(figsize=(5, 3), constrained_layout=True)
-ax.plot(tsr, cp, "o", label="measured")
-ax.plot(grid, fit(grid), "-", label="quartic fit")
-ax.axvline(peak, ls=":", c="0.4")
-ax.annotate(rf"$\lambda^* = {peak:.2f}$", (peak, fit(peak)),
-            xytext=(8, -12), textcoords="offset points")
-ax.set_xlabel(r"Tip speed ratio, $\lambda$")
-ax.set_ylabel("$C_P$")
-ax.legend(frameon=False)
-plt.show()
+The fit and the located peak, produced by the `fit-peak` pipeline stage under
+the decisions in `params/universe.yaml`. Change a decision and this figure, the
+metric, and every number quoted in the prose move together.
 ```
 
-Wrapping the cell's output in a `figure` gives it a caption and a number, so it
-cross-references exactly like the composite does:
+The peak is at $\lambda^* \approx$ {eval}`round(peak["lambda_star"], 2)`, read out
+of the fit in [](#fig-fit) rather than typed in — so the number in the prose
+cannot drift away from the figure beside it.
 
-:::{figure} #cell-fit
-:name: fig-fit
+That was always true of *this* number. What was not true is that the fit behind
+it was one defensible choice among several, made silently.
 
-A quartic fit to the same measurements, with the peak marked. Computed during
-the build; there is no file behind this one.
-:::
+The document still quotes the result inline — the numbers above come from
+`results/peak.json`, not from anything typed here — but the *computation* now
+lives where a decision can reach it.
 
-The peak is at $\lambda^* \approx$ {eval}`round(float(peak), 2)`, read out of the
-fit in [](#fig-fit) rather than typed in — so the number in the prose cannot
-drift away from the figure beside it.
+That is the general shape of the trade. A figure computed by the document is the
+cheapest kind to trust, right up until one of its choices becomes consequential.
+Then it needs to be an artifact, because a decision that cannot be varied is not
+a decision at all: it is a literal that nobody has noticed yet.
 
-This figure needs no provenance tracking, because it has no provenance problem
-to solve: the code that made it is *in the document*, a reader can see it, and
-`myst build --execute` remakes it from scratch every time. That is the strongest
-guarantee of the three, and it is available whenever a figure is a plot of data
-the project already has.
-
-figmint exists for the cases this cannot reach. A hand-arranged composite, a
+figmint exists for the cases neither mode reaches. A hand-arranged composite, a
 micrograph, a schematic drawn in draw.io, a panel from a collaborator — none of
-those can be regenerated by a code cell, which is exactly why something has to
-record where they came from.
+those can be regenerated by a code cell or a pipeline stage, which is exactly why
+something has to record where they came from.
 
 ## The document's own provenance
 
@@ -111,6 +107,36 @@ The chain runs `data/performance.csv` → `plot_cp.py` → `cp_curve.svg` →
 the composite. Nothing in that path is asserted by hand: the pipeline stages come
 from `calkit.yaml`, the freshness from `dvc.lock`, and the panel-level edges from
 the diagram itself.
+
+(astra)=
+## The decisions behind the number
+
+`astra.yaml` records the methodological choices this analysis makes, each with
+its alternatives and the reasoning:
+
+| Decision | Default | Range across options |
+| --- | --- | --- |
+| `fit_degree` | quartic | λ* 2.63 → 2.93, Cp* 0.302 → 0.399 |
+| `peak_method` | argmax of the fit | λ* 2.70 → 2.80 |
+| `tsr_min` | no cut | — |
+
+Every one of those was a literal in a code cell before. The polynomial degree
+alone moves peak Cp by 32%, which is the number an engineer would quote.
+
+ASTRA does not run anything, and it does not restate the pipeline. Each output's
+recipe hands execution to `calkit run <stage>`; the only thing crossing the seam
+is `params/universe.yaml`, written from a universe and declared as an input to
+the `fit-peak` stage:
+
+```sh
+uv run python scripts/set_params.py \
+    --fit-degree cubic --peak-method fit_grid_argmax --tsr-min no_cut
+calkit run          # re-runs fit-peak and everything downstream, nothing else
+```
+
+`calkit.yaml` never mentions ASTRA, and `astra.yaml` never restates a stage.
+Either file still stands on its own — the same boundary figmint draws when it
+references a Calkit stage rather than defining one.
 
 ## What makes this different from a normal figure
 

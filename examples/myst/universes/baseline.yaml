@@ -1,0 +1,7 @@
+id: baseline
+description: 'The published analysis: quartic fit, argmax of the fitted curve, no
+  cut.'
+decisions:
+  fit_degree: quartic
+  peak_method: fit_grid_argmax
+  tsr_min: no_cut

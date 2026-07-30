@@ -81,15 +81,51 @@ stages:
       hash: md5
       md5: c0cfbc325e46331f91a2930e79e28ce7
       size: 4161146
+    - path: figures/cp_fit.svg
+      hash: md5
+      md5: c076427a1daf3e1402a79f8dfbed02fa
+      size: 30080
     - path: index.md
       hash: md5
-      md5: 62af5fa6425d24e9793f30b99ca414c9
-      size: 10123
+      md5: 11cbbef0f70b924f5dc22f73c3415bf6
+      size: 11847
     - path: myst.yml
       hash: md5
       md5: 7977dffa2b20f6bdbd96ada0cecb4d05
       size: 382
+    - path: results/peak.json
+      hash: md5
+      md5: 659f50535143755f5cf89891efb2ee95
+      size: 147
     - path: uv.lock
       hash: md5
       md5: a37f67adecdf233f234f5b547101795a
       size: 422539
+  fit-peak:
+    cmd: calkit xenv -n main --no-check -- python scripts/fit_peak.py
+    deps:
+    - path: data/performance.csv
+      hash: md5
+      md5: 4340527c4644d344259af58f7c234345
+      size: 144
+    - path: params/universe.yaml
+      hash: md5
+      md5: 7b5d26c307fdfdd89e6feda05fb4496f
+      size: 292
+    - path: scripts/fit_peak.py
+      hash: md5
+      md5: 7f67454422bc5ea13948f2ca80c60708
+      size: 4076
+    - path: uv.lock
+      hash: md5
+      md5: a37f67adecdf233f234f5b547101795a
+      size: 422539
+    outs:
+    - path: figures/cp_fit.svg
+      hash: md5
+      md5: c076427a1daf3e1402a79f8dfbed02fa
+      size: 30080
+    - path: results/peak.json
+      hash: md5
+      md5: 659f50535143755f5cf89891efb2ee95
+      size: 147
