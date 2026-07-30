@@ -50,6 +50,9 @@ class ComponentReport:
     stage_current: bool | None = None
     #: Dependencies of the stage that changed since it last ran.
     stage_changed: tuple[str, ...] = ()
+    #: Files this component is derived from that nothing accounts for — no
+    #: producing stage, no `imported_from`, no sidecar, no credentials.
+    unaccounted_inputs: tuple[str, ...] = ()
     credentials: dict[str, Any] | None = None
 
     @property
@@ -90,6 +93,7 @@ class ComponentReport:
             "detail": self.detail,
             "upstreamStale": self.upstream_stale,
             "stageChanged": list(self.stage_changed),
+            "unaccountedInputs": list(self.unaccounted_inputs),
             "permitted": self.permitted,
             "fix": self.fix,
             "stage": self.stage,
@@ -118,6 +122,22 @@ class FigureReport:
         return [c for c in self.components if c.upstream_stale]
 
     @property
+    def unaccounted_inputs(self) -> tuple[str, ...]:
+        """Every unexplained file the figure ultimately rests on.
+
+        Deliberately not a policy violation. The components themselves are
+        identified; what is missing is one link further back, and failing a
+        build over it would punish the projects that adopted a pipeline at all.
+        It is reported loudly and left as a warning.
+        """
+        seen: list[str] = []
+        for component in self.components:
+            for path in component.unaccounted_inputs:
+                if path not in seen:
+                    seen.append(path)
+        return tuple(seen)
+
+    @property
     def violations(self) -> list[ComponentReport]:
         return [c for c in self.components if not c.permitted or c.missing_origin]
 
@@ -140,6 +160,7 @@ class FigureReport:
             "components": [c.to_dict() for c in self.components],
             "stale": self.stale,
             "upstreamStale": [c.key for c in self.upstream_stale],
+            "unaccountedInputs": list(self.unaccounted_inputs),
             "publishable": self.publishable,
             "weakest": self.weakest.slug,
             "error": self.error,
@@ -197,6 +218,9 @@ def inspect_component(
         stage=stage.name if stage is not None else None,
         stage_current=getattr(stage, "current", None) if stage is not None else None,
         stage_changed=getattr(stage, "changed_deps", ()) if stage is not None else (),
+        unaccounted_inputs=(
+            _unaccounted_inputs(stage, project, root) if stage is not None else ()
+        ),
         credentials=creds_dict,
     )
 
@@ -216,6 +240,31 @@ def inspect_component(
         report.fix = _fix_for(component, document, assessment.level, policy)
 
     return report
+
+
+def _unaccounted_inputs(stage, project, root: Path) -> tuple[str, ...]:
+    """Roots of this component's input chain that nothing accounts for.
+
+    Calkit answers the first half — which inputs no stage produces and no
+    `imported_from` explains. figmint then drops any that it can account for on
+    its own evidence, because a `.prov.yaml` sidecar or a C2PA manifest is a
+    stated origin even when `calkit.yaml` says nothing. What survives is a file
+    that genuinely appeared from nowhere.
+    """
+    from .assets import merge_provenance
+
+    candidates = project.unaccounted_inputs(stage.name)
+    remaining: list[str] = []
+    for relative in candidates:
+        path = root / relative
+        creds = credentials_mod.read(path) if path.is_file() else None
+        provenance = merge_provenance(path, root, creds) if path.is_file() else {}
+        level = provenance_mod.assess(
+            provenance, creds.to_dict() if creds else None, None
+        ).level
+        if level is Level.UNIDENTIFIED:
+            remaining.append(relative)
+    return tuple(remaining)
 
 
 def _fix_for(component, document, level: Level, policy: Policy) -> str:

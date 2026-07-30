@@ -105,6 +105,54 @@ def _output_paths(outputs: Any) -> list[str]:
     return paths
 
 
+#: Artifact sections of `calkit.yaml` that can declare where a file came from.
+ARTIFACT_SECTIONS = ("datasets", "figures", "publications")
+
+
+def _artifact_entries(section: Any) -> list[dict[str, Any]]:
+    """Normalize an artifact section, which may be a list or a mapping.
+
+    Calkit's own models use a list; a mapping keyed by name is the friendlier
+    form to write by hand and appears in real projects. Accept both rather than
+    silently finding nothing, because finding nothing here reads as "no problem".
+    """
+    if isinstance(section, list):
+        return [entry for entry in section if isinstance(entry, dict)]
+    if isinstance(section, dict):
+        return [entry for entry in section.values() if isinstance(entry, dict)]
+    return []
+
+
+def _stage_input_paths(inputs: Any) -> tuple[list[str], list[str]]:
+    """Split a stage's `inputs` into plain paths and `from_stage_outputs` names."""
+    paths: list[str] = []
+    stages: list[str] = []
+    for entry in inputs or []:
+        if isinstance(entry, str):
+            paths.append(entry)
+        elif isinstance(entry, dict):
+            upstream = entry.get("from_stage_outputs")
+            if isinstance(upstream, str):
+                stages.append(upstream)
+                continue
+            path = entry.get("path")
+            if isinstance(path, str):
+                paths.append(path)
+    return paths, stages
+
+
+#: Inputs that are the project's own source rather than data it consumes.
+#: Asking where these "came from" is not a meaningful question — they are in the
+#: repository, under version control, alongside everything else.
+_SOURCE_SUFFIXES = (".py", ".r", ".jl", ".m", ".sh", ".tex", ".ipynb", ".lock")
+_SOURCE_NAMES = ("uv.lock", "requirements.txt", "pyproject.toml", "environment.yml")
+
+
+def _is_project_source(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    return name in _SOURCE_NAMES or path.lower().endswith(_SOURCE_SUFFIXES)
+
+
 def _entrypoint(spec: dict[str, Any]) -> str | None:
     for key in ("script_path", "notebook_path", "target_path", "command"):
         value = spec.get(key)
@@ -148,6 +196,34 @@ def _load(config: Path, mtime: float) -> dict[str, list[str]]:
             resolved = f"{wdir.rstrip('/')}/{path}" if isinstance(wdir, str) else path
             index.setdefault(resolved.lstrip("./"), []).append(str(name))
     return index
+
+
+@functools.lru_cache(maxsize=8)
+def _load_artifacts(config: Path, mtime: float) -> dict[str, dict[str, Any]]:
+    """Map declared artifact path -> its entry, across every artifact section."""
+    try:
+        data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+
+    out: dict[str, dict[str, Any]] = {}
+    for name in ARTIFACT_SECTIONS:
+        for entry in _artifact_entries(data.get(name)):
+            path = entry.get("path")
+            if isinstance(path, str):
+                out.setdefault(path.lstrip("./"), entry)
+    return out
+
+
+def _artifact_is_accounted(entry: dict[str, Any]) -> bool:
+    """Whether a `calkit.yaml` entry says where its file came from.
+
+    The same test Calkit's own `calkit check` applies: an artifact is accounted
+    for if a stage produces it or `imported_from` says where it was taken from.
+    A `title` and a `description` are documentation, not provenance — they say
+    what a file is, never where it came from or how to get it again.
+    """
+    return entry.get("stage") is not None or entry.get("imported_from") is not None
 
 
 LOCK_NAME = "dvc.lock"
@@ -264,6 +340,66 @@ class Project:
             changed_deps=changed,
             deps=deps,
         )
+
+    def unaccounted_inputs(self, stage: str) -> tuple[str, ...]:
+        """Inputs the pipeline consumes but nothing in the project accounts for.
+
+        A figure can be perfectly `reproducible` — a stage declares it, the stage
+        is current, the lock agrees — and still rest on a CSV that simply
+        appeared in the repository one day. The chain of custody is only as good
+        as the thing at the bottom of it, and that is exactly the link nobody
+        notices, because every automated check upstream of it passes.
+
+        This walks the stage's inputs transitively through `from_stage_outputs`,
+        skips anything another stage produces, and reports what is left: the
+        roots. A root is accounted for when `calkit.yaml` declares it with an
+        `imported_from` (or a producing stage). Anything else is a file with no
+        stated origin.
+
+        Scripts and environment locks are excluded. They are inputs, but they are
+        the project's own source, versioned in Git alongside everything else —
+        asking where `scripts/plot_cp.py` came from is not the question this is
+        for.
+        """
+        config = self.config
+        if not config.is_file():
+            return ()
+        try:
+            data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            return ()
+        stages = (data.get("pipeline") or {}).get("stages") or {}
+        if not isinstance(stages, dict):
+            return ()
+
+        produced = set(_load(config, config.stat().st_mtime))
+        artifacts = _load_artifacts(config, config.stat().st_mtime)
+
+        roots: list[str] = []
+        seen_stages: set[str] = set()
+        queue = [stage]
+        while queue:
+            name = queue.pop()
+            if name in seen_stages:
+                continue
+            seen_stages.add(name)
+            spec = stages.get(name)
+            if not isinstance(spec, dict):
+                continue
+            paths, upstream = _stage_input_paths(spec.get("inputs"))
+            queue.extend(upstream)
+            entrypoint = _entrypoint(spec)
+            for path in paths:
+                clean = path.lstrip("./")
+                if clean in produced or clean == entrypoint:
+                    continue
+                if _is_project_source(clean):
+                    continue
+                entry = artifacts.get(clean)
+                if entry is not None and _artifact_is_accounted(entry):
+                    continue
+                roots.append(clean)
+        return tuple(sorted(set(roots)))
 
     def _stage_spec(self, name: str) -> dict[str, Any]:
         try:

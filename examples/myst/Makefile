@@ -61,26 +61,23 @@ break:  ## Change the data so the figure goes stale
 site:  ## Build the MyST site
 	$(RUN) myst build --html --execute
 
-.PHONY: serve
-serve:  ## Serve the MyST site with live reload
-	$(RUN) myst start --execute
-
-.PHONY: watch
-watch:  ## Touch index.md whenever a tracked component changes
-	$(FIGMINT) watch $(RENDERED) --touch index.md
-
 OPEN_PORT ?= 8765
 
-.PHONY: preview
-preview:  ## Live preview: MyST server plus the component watcher
-	@# Both processes are needed. `myst start` rebuilds when index.md changes,
-	@# but it caches the parsed page — so a regenerated panel leaves the
-	@# provenance panel showing stale information until something touches the
-	@# markdown. That is what the watcher is for.
+.PHONY: serve
+serve:  ## Serve the document with live provenance (the one to use)
+	@# Two processes, because one cannot do the job. `myst start` rebuilds when
+	@# index.md changes, but it caches the parsed page — so editing a plotting
+	@# script, or running the pipeline, leaves the provenance panel reporting
+	@# state that is no longer true. The watcher notices those files and touches
+	@# index.md, which is what makes the panel react.
+	@#
+	@# This used to be two targets, `serve` and `preview`, and `serve` was the
+	@# obvious name for the one that silently lacked the watcher. There is now
+	@# one command, because the version without it is never what anyone wants.
 	@#
 	@# The watcher also serves the endpoint behind the panel's edit button.
-	@# FIGMINT_OPEN_URL has to be exported here rather than set by the watcher,
-	@# because myst is its sibling and would inherit nothing from it.
+	@# FIGMINT_OPEN_URL is exported here rather than set by the watcher, because
+	@# myst is its sibling and would inherit nothing from it.
 	@# Killing the server kills the watcher.
 	@FIGMINT_OPEN_URL=http://127.0.0.1:$(OPEN_PORT)/open; export FIGMINT_OPEN_URL; \
 	  $(FIGMINT) watch $(RENDERED) --touch index.md \
@@ -88,6 +85,13 @@ preview:  ## Live preview: MyST server plus the component watcher
 	  watcher=$$!; \
 	  trap "kill $$watcher 2>/dev/null" EXIT INT TERM; \
 	  $(RUN) myst start --execute
+
+.PHONY: preview
+preview: serve  ## Alias for `serve`
+
+.PHONY: watch
+watch:  ## Just the watcher, without the document server
+	$(FIGMINT) watch $(RENDERED) --touch index.md
 
 .PHONY: clean
 clean:  ## Remove build output

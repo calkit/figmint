@@ -11,6 +11,8 @@ datasets:
       Power coefficient against tip speed ratio, from towing-tank measurements.
       Synthetic values for this example.
       Since we have no `imported_from` key, this has invalid provenance.
+    # imported_from:
+    #   doi: 10.222.2222rje
 
 environments:
   main:

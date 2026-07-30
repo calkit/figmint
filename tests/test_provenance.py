@@ -315,6 +315,59 @@ pipeline:
         assert stage.current is False
         assert stage.changed_deps == ("scripts/plot_cp.py",)
 
+    def test_a_script_input_is_not_treated_as_unexplained_data(
+        self, project: Path
+    ):
+        """Scripts and lockfiles are the project's own source, not data.
+
+        Asking where `scripts/plot_cp.py` "came from" is not the question this
+        warning exists for, and flagging it would bury the one root that matters.
+        """
+        (project / "calkit.yaml").write_text(
+            "pipeline:\n"
+            "  stages:\n"
+            "    plot-cp:\n"
+            "      kind: python-script\n"
+            "      script_path: scripts/plot_cp.py\n"
+            "      inputs:\n"
+            "        - scripts/plot_cp.py\n"
+            "        - uv.lock\n"
+            "        - data/raw.csv\n"
+            "      outputs:\n"
+            "        - figures/cp_curve.svg\n"
+        )
+        assert calkit.Project(project).unaccounted_inputs("plot-cp") == (
+            "data/raw.csv",
+        )
+
+    def test_chain_roots_are_followed_through_upstream_stages(
+        self, project: Path
+    ):
+        """The root can be several stages back, which is where it hides."""
+        (project / "calkit.yaml").write_text(
+            "pipeline:\n"
+            "  stages:\n"
+            "    clean:\n"
+            "      kind: python-script\n"
+            "      script_path: scripts/clean.py\n"
+            "      inputs:\n"
+            "        - data/raw.csv\n"
+            "      outputs:\n"
+            "        - data/clean.csv\n"
+            "    plot-cp:\n"
+            "      kind: python-script\n"
+            "      script_path: scripts/plot_cp.py\n"
+            "      inputs:\n"
+            "        - from_stage_outputs: clean\n"
+            "      outputs:\n"
+            "        - figures/cp_curve.svg\n"
+        )
+        # `data/clean.csv` is produced by a stage, so it is accounted for; the
+        # question is what `clean` itself was fed.
+        assert calkit.Project(project).unaccounted_inputs("plot-cp") == (
+            "data/raw.csv",
+        )
+
     def test_a_stage_absent_from_the_lock_is_unknown(self, project: Path):
         (project / "dvc.lock").write_text(
             "schema: '2.0'\nstages:\n  other:\n    cmd: true\n    deps: []\n"

@@ -199,6 +199,29 @@ where it came from. Both panels clear it, by different routes:
 | `figures/cp_curve.svg` | `reproducible` | `calkit.yaml` declares it as the output of the `plot-cp` stage |
 | `figures/turbine.png` | `signed` | valid C2PA Content Credentials naming Google as the producer |
 
+### The gap the ratings cannot see
+
+`make check` also prints this:
+
+```
+WARN  input data/performance.csv has no stated origin
+      no stage produces it and no `imported_from` in calkit.yaml explains it
+```
+
+Both components are identified. The plot is a verified pipeline output. And the
+whole chain still rests on a CSV that appeared in the repository one day —
+`calkit.yaml` gives it a `title` and a `description`, which say what it is, but
+neither says where it came from or how anyone would get it again.
+
+This is the failure the component ratings are structurally unable to catch,
+because they all look at components and the gap is one link further back. It is
+reported as a warning rather than a failure: nothing about the figure is wrong,
+and failing the build here would penalise exactly the projects that bothered to
+adopt a pipeline. Adding `imported_from` (a URL, a DOI, or another Calkit
+project) closes it.
+
+### Why the plot's rating is the more useful one
+
 The plot's rating is the more useful one. `reproducible` is a claim that can be
 *verified* without trusting anyone: the stage is written down, so the file can be
 made again. `signed` answers a different question — who made this, and has it

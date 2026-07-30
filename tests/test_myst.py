@@ -272,6 +272,71 @@ class TestProvenancePanel:
         # The embedded copy really does still match; that is a separate question.
         assert not report.components[0].stale
 
+    def test_unaccounted_input_data_is_reported(self, figure: Path, monkeypatch):
+        """The gap every other check is structurally unable to see.
+
+        Each component can be identified, current, and produced by a verified
+        pipeline stage, and the whole chain can still rest on a CSV that
+        appeared one day. The other checks all look at components; this looks
+        one link further back.
+        """
+        root = figure.parent.parent
+        monkeypatch.chdir(root)
+        (root / "data").mkdir()
+        (root / "data" / "raw.csv").write_text("a,b\n1,2\n")
+        (root / "calkit.yaml").write_text(
+            "datasets:\n"
+            "  raw:\n"
+            "    path: data/raw.csv\n"
+            "    title: Some measurements\n"  # documentation, not provenance
+            "pipeline:\n"
+            "  stages:\n"
+            "    plot:\n"
+            "      kind: python-script\n"
+            "      script_path: scripts/plot.py\n"
+            "      inputs:\n"
+            "        - data/raw.csv\n"
+            "      outputs:\n"
+            "        - figures/plot.svg\n"
+        )
+
+        nodes = run_directive(directive_payload("figures/diagram.drawio"))
+        panel = find(nodes, "admonition")
+        assert "data/raw.csv" in all_text(panel)
+        assert "no stated origin" in all_text(panel) or "Unaccounted" in all_text(panel)
+
+        report = inspect_document(figure)
+        assert report.unaccounted_inputs == ("data/raw.csv",)
+        # A warning, not a violation: the components themselves are fine, and
+        # failing here would punish projects that adopted a pipeline at all.
+        assert report.publishable
+
+    def test_an_imported_from_declaration_accounts_for_input_data(
+        self, figure: Path, monkeypatch
+    ):
+        root = figure.parent.parent
+        monkeypatch.chdir(root)
+        (root / "data").mkdir()
+        (root / "data" / "raw.csv").write_text("a,b\n1,2\n")
+        (root / "calkit.yaml").write_text(
+            "datasets:\n"
+            "  raw:\n"
+            "    path: data/raw.csv\n"
+            "    title: Some measurements\n"
+            "    imported_from:\n"
+            "      url: https://example.org/raw.csv\n"
+            "pipeline:\n"
+            "  stages:\n"
+            "    plot:\n"
+            "      kind: python-script\n"
+            "      script_path: scripts/plot.py\n"
+            "      inputs:\n"
+            "        - data/raw.csv\n"
+            "      outputs:\n"
+            "        - figures/plot.svg\n"
+        )
+        assert inspect_document(figure).unaccounted_inputs == ()
+
     def test_a_missing_component_is_reported(self, figure: Path, monkeypatch):
         monkeypatch.chdir(figure.parent.parent)
         (figure.parent / "plot.svg").unlink()

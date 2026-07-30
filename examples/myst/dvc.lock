@@ -18,7 +18,7 @@ stages:
     outs:
     - path: figures/cp_curve.svg
       hash: md5
-      md5: 97b7d3c46d432e63e6b2fbf94009f1ec
+      md5: 25c0f0d94371cd8dae5e99e2a3665684
       size: 20539
   embed-figure:
     cmd: calkit xenv -n main --no-check -- figmint reimport 
@@ -30,7 +30,7 @@ stages:
       size: 2062193
     - path: figures/cp_curve.svg
       hash: md5
-      md5: 97b7d3c46d432e63e6b2fbf94009f1ec
+      md5: 25c0f0d94371cd8dae5e99e2a3665684
       size: 20539
     - path: figures/turbine.png
       hash: md5
@@ -43,7 +43,7 @@ stages:
     outs:
     - path: .build/composite.drawio
       hash: md5
-      md5: 015828de20bbdcca366205585217476e
+      md5: 668f73cb3bbc38c9cfcac5807ba8a052
       size: 2062193
   render-figure:
     cmd: calkit xenv -n main --no-check -- drawio -x -f svg --embed-diagram 
@@ -51,7 +51,7 @@ stages:
     deps:
     - path: .build/composite.drawio
       hash: md5
-      md5: 015828de20bbdcca366205585217476e
+      md5: 668f73cb3bbc38c9cfcac5807ba8a052
       size: 2062193
     - path: uv.lock
       hash: md5
@@ -60,7 +60,7 @@ stages:
     outs:
     - path: figures/composite.drawio.svg
       hash: md5
-      md5: 362c0290edd50e1ab36ff409fa4d6d7c
+      md5: a55cb9a33400fef82457fed8da8803ae
       size: 4147859
   check-provenance:
     cmd: calkit xenv -n main --no-check -- figmint check 
@@ -68,7 +68,7 @@ stages:
     deps:
     - path: figures/composite.drawio.svg
       hash: md5
-      md5: 362c0290edd50e1ab36ff409fa4d6d7c
+      md5: a55cb9a33400fef82457fed8da8803ae
       size: 4147859
     - path: uv.lock
       hash: md5
@@ -79,7 +79,7 @@ stages:
     deps:
     - path: figures/composite.drawio.svg
       hash: md5
-      md5: 362c0290edd50e1ab36ff409fa4d6d7c
+      md5: a55cb9a33400fef82457fed8da8803ae
       size: 4147859
     - path: index.md
       hash: md5

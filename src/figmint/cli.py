@@ -702,6 +702,16 @@ def _check_documents(args: argparse.Namespace) -> int:
             print(f"        {component.reason}")
             print(f"        fix: {component.fix}")
 
+        # A warning rather than a failure: the components are identified, and
+        # what is missing is one link further back. Failing here would punish
+        # the projects that adopted a pipeline in the first place.
+        for path in report.unaccounted_inputs:
+            print(f"  WARN  input {path} has no stated origin")
+            print(
+                "        no stage produces it and no `imported_from` in "
+                "calkit.yaml explains it"
+            )
+
         failures = report.violations
         if failures and report.policy.enforce:
             exit_code = max(exit_code, EXIT_STALE)

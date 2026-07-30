@@ -249,6 +249,17 @@ def headline(report: FigureReport) -> tuple[str, str]:
             f"`{report.policy.require.slug}` bar",
         )
 
+    # Every component checks out, and the figure still rests on a file nobody
+    # can account for. This is the failure the other checks are structurally
+    # unable to see: they all look at the components, and the gap is one link
+    # further back.
+    roots = report.unaccounted_inputs
+    if roots:
+        return (
+            "warning",
+            f"Input data with no stated origin: {', '.join(roots)}",
+        )
+
     n = len(report.components)
     return "note", f"{n} component(s), everything up to date"
 
@@ -337,6 +348,27 @@ def render(report: FigureReport, source: Path, *, editor: bool) -> dict[str, Any
     children: list[dict[str, Any]] = []
     if report.components:
         children.append(provenance_table(report))
+
+    # Said in the body as well as the headline, because when something else is
+    # wrong the headline is spent on that and this would otherwise vanish.
+    roots = report.unaccounted_inputs
+    if roots:
+        detail: list[dict[str, Any]] = [
+            strong("Unaccounted input data. "),
+            text("This figure is derived from "),
+        ]
+        for index, path in enumerate(roots):
+            if index:
+                detail.append(text(", "))
+            detail.append(code(path))
+        detail.append(
+            text(
+                ", which no pipeline stage produces and no `imported_from` in "
+                "calkit.yaml explains. Everything above it is reproducible; the "
+                "chain simply stops here."
+            )
+        )
+        children.append(paragraph(*detail))
     actions = action_paragraph(report, source, editor)
     if actions:
         children.append(actions)
