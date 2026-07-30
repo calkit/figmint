@@ -176,6 +176,11 @@ See [docs/format.md](docs/format.md) for the full format and its mapping onto
 [Stencila](https://stencila.io), and [docs/editor-design.md](docs/editor-design.md)
 for the design intent.
 
+Figures can also carry their provenance into a rendered document:
+[docs/myst-plugin.md](docs/myst-plugin.md) describes the MyST plugin, which shows
+where each component came from and whether the picture is still current — and how
+it was built, including the approaches that did not work.
+
 Export currently produces Stencila Markdown (`.smd`) alongside the native YAML.
 Panels become a `::: figure` with an inferred grid layout, annotations become a
 `Figure.overlay` SVG using Stencila's `s:` component namespace, and exact

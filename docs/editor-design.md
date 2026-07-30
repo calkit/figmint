@@ -638,6 +638,11 @@ provenance, etc.?
 draw.io can save the working file as svg with the XML embedded inside,
 so there's only one file, and we could embed the svg directly in MyST?
 
+There is now a plugin that does this, and how it was built — the executable
+protocol, what the panel shows, and several approaches that did not work — is
+written up separately in [`docs/myst-plugin.md`](myst-plugin.md). The rest of
+this section is the compatibility work that preceded it.
+
 ### The `.drawio.svg` idea works, and figmint now reads it
 
 draw.io's SVG export can carry the whole diagram in a `content` attribute on the
@@ -722,20 +727,29 @@ the pipeline rather than getting published.
 
 ### Where does figmint end and Calkit begin?
 
-An open question, and the boundary has already been crossed once by accident.
+An open question, and the boundary has moved once already.
+
 While building the MyST example it became obvious that `data/performance.csv`
 had no provenance — not a stage output, not a declared dataset. figmint grew a
 check for it, which meant teaching figmint to read Calkit's `datasets:` and
 `inputs:` schema: exactly the duplication the boundary note above argues
-against. It was reverted; auditing whether a project's input data is declared is
+against. It was reverted on the grounds that auditing a project's input data is
 Calkit's question about its own pipeline.
 
-But the fact that it happened is evidence. The questions are adjacent enough
-that the seam keeps wanting to move, which is an argument for figmint's
-provenance machinery eventually living inside Calkit rather than beside it.
-Parked for now — the prototype is easier to move fast on as a separate tool, and
-nothing here forecloses merging later, since the format adapters and the
-provenance ladder do not depend on being a separate process.
+It has since been put back, deliberately. The argument that changed it: a figure
+whose every component is `reproducible` and whose input data appeared from
+nowhere is *precisely* the case where the ratings mislead, and figmint is the
+thing showing the ratings. Reporting a chain that stops is part of not
+overclaiming. The duplication is real but small — Calkit's own `calkit check`
+applies the same test (`stage` or `imported_from`), and figmint reads that
+schema without deciding anything about it.
+
+Which is more evidence for the seam wanting to move. The questions are adjacent
+enough that this has now happened twice, an argument for figmint's provenance
+machinery eventually living inside Calkit rather than beside it. Parked for now —
+the prototype is easier to move fast on as a separate tool, and nothing here
+forecloses merging later, since the format adapters and the provenance ladder do
+not depend on being a separate process.
 
 Signing the published SVG with C2PA would be a third option — provenance without
 the embedded XML — and `figmint build --sign` already does this for `.fig.yaml`
