@@ -96,3 +96,9 @@ the file; otherwise it prefers `code -r` and falls back to `drawio`.
   output `reproducible`.
 - **Two kinds of stale, kept apart.** A changed panel is a different question
   from an unidentified one, and they have different fixes.
+
+## Provenance failure modes
+
+1. Imported component with no provenance (DOI or signed origin).
+2. Component out-of-date.
+3. Composite out-of-date.
