@@ -10,10 +10,11 @@ datasets:
     description: >-
       Power coefficient against tip speed ratio, from towing-tank measurements.
       Synthetic values for this example.
+      Since we have no `imported_from` key, this has invalid provenance.
 
 environments:
   main:
-    kind: uv-venv
+    kind: uv
     path: pyproject.toml
     python: "3.12"
 
@@ -32,16 +33,23 @@ pipeline:
 
     # 2. Re-embed changed components into the diagram.
     #
-    # Split from the render step because `figmint reimport` reads and writes the
-    # same document: doing both in one stage would make the .drawio.svg an input
-    # and an output at once, which DVC rejects as a cycle. `-o` writes the
-    # refreshed diagram elsewhere, keeping the DAG acyclic.
+    # The authored diagram and the published picture have to be two different
+    # files. `figures/composite.drawio` is the one a human edits; it is a source,
+    # and no stage writes it. `figures/composite.drawio.svg` is derived, and no
+    # human should edit it. Collapsing them into one file — which is tempting,
+    # because a `.drawio.svg` really is both editable and viewable — makes it a
+    # dependency and an output of the same pipeline, and DVC rejects that as a
+    # cycle. It is right to reject it: a file regenerated from itself would
+    # silently destroy hand edits on the next run.
+    #
+    # Split from the render step for a second reason: `-o` keeps `reimport` from
+    # reading and writing the same path.
     embed-figure:
       kind: command
-      command: figmint reimport figures/composite.drawio.svg -o .build/composite.drawio
+      command: figmint reimport figures/composite.drawio -o .build/composite.drawio
       environment: main
       inputs:
-        - figures/composite.drawio.svg
+        - figures/composite.drawio
         - from_stage_outputs: plot-cp
         # An imported panel is a real dependency too: replace the file and the
         # embedded copy goes stale exactly like a regenerated plot. It is listed
@@ -63,6 +71,9 @@ pipeline:
       command: >-
         drawio -x -f svg --embed-diagram --yes
         -o figures/composite.drawio.svg .build/composite.drawio
+      # `--embed-diagram` is what makes the output still carry `src` and `hash`:
+      # a plain SVG export keeps the picture and drops the shape metadata, so
+      # `figmint check` would have nothing to read.
       environment: main
       inputs:
         - from_stage_outputs: embed-figure
@@ -87,7 +98,7 @@ pipeline:
     # here; running it last is the point.
     build-site:
       kind: command
-      command: myst build --html
+      command: myst build --html --execute
       environment: main
       inputs:
         - index.md

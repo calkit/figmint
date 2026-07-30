@@ -2,6 +2,12 @@ version: 1
 project:
   id: figmint-example
   title: figmint + MyST
+  # Renders `:::{figmint}` blocks. An executable plugin, so the document is
+  # built by the same code that answers `figmint check` rather than a
+  # reimplementation of it in JavaScript.
+  plugins:
+    - type: executable
+      path: ./.venv/bin/figmint-myst
   toc:
     - file: index.md
 site:

@@ -1,0 +1,63 @@
+{
+  // Live preview for the MyST example.
+  //
+  // This runs the real `mystmd` dev server, not VS Code's built-in Markdown
+  // preview. The built-in one (even with the MyST-Markdown extension) renders
+  // markdown-it plus a few plugins, which is not the same engine — it will not
+  // number figures, resolve `[](#fig-...)` cross-references, or show the
+  // composite the way the published site does.
+  //
+  // `myst start` watches index.md, myst.yml, and the figures, so re-rendering
+  // the composite with `make refresh` updates the browser without a restart.
+  //
+  // View it with "Simple Browser: Show" at http://localhost:3000. One thing
+  // will not work there: the provenance panel's `vscode://` edit link. Simple
+  // Browser is a webview, and a webview does not follow non-http schemes — it
+  // just navigates to the URL and shows a blank page. Use the `make edit`
+  // command the panel prints beside the link, or open the preview in a real
+  // browser where the OS hands the URL to VS Code.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "MyST: live preview",
+      "type": "shell",
+      // `make preview`, not `myst start`: the server alone caches the parsed
+      // page, so a regenerated panel would leave the provenance panel showing
+      // stale information. The watcher it starts touches index.md to force the
+      // directive to re-run.
+      "command": "make preview",
+      "options": {
+        "cwd": "${workspaceFolder}/examples/myst"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^\\s*$",
+          "file": 1,
+          "location": 2,
+          "message": 3
+        },
+        "background": {
+          // Lets VS Code mark the task "running" once the server is up, instead
+          // of waiting for a process that never exits.
+          "activeOnStart": true,
+          "beginsPattern": "building myst-cli session",
+          "endsPattern": "Server started on port"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "MyST: refresh figure",
+      "type": "shell",
+      "command": "make refresh",
+      "options": {
+        "cwd": "${workspaceFolder}/examples/myst"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -72,6 +72,40 @@ class TestAssess:
         assert result.level is Level.REPRODUCIBLE
         assert "plot-cp" in result.reason
 
+    def test_a_stale_stage_cannot_back_a_reproducible_claim(self):
+        """The whole value of `reproducible` is that it can be relied on.
+
+        A stage whose script changed since it last ran did not produce the file
+        sitting on disk — an earlier version of it did. Rating that
+        `reproducible` would be worst-case wrong: confidently right-looking at
+        exactly the moment someone should not trust it.
+        """
+        stage = calkit.Stage(
+            name="plot-cp",
+            kind="python-script",
+            environment="main",
+            entrypoint="scripts/plot_cp.py",
+            current=False,
+            changed_deps=("scripts/plot_cp.py",),
+        )
+        result = assess({}, {}, stage)
+        assert result.level is Level.GENERATED
+        assert "out of date" in result.reason
+        assert "scripts/plot_cp.py" in result.reason
+
+    def test_a_stage_that_never_ran_is_not_reproducible(self):
+        stage = calkit.Stage(
+            name="plot-cp",
+            kind="python-script",
+            environment="main",
+            entrypoint="scripts/plot_cp.py",
+            current=None,
+        )
+        # `None` means "no lock to check against", which is not evidence of
+        # staleness — it is the ordinary state of a project that has a pipeline
+        # written down but has not run it here yet.
+        assert assess({}, {}, stage).level is Level.REPRODUCIBLE
+
     def test_verified_credentials_are_signed(self):
         result = assess({}, {"validationState": "Valid", "softwareAgent": "Stencila"})
         assert result.level is Level.SIGNED
@@ -205,6 +239,70 @@ pipeline:
 
     def test_no_calkit_project_is_not_an_error(self, tmp_path: Path):
         assert calkit.project_for(tmp_path) is None
+
+    def lock(self, project: Path, deps: dict[str, str]) -> None:
+        """Write a `dvc.lock` recording these dependency hashes for `plot-cp`."""
+        import hashlib
+
+        entries = []
+        for path, content in deps.items():
+            digest = hashlib.md5(content.encode()).hexdigest()
+            entries.append(f"    - path: {path}\n      hash: md5\n      md5: {digest}\n")
+        (project / "dvc.lock").write_text(
+            "schema: '2.0'\nstages:\n  plot-cp:\n    cmd: python scripts/plot_cp.py\n"
+            "    deps:\n" + "".join(entries)
+        )
+
+    def test_no_lock_file_leaves_freshness_unknown(self, project: Path):
+        stage = calkit.Project(project).stage_for(project / "figures/cp_curve.svg")
+        assert stage.current is None
+        assert stage.verified, "unknown must not be treated as stale"
+
+    def test_matching_hashes_make_the_stage_current(self, project: Path):
+        (project / "scripts").mkdir()
+        (project / "scripts" / "plot_cp.py").write_text("print(1)")
+        self.lock(project, {"scripts/plot_cp.py": "print(1)"})
+
+        stage = calkit.Project(project).stage_for(project / "figures/cp_curve.svg")
+        assert stage.current is True
+        assert stage.changed_deps == ()
+
+    def test_a_changed_dependency_makes_it_stale(self, project: Path):
+        (project / "scripts").mkdir()
+        (project / "scripts" / "plot_cp.py").write_text("print(2)")
+        self.lock(project, {"scripts/plot_cp.py": "print(1)"})
+
+        stage = calkit.Project(project).stage_for(project / "figures/cp_curve.svg")
+        assert stage.current is False
+        assert stage.changed_deps == ("scripts/plot_cp.py",)
+        assert not stage.verified
+
+    def test_deps_are_reported_for_watching(self, project: Path):
+        """`figmint watch` needs these to notice an edited script."""
+        (project / "scripts").mkdir()
+        (project / "scripts" / "plot_cp.py").write_text("print(1)")
+        self.lock(
+            project, {"scripts/plot_cp.py": "print(1)", "data/in.csv": "a,b"}
+        )
+        stage = calkit.Project(project).stage_for(project / "figures/cp_curve.svg")
+        assert set(stage.deps) == {"scripts/plot_cp.py", "data/in.csv"}
+
+    def test_a_missing_dependency_counts_as_changed(self, project: Path):
+        self.lock(project, {"scripts/gone.py": "print(1)"})
+        stage = calkit.Project(project).stage_for(project / "figures/cp_curve.svg")
+        assert stage.current is False
+
+    def test_a_stage_absent_from_the_lock_is_unknown(self, project: Path):
+        (project / "dvc.lock").write_text(
+            "schema: '2.0'\nstages:\n  other:\n    cmd: true\n    deps: []\n"
+        )
+        stage = calkit.Project(project).stage_for(project / "figures/cp_curve.svg")
+        assert stage.current is None
+
+    def test_a_malformed_lock_does_not_crash(self, project: Path):
+        (project / "dvc.lock").write_text("stages: [not a mapping")
+        stage = calkit.Project(project).stage_for(project / "figures/cp_curve.svg")
+        assert stage is not None and stage.current is None
 
     def test_a_malformed_calkit_yaml_does_not_crash_the_scan(self, tmp_path: Path):
         (tmp_path / "calkit.yaml").write_text("pipeline: [this is not a mapping")

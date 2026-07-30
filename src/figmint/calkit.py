@@ -16,10 +16,23 @@ claim. "This component was produced by script X" is a self-assertion when it
 sits in a sidecar. "Stage `plot-cp` in calkit.yaml declares this exact path as
 an output" is checkable, and it is checkable without running anything.
 
-So the only thing figmint asks of Calkit is: **which stage, if any, declares
-this file as an output?** Everything else — environments, DVC locks, whether the
-stage needs re-running — stays on Calkit's side of the line, reachable through
-`calkit status`.
+So the first thing figmint asks of Calkit is: **which stage, if any, declares
+this file as an output?** Environments, locks, and actually running anything stay
+on Calkit's side of the line.
+
+The second thing is a consequence of the first. "Stage `plot-cp` declares this
+path as an output" only earns the `reproducible` rating while the stage is
+*current*. Edit `scripts/plot_cp.py` and don't re-run, and the file on disk is
+the output of a stage that no longer exists as written — the claim is about a
+previous version of the code. Rating that `reproducible` would be worse than
+useless, because it is exactly the situation where someone would rely on the
+rating and be wrong.
+
+Answering it means reading `dvc.lock`, which records the hash of every dependency
+as of the last successful run: compare those against the files now and a changed
+dependency is a stale stage. That is a read of Calkit's output, not a
+reimplementation of Calkit — figmint still never decides what a stage is, when to
+run it, or how. It only declines to vouch for a stage that Calkit would rerun.
 """
 
 from __future__ import annotations
@@ -43,12 +56,39 @@ class Stage:
     environment: str | None
     #: Whatever identifies the work: script path, command, notebook.
     entrypoint: str | None
+    #: Whether `dvc.lock` still matches the stage's dependencies on disk.
+    #: `None` means unknown — no lock file, so the stage has never run here.
+    current: bool | None = None
+    #: Dependencies that no longer match what the lock recorded.
+    changed_deps: tuple[str, ...] = ()
+    #: Every declared dependency, whether or not it changed. Used by `watch`, so
+    #: that editing a plotting script updates a preview even though the script
+    #: is not itself a component.
+    deps: tuple[str, ...] = ()
+
+    @property
+    def verified(self) -> bool:
+        """Whether this stage can currently back a `reproducible` claim."""
+        return self.current is not False
 
     def describe(self) -> str:
         parts = [f"Calkit stage `{self.name}`"]
         if self.entrypoint:
             parts.append(f"({self.entrypoint})")
         return " ".join(parts)
+
+    def describe_staleness(self) -> str:
+        """Why the stage cannot be vouched for, in a form worth printing."""
+        if self.current is None:
+            return (
+                f"stage `{self.name}` declares it, but `dvc.lock` has no record "
+                f"of it ever running here"
+            )
+        changed = ", ".join(self.changed_deps) or "its dependencies"
+        return (
+            f"stage `{self.name}` is out of date: {changed} changed since it "
+            f"last ran, so this file is the output of a previous version"
+        )
 
 
 def _output_paths(outputs: Any) -> list[str]:
@@ -110,6 +150,36 @@ def _load(config: Path, mtime: float) -> dict[str, list[str]]:
     return index
 
 
+LOCK_NAME = "dvc.lock"
+
+
+def _md5(path: Path) -> str | None:
+    """DVC's dependency hash. Plain MD5 of the bytes, for a file."""
+    import hashlib
+
+    try:
+        return hashlib.md5(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+@functools.lru_cache(maxsize=8)
+def _load_lock(lock: Path, mtime: float) -> dict[str, list[dict[str, Any]]]:
+    """Map stage name -> recorded dependencies, from `dvc.lock`."""
+    try:
+        data = yaml.safe_load(lock.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+    stages = data.get("stages")
+    if not isinstance(stages, dict):
+        return {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    for name, spec in stages.items():
+        if isinstance(spec, dict) and isinstance(spec.get("deps"), list):
+            out[str(name)] = [d for d in spec["deps"] if isinstance(d, dict)]
+    return out
+
+
 @dataclass
 class Project:
     """A Calkit project, as far as figmint needs to understand one."""
@@ -119,6 +189,42 @@ class Project:
     @property
     def config(self) -> Path:
         return self.root / CONFIG_NAME
+
+    @property
+    def lock(self) -> Path:
+        return self.root / LOCK_NAME
+
+    def _freshness(self, name: str) -> tuple[bool | None, tuple[str, ...], tuple[str, ...]]:
+        """Whether a stage's recorded dependencies still match the disk.
+
+        Returns `(current, changed, all_deps)`. `current` is None when the stage
+        has no lock entry, which means it has never run in this working copy —
+        distinct from "ran, and something changed since".
+        """
+        lock = self.lock
+        if not lock.is_file():
+            return None, (), ()
+
+        recorded = _load_lock(lock, lock.stat().st_mtime).get(name)
+        if recorded is None:
+            return None, (), ()
+
+        deps: list[str] = []
+        changed: list[str] = []
+        for entry in recorded:
+            path = entry.get("path")
+            if not isinstance(path, str):
+                continue
+            deps.append(path)
+            expected = entry.get("md5")
+            if not isinstance(expected, str):
+                # Directory dependencies are recorded as a `files` list rather
+                # than one hash. Not worth walking; treat as unverifiable rather
+                # than pretending it changed.
+                continue
+            if _md5(self.root / path) != expected:
+                changed.append(path)
+        return (not changed), tuple(changed), tuple(deps)
 
     def stage_for(self, path: Path) -> Stage | None:
         """The pipeline stage declaring `path` as an output, if any."""
@@ -136,11 +242,15 @@ class Project:
             return None
 
         spec = self._stage_spec(names[0])
+        current, changed, deps = self._freshness(names[0])
         return Stage(
             name=names[0],
             kind=spec.get("kind"),
             environment=spec.get("environment"),
             entrypoint=_entrypoint(spec),
+            current=current,
+            changed_deps=changed,
+            deps=deps,
         )
 
     def _stage_spec(self, name: str) -> dict[str, Any]:

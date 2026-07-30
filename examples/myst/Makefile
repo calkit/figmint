@@ -2,7 +2,13 @@
 #
 # Run from examples/myst. `make help` lists everything.
 
-FIGURE   ?= figures/composite.drawio.svg
+# The authored diagram and the published picture are deliberately two files.
+# SOURCE is what you edit; RENDERED is what the document embeds and what
+# `figmint check` reads. Nothing writes SOURCE except you, and nothing but the
+# pipeline writes RENDERED — see the note in calkit.yaml for why collapsing them
+# into one file cannot work once a pipeline is involved.
+SOURCE   ?= figures/composite.drawio
+RENDERED ?= figures/composite.drawio.svg
 HANDOFF  := .build/composite.drawio
 RUN      := uv run
 FIGMINT  := $(RUN) figmint
@@ -20,31 +26,29 @@ plot:  ## Regenerate the component from data
 
 .PHONY: status
 status:  ## Is any panel stale, or the composite behind its inputs?
-	$(FIGMINT) status $(FIGURE) -v
+	$(FIGMINT) status $(RENDERED) -v
 
 .PHONY: check
 check:  ## Is every panel identified well enough to publish?
-	$(FIGMINT) check $(FIGURE) -v
+	$(FIGMINT) check $(RENDERED) -v
 
 .PHONY: edit
-edit:  ## Open the figure in draw.io
+edit:  ## Open the authored diagram in draw.io
 	@command -v drawio >/dev/null || { echo "drawio not installed"; exit 1; }
-	drawio $(FIGURE)
+	drawio $(SOURCE)
 
 .PHONY: place
 place:  ## Embed a figure with provenance: make place FIGURE_IN=figures/x.svg
 	@test -n "$(FIGURE_IN)" || { echo "usage: make place FIGURE_IN=figures/x.svg"; exit 1; }
-	@mkdir -p .build
-	$(FIGMINT) reimport $(FIGURE) -o $(HANDOFF)
-	$(FIGMINT) place $(FIGURE_IN) --into $(HANDOFF)
-	drawio -x -f svg --embed-diagram --yes -o $(FIGURE) $(HANDOFF)
+	$(FIGMINT) place $(FIGURE_IN) --into $(SOURCE)
+	@$(MAKE) --no-print-directory refresh
 
 .PHONY: refresh
-refresh:  ## Re-embed changed panels, then re-render the single file
+refresh:  ## Re-embed changed panels, then re-render the published picture
 	@mkdir -p .build
-	$(FIGMINT) reimport $(FIGURE) -o $(HANDOFF)
-	drawio -x -f svg --embed-diagram --yes -o $(FIGURE) $(HANDOFF)
-	@echo "refreshed $(FIGURE)"
+	$(FIGMINT) reimport $(SOURCE) -o $(HANDOFF)
+	drawio -x -f svg --embed-diagram --yes -o $(RENDERED) $(HANDOFF)
+	@echo "refreshed $(RENDERED)"
 
 .PHONY: break
 break:  ## Change the data so the figure goes stale
@@ -55,11 +59,35 @@ break:  ## Change the data so the figure goes stale
 
 .PHONY: site
 site:  ## Build the MyST site
-	$(RUN) myst build --html
+	$(RUN) myst build --html --execute
 
 .PHONY: serve
 serve:  ## Serve the MyST site with live reload
-	$(RUN) myst start
+	$(RUN) myst start --execute
+
+.PHONY: watch
+watch:  ## Touch index.md whenever a tracked component changes
+	$(FIGMINT) watch $(RENDERED) --touch index.md
+
+OPEN_PORT ?= 8765
+
+.PHONY: preview
+preview:  ## Live preview: MyST server plus the component watcher
+	@# Both processes are needed. `myst start` rebuilds when index.md changes,
+	@# but it caches the parsed page — so a regenerated panel leaves the
+	@# provenance panel showing stale information until something touches the
+	@# markdown. That is what the watcher is for.
+	@#
+	@# The watcher also serves the endpoint behind the panel's edit button.
+	@# FIGMINT_OPEN_URL has to be exported here rather than set by the watcher,
+	@# because myst is its sibling and would inherit nothing from it.
+	@# Killing the server kills the watcher.
+	@FIGMINT_OPEN_URL=http://127.0.0.1:$(OPEN_PORT)/open; export FIGMINT_OPEN_URL; \
+	  $(FIGMINT) watch $(RENDERED) --touch index.md \
+	    --open-server --open-port $(OPEN_PORT) & \
+	  watcher=$$!; \
+	  trap "kill $$watcher 2>/dev/null" EXIT INT TERM; \
+	  $(RUN) myst start --execute
 
 .PHONY: clean
 clean:  ## Remove build output

@@ -1,0 +1,61 @@
+stages:
+  plot-cp:
+    cmd: calkit xenv -n main --no-check -- python scripts/plot_cp.py
+    deps:
+      - scripts/plot_cp.py
+      - data/performance.csv
+      - uv.lock
+    outs:
+      - figures/cp_curve.svg:
+          cache: false
+          persist: false
+    desc: Automatically generated from the 'plot-cp' stage in 
+      calkit.yaml. Changes made here will be overwritten.
+  embed-figure:
+    cmd: calkit xenv -n main --no-check -- figmint reimport 
+      figures/composite.drawio -o .build/composite.drawio
+    deps:
+      - figures/composite.drawio
+      - figures/turbine.png
+      - uv.lock
+      - figures/cp_curve.svg
+    outs:
+      - .build/composite.drawio:
+          cache: false
+          persist: false
+    desc: Automatically generated from the 'embed-figure' stage in 
+      calkit.yaml. Changes made here will be overwritten.
+  render-figure:
+    cmd: calkit xenv -n main --no-check -- drawio -x -f svg 
+      --embed-diagram --yes -o figures/composite.drawio.svg 
+      .build/composite.drawio
+    deps:
+      - uv.lock
+      - .build/composite.drawio
+    outs:
+      - figures/composite.drawio.svg:
+          cache: false
+          persist: false
+    desc: Automatically generated from the 'render-figure' stage in 
+      calkit.yaml. Changes made here will be overwritten.
+  check-provenance:
+    cmd: calkit xenv -n main --no-check -- figmint check 
+      figures/composite.drawio.svg
+    deps:
+      - uv.lock
+      - figures/composite.drawio.svg
+    outs: []
+    always_changed: true
+    desc: Automatically generated from the 'check-provenance' stage in
+      calkit.yaml. Changes made here will be overwritten.
+  build-site:
+    cmd: calkit xenv -n main --no-check -- myst build --html --execute
+    deps:
+      - index.md
+      - myst.yml
+      - uv.lock
+      - figures/composite.drawio.svg
+    outs: []
+    always_changed: true
+    desc: Automatically generated from the 'build-site' stage in 
+      calkit.yaml. Changes made here will be overwritten.

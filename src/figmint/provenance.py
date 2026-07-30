@@ -175,8 +175,16 @@ def assess(
 
     # A declared pipeline output outranks a sidecar's claim to the same effect,
     # because this one can be checked rather than taken on trust.
+    #
+    # But only while the stage is actually current. If its dependencies have
+    # changed since it last ran, the file on disk is the output of a version of
+    # the stage that no longer exists, and "I can make this again" is false of
+    # the thing in front of you. That drops it to the same standing as a sidecar
+    # claim: something names what produced it, but nothing verifies it.
     if stage is not None:
-        return Assessment(Level.REPRODUCIBLE, stage.describe())
+        if getattr(stage, "verified", True):
+            return Assessment(Level.REPRODUCIBLE, stage.describe())
+        return Assessment(Level.GENERATED, stage.describe_staleness())
 
     for key in GENERATOR_KEYS:
         if provenance.get(key):

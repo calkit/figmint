@@ -12,6 +12,7 @@ so it drops straight into a pipeline.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -38,6 +39,13 @@ STATE_MARK = {
     status_mod.SourceState.MISSING: "GONE",
     status_mod.SourceState.UNKNOWN: "?   ",
 }
+
+
+def openserver_default_port() -> int:
+    """Imported lazily so `--help` does not pay for the http machinery."""
+    from .openserver import DEFAULT_PORT
+
+    return DEFAULT_PORT
 
 
 def _documents(paths: list[Path]) -> list[Path]:
@@ -473,6 +481,115 @@ def cmd_place(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
+def watch_targets(paths: list[Path]) -> dict[Path, str]:
+    """The files whose contents decide whether these figures are up to date.
+
+    Recomputed on every event rather than cached, so placing a new component
+    starts it being watched without a restart.
+    """
+    from .report import inspect_document
+
+    targets: dict[Path, str] = {}
+    for path in paths:
+        resolved = Path(path).resolve()
+        if resolved.exists():
+            targets[resolved] = str(path)
+        report = inspect_document(path)
+        project = calkit_mod.project_for(Path(path))
+        for component in report.components:
+            if component.resolved:
+                targets[component.resolved.resolve()] = component.label
+            if not (project and component.resolved):
+                continue
+            # The component's own inputs matter too. Editing a plotting script
+            # does not touch the plot, but it does make the plot stale — and a
+            # preview that only watched the plot would keep showing it as
+            # current until someone re-ran the pipeline.
+            stage = project.stage_for(component.resolved)
+            for dep in getattr(stage, "deps", ()) or ():
+                target = (project.root / dep).resolve()
+                targets.setdefault(target, f"{dep} (input to `{stage.name}`)")
+    return targets
+
+
+def cmd_watch(args: argparse.Namespace) -> int:
+    """Watch a figure's components and touch dependents when they change."""
+    from watchfiles import watch as watch_files
+
+    documents = [Path(p) for p in args.paths]
+    touch = [Path(p) for p in (args.touch or [])]
+
+    missing = [d for d in documents if not d.exists()]
+    if missing:
+        for path in missing:
+            print(f"{path}: no such document", file=sys.stderr)
+        return EXIT_ERROR
+
+    targets = watch_targets(documents)
+    if not targets:
+        print("nothing to watch", file=sys.stderr)
+        return EXIT_ERROR
+
+    opener = None
+    if args.open_server:
+        from . import openserver
+
+        try:
+            opener, url = openserver.serve(Path.cwd(), args.open_port)
+        except OSError as exc:
+            print(f"could not start the open server: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+        command = openserver.editor_command()
+        if not command:
+            print(
+                "warning: no editor found on PATH; set FIGMINT_EDITOR",
+                file=sys.stderr,
+            )
+        # Setting this in *this* process would achieve nothing: the document
+        # builder is a sibling, not a child, so it inherits nothing from here.
+        # Whoever launches both has to export it — see `make preview`.
+        print(
+            f"edit links open via {url} ({' '.join(command) or 'no editor found'})",
+            flush=True,
+        )
+        print(f"  export {openserver.URL_ENV}={url}", flush=True)
+
+    # Watch the enclosing directories and filter, rather than watching each file
+    # directly: a regenerated plot is usually written by replacing the file, and
+    # a watch on the old inode would go deaf after the first change.
+    roots = sorted({str(p.parent) for p in targets})
+    for label in sorted(targets.values()):
+        print(f"watching {label}", flush=True)
+    for path in touch:
+        print(f"will touch {path} on change", flush=True)
+
+    try:
+        for batch in watch_files(*roots):
+            current = watch_targets(documents)
+            changed = sorted(
+                {
+                    current[Path(raw).resolve()]
+                    for _, raw in batch
+                    if Path(raw).resolve() in current
+                }
+            )
+            if not changed:
+                continue
+            print(f"changed: {', '.join(changed)}", flush=True)
+            for path in touch:
+                if path.exists():
+                    path.touch()
+                    print(f"  touched {path}", flush=True)
+                else:
+                    print(f"  {path}: no such file", file=sys.stderr)
+    except KeyboardInterrupt:  # pragma: no cover - interactive
+        pass
+    finally:
+        if opener is not None:
+            opener.shutdown()
+    return EXIT_OK
+
+
 def cmd_reimport(args: argparse.Namespace) -> int:
     """Refresh embedded components from their declared sources."""
     from . import formats
@@ -544,103 +661,40 @@ def _check_documents(args: argparse.Namespace) -> int:
     the question "is this component identified?" is only answerable per diagram —
     the bytes live in the document, not in the figures directory.
     """
-    from . import formats
+    from .report import inspect_document
 
     exit_code = EXIT_OK
     for path in args.paths:
-        try:
-            document = formats.open_document(path)
-        except (formats.UnsupportedFormat, formats.base.DocumentError) as exc:
-            print(f"{exc}", file=sys.stderr)
+        report = inspect_document(path, root=args.root or Path(path).parent)
+        if report.error:
+            print(report.error, file=sys.stderr)
             exit_code = EXIT_ERROR
             continue
 
-        root = (
-            document.project_root
-            if isinstance(document, formats.DrawioDocument)
-            else (args.root or path.parent).resolve()
-        )
-        try:
-            policy = provenance_mod.load_policy(root)
-        except ValueError as exc:
-            print(f"{exc}", file=sys.stderr)
-            exit_code = EXIT_ERROR
-            continue
-
-        project = calkit_mod.project_for(root)
-        print(f"{path}  [require {policy.require.slug}]")
-        failures = 0
-        for component in document.components():
-            stage = (
-                project.stage_for(component.resolved)
-                if project and component.resolved
-                else None
-            )
-            creds = (
-                credentials_mod.read(component.resolved)
-                if component.resolved and component.resolved.is_file()
-                else None
-            )
-            # Provenance comes from the *file*, not from the fact that we
-            # managed to locate it. Recovering an origin by content hash says
-            # which file this is; it says nothing about where that file came
-            # from. Treating the recovered path as a declared origin let an
-            # AI-generated image with no sidecar and no credentials pass the
-            # policy, which is precisely the case this exists to catch.
-            from .assets import merge_provenance
-
-            recorded = dict(component.provenance)
-            if component.resolved and component.resolved.is_file():
-                recorded = {
-                    **merge_provenance(component.resolved, root, creds),
-                    **recorded,
-                }
-            assessment = provenance_mod.assess(
-                recorded, creds.to_dict() if creds else component.credentials, stage
-            )
-            label = component.origin or "(anonymous embedded content)"
-
-            # A declared origin whose file has gone is a distinct problem from a
-            # low provenance level: there *is* a claim, but nothing can verify it
-            # and — for an embedded component — the original can never be
-            # recovered or updated. The figure still renders, which is exactly
-            # why this needs saying out loud.
-            if component.origin and (
-                component.resolved is None or not component.resolved.is_file()
-            ):
-                failures += 1
-                print(f"  FAIL  {component.key}: {label}  [origin missing]")
+        print(f"{path}  [require {report.policy.require.slug}]")
+        for component in report.components:
+            if component.missing_origin:
+                print(f"  FAIL  {component.key}: {component.label}  [origin missing]")
                 print(
                     "        declared origin no longer exists; the embedded copy "
                     "cannot be re-derived or updated"
                 )
                 continue
-
-            if policy.permits(assessment.level):
+            if component.permitted:
                 if args.verbose:
-                    print(f"  ok    {component.key}: {label}  [{assessment.level.slug}]")
-                continue
-            failures += 1
-            print(f"  FAIL  {component.key}: {label}  [{assessment.level.slug}]")
-            print(f"        {assessment.reason}")
-            if getattr(document, "rendered", False):
-                # A rendered .drawio.svg cannot be written to, so pointing at
-                # `adopt` here would send the user into a refusal.
-                print(
-                    "        fix: declare it in the .drawio source, then "
-                    "re-export the .drawio.svg"
-                )
-            elif document.embeds_components and not component.origin:
-                print(f"        fix: figmint adopt {path}")
-            else:
-                print(
-                    "        fix: "
-                    + provenance_mod.explain_fix(
-                        assessment.level, component.origin or "<file>", policy.require
+                    print(
+                        f"  ok    {component.key}: {component.label}  "
+                        f"[{component.level.slug}]"
                     )
-                )
+                continue
+            print(
+                f"  FAIL  {component.key}: {component.label}  [{component.level.slug}]"
+            )
+            print(f"        {component.reason}")
+            print(f"        fix: {component.fix}")
 
-        if failures and policy.enforce:
+        failures = report.violations
+        if failures and report.policy.enforce:
             exit_code = max(exit_code, EXIT_STALE)
         if not failures:
             print("  all components satisfy the policy")
@@ -928,6 +982,45 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="place even if provenance is too weak"
     )
     place_cmd.set_defaults(func=cmd_place)
+
+    watch_cmd = sub.add_parser(
+        "watch",
+        help="re-trigger a document build when a figure's components change",
+        description=(
+            "Bridges figmint's dependency graph to a tool that does not know "
+            "about it. A MyST dev server rebuilds when its markdown changes, "
+            "but it has no idea that a figure's provenance depends on files the "
+            "markdown never mentions — so a panel can go stale while the "
+            "preview still shows it as current. This watches the components a "
+            "figure declares and touches the given files when one changes, "
+            "which is enough to make the other tool rebuild."
+        ),
+    )
+    watch_cmd.add_argument("paths", nargs="+", type=Path, help="figure documents")
+    watch_cmd.add_argument(
+        "--touch",
+        action="append",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="file to touch when a component changes; repeatable",
+    )
+    watch_cmd.add_argument(
+        "--open-server",
+        action="store_true",
+        help=(
+            "serve a loopback endpoint that opens a diagram in an editor, so a "
+            "rendered preview can carry a working edit button even inside a "
+            "webview that will not follow a vscode:// link"
+        ),
+    )
+    watch_cmd.add_argument(
+        "--open-port",
+        type=int,
+        default=openserver_default_port(),
+        help="port for --open-server",
+    )
+    watch_cmd.set_defaults(func=cmd_watch)
 
     return parser
 

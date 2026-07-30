@@ -14,6 +14,12 @@ dependencies = [
     # what makes the `build-site` pipeline stage reproducible rather than
     # dependent on whatever `myst` happens to be on PATH.
     "mystmd>=1.6",
+    # Lets MyST execute `{code-cell}` blocks at build time, so a figure can
+    # be computed by the document itself rather than by a pipeline stage.
+    # `jupyter-server` is not optional: mystmd talks to a server, not to a
+    # kernel directly, and without it execution fails at build time.
+    "ipykernel>=6.29",
+    "jupyter-server>=2.14",
 ]
 
 [tool.uv.sources]

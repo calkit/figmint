@@ -18,6 +18,10 @@ dependencies = [
 
 [project.scripts]
 figmint = "figmint.cli:main"
+# The MyST executable-plugin entry point. mystmd spawns this by path, so it has
+# to exist as a real executable file — hence a console script rather than
+# `figmint myst` as a subcommand.
+figmint-myst = "figmint.myst:main"
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]
