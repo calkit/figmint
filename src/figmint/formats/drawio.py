@@ -660,17 +660,24 @@ class DrawioDocument(FigureDocument):
         payload = base64.b64encode(data).decode("ascii")
 
         # Size from the artwork itself, converted out of points into draw.io's
-        # hundredths of an inch.
+        # hundredths of an inch. Giving just one dimension scales the other by
+        # the artwork's aspect ratio — asking for a 300-unit-wide panel and
+        # getting one at the image's full natural height would be a surprise.
         natural = intrinsic_size(source)
-        if width is None or height is None:
+        aspect = None
+        if natural and natural["width"] and natural["height"]:
+            aspect = natural["height"] / natural["width"]
+
+        if width is None and height is None:
             if natural:
-                width = width or from_points(natural["width"])
-                height = height or from_points(natural["height"])
+                width = from_points(natural["width"])
+                height = from_points(natural["height"])
             else:
-                width = width or 200.0
-                height = height or 150.0
-        elif height is None and natural and natural["width"]:
-            height = width * (natural["height"] / natural["width"])
+                width, height = 200.0, 150.0
+        elif height is None:
+            height = width * aspect if aspect else width * 0.75
+        elif width is None:
+            width = height / aspect if aspect else height / 0.75
 
         if x is None or y is None:
             # Below whatever is already there, so a placed figure never lands on

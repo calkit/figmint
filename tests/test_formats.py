@@ -729,6 +729,29 @@ class TestPlace:
         assert node["width"] == pytest.approx(216, abs=1)
         assert node["height"] == pytest.approx(162, abs=1)
 
+    def test_one_given_dimension_scales_the_other(self, project: Path):
+        """Asking for a width must not leave the height at the natural size.
+
+        The 4:3 artwork placed 300 units wide has to come out 225 tall. Getting
+        its full natural height instead would silently stretch every panel
+        placed with `--width`.
+        """
+        target = project / "d.drawio"
+        main(
+            [
+                "place",
+                str(project / "plot.svg"),
+                "--into",
+                str(target),
+                "--create",
+                "--width",
+                "150",
+            ]
+        )
+        node = open_document(target).nodes()[0]
+        assert node["width"] == pytest.approx(108, abs=1)  # 150 units in points
+        assert node["height"] == pytest.approx(81, abs=1)  # aspect preserved
+
     def test_a_second_figure_does_not_land_on_the_first(self, project: Path):
         target = project / "d.drawio"
         main(["place", str(project / "plot.svg"), "--into", str(target), "--create"])
