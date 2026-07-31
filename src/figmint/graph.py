@@ -622,9 +622,10 @@ def figure_graph(report, root: Path, *, profile: str = "public") -> Any:
     nodes of directory containment. figmint already knows the answer.
     """
     from . import calkit as calkit_mod
+    from . import pipelines as pipelines_mod
 
     build = _stencila_graph()
-    project_ = calkit_mod.project_for(root)
+    project_ = pipelines_mod.project_for(root)
 
     merged = _Merged()
     seen_nodes: set[str] = set()
@@ -713,10 +714,10 @@ def document_graph(
     Every figure's graph is merged, then the page is added above them, then
     whatever else the stage that reads the page also reads.
     """
-    from . import calkit as calkit_mod
+    from . import pipelines as pipelines_mod
     from .report import inspect_document
 
-    project_ = calkit_mod.project_for(root)
+    project_ = pipelines_mod.project_for(root)
     merged = _Merged()
     seen_nodes: set[str] = set()
     seen_edges: set[tuple[str, str, str]] = set()

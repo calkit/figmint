@@ -1,0 +1,8 @@
+# Provenance for an imported component, written by `figmint import`.
+# This file states where the artifact came from. Without it, figmint
+# treats the artifact as unidentified and (by default) refuses to place
+# it in a figure.
+importedFrom: Palmer Station Antarctica LTER, via the EDI PASTA API
+doi: 10.6073/pasta/abc50eed9138b75f54eaada0841b9b86
+citation: Gorman KB, Williams TD, Fraser WR (2014) PLoS ONE 9(3):e90081
+importedAt: '2026-07-31T17:49:56.608103+00:00'

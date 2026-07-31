@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from . import calkit as calkit_mod
+from . import pipelines as pipelines_mod
 from . import credentials as credentials_mod
 from . import provenance as provenance_mod
 from .provenance import Level, Policy
@@ -50,6 +51,8 @@ class ComponentReport:
     stage_current: bool | None = None
     #: Dependencies of the stage that changed since it last ran.
     stage_changed: tuple[str, ...] = ()
+    #: Which pipeline declared the stage — "Calkit", "Snakemake", …
+    stage_pipeline: str | None = None
     #: Files this component is derived from that nothing accounts for — no
     #: producing stage, no `imported_from`, no sidecar, no credentials.
     unaccounted_inputs: tuple[str, ...] = ()
@@ -117,6 +120,10 @@ class FigureReport:
     #: What changed, and in which stage.
     document_stage_changed: tuple[str, ...] = ()
     document_stage_blamed: str | None = None
+    #: True when the subject is a single artifact rather than a composite. The
+    #: questions differ: a lone PNG has no embedded copy that could drift from
+    #: its source, because it *is* the source.
+    standalone: bool = False
     error: str | None = None
 
     @property
@@ -188,9 +195,86 @@ class FigureReport:
             "documentStageChanged": list(self.document_stage_changed),
             "unaccountedInputs": list(self.unaccounted_inputs),
             "publishable": self.publishable,
+            "standalone": self.standalone,
             "weakest": self.weakest.slug,
             "error": self.error,
         }
+
+
+def inspect_asset(path: Path, *, root: Path | None = None) -> FigureReport:
+    """Assess one artifact that is not a composite.
+
+    Not every figure is a document figmint can open. A plot written straight to
+    PNG by a pipeline, or an image someone was sent, still has the question
+    "where did this come from, and is it identified well enough to publish?" —
+    and figmint already answers it for directory scans. This makes the same
+    answer reachable per-file, so a document can show provenance for a figure
+    that was never composed in figmint at all.
+    """
+    from .assets import describe
+
+    # `describe` reports paths relative to the root, so the subject has to be
+    # absolute or the two disagree.
+    path = Path(path).resolve()
+    project_root = (
+        Path(root).resolve()
+        if root
+        else (pipelines_mod.find_project(path.parent) or path.parent).resolve()
+    )
+    try:
+        policy = provenance_mod.load_policy(project_root)
+    except ValueError as exc:
+        return FigureReport(
+            document=path, policy=provenance_mod.DEFAULT_POLICY, error=str(exc)
+        )
+
+    if not path.is_file():
+        return FigureReport(
+            document=path, policy=policy, standalone=True, error=f"no such file: {path}"
+        )
+
+    project = pipelines_mod.project_for(project_root)
+    asset = describe(path, project_root, project)
+    level = Level.parse(str((asset.assessment or {}).get("level", "unidentified")))
+    stage = project.stage_for(path) if project else None
+
+    component = ComponentReport(
+        key=path.name,
+        origin=asset.path,
+        label=asset.path,
+        level=level,
+        reason=str((asset.assessment or {}).get("reason", "")),
+        # There is no embedded copy to compare against: the artifact is the
+        # file. Reporting it as "matches source" would be a category error, so
+        # the renderer drops that column for a standalone subject.
+        state=SourceState.OK,
+        permitted=policy.permits(level),
+        resolved=path,
+        stage=stage.name if stage is not None else None,
+        stage_current=getattr(stage, "current", None) if stage is not None else None,
+        stage_changed=getattr(stage, "changed_deps", ()) if stage is not None else (),
+        stage_pipeline=getattr(stage, "pipeline", None) if stage is not None else None,
+        unaccounted_inputs=(
+            _unaccounted_inputs(stage, project, project_root) if stage is not None else ()
+        ),
+        credentials=asset.credentials,
+    )
+    if not component.permitted:
+        component.fix = provenance_mod.explain_fix(level, asset.path, policy.require)
+
+    return FigureReport(
+        document=path, policy=policy, components=[component], standalone=True
+    )
+
+
+def inspect_any(path: Path, *, root: Path | None = None) -> FigureReport:
+    """Report on whatever this is — a composite, or a single artifact."""
+    from . import formats
+
+    path = Path(path)
+    if formats.is_document(path):
+        return inspect_document(path, root=root)
+    return inspect_asset(path, root=root)
 
 
 def _project_root(document, fallback: Path) -> Path:
@@ -244,6 +328,7 @@ def inspect_component(
         stage=stage.name if stage is not None else None,
         stage_current=getattr(stage, "current", None) if stage is not None else None,
         stage_changed=getattr(stage, "changed_deps", ()) if stage is not None else (),
+        stage_pipeline=getattr(stage, "pipeline", None) if stage is not None else None,
         unaccounted_inputs=(
             _unaccounted_inputs(stage, project, root) if stage is not None else ()
         ),
@@ -330,7 +415,7 @@ def inspect_document(path: Path, *, root: Path | None = None) -> FigureReport:
 
     staleness: DocumentReport = check_any(document)
     freshness = {s.key: s for s in staleness.sources}
-    project = calkit_mod.project_for(project_root)
+    project = pipelines_mod.project_for(project_root)
 
     report = FigureReport(
         document=path, policy=policy, outdated_outputs=list(staleness.outdated_outputs)

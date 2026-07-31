@@ -19,6 +19,7 @@ from pathlib import Path
 from . import accept as accept_mod
 from . import build as build_mod
 from . import calkit as calkit_mod
+from . import pipelines as pipelines_mod
 from . import importer
 from . import credentials as credentials_mod
 from . import provenance as provenance_mod
@@ -211,14 +212,14 @@ def _sign_outputs(document, results, args) -> int:
     panel asserts far less than it looks like it does, and a figure like that
     should not be going out in the first place.
     """
-    root = calkit_mod.find_project(document.path.parent) or document.path.parent
+    root = pipelines_mod.find_project(document.path.parent) or document.path.parent
     try:
         policy = provenance_mod.load_policy(root)
     except ValueError as exc:
         print(f"{exc}", file=sys.stderr)
         return EXIT_ERROR
 
-    project = calkit_mod.project_for(document.path.parent)
+    project = pipelines_mod.project_for(document.path.parent)
     violations = sign_mod.policy_violations(document, policy, project)
     if violations and policy.enforce:
         print(
@@ -320,7 +321,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     print(f"declared {args.path}")
     print(f"  wrote {sidecar}")
 
-    project = calkit_mod.project_for(args.path.resolve().parent)
+    project = pipelines_mod.project_for(args.path.resolve().parent)
     if project is not None:
         print(
             "  note: this project uses Calkit — a stage that fetches this file "
@@ -450,7 +451,7 @@ def cmd_place(args: argparse.Namespace) -> int:
     # Same bar the editor applies on insert: an unidentified component should be
     # stopped before it is in a figure, not discovered in one later.
     creds = credentials_mod.read(figure)
-    project = calkit_mod.project_for(root)
+    project = pipelines_mod.project_for(root)
     stage = project.stage_for(figure) if project else None
     from .assets import merge_provenance
 
@@ -503,15 +504,18 @@ def watch_targets(paths: list[Path]) -> dict[Path, str]:
     Recomputed on every event rather than cached, so placing a new component
     starts it being watched without a restart.
     """
-    from .report import inspect_document
+    from .report import inspect_any
 
     targets: dict[Path, str] = {}
     for path in paths:
         resolved = Path(path).resolve()
         if resolved.exists():
             targets[resolved] = str(path)
-        report = inspect_document(path)
-        project = calkit_mod.project_for(Path(path))
+        # `inspect_any`, not `inspect_document`: a project whose figures are
+        # plain PNGs written by a pipeline has nothing figmint can open, and
+        # watching them is exactly as useful.
+        report = inspect_any(path)
+        project = pipelines_mod.project_for(Path(path))
         if project:
             # The document's own inputs, not just its components'. Editing the
             # authored `.drawio` changes nothing inside the rendered figure, so
@@ -526,8 +530,11 @@ def watch_targets(paths: list[Path]) -> dict[Path, str]:
             # moves. Running the pipeline updates `dvc.lock` and nothing else
             # when a script edit does not alter its output, and without this the
             # preview would sit there reporting the stage as stale forever.
-            for meta in (project.lock, project.config):
-                if meta.is_file():
+            # Whichever files this pipeline keeps its answers in. Calkit has a
+            # config and a lock; Snakemake has a workflow and no lock at all.
+            for attr in ("lock", "config", "workflow"):
+                meta = getattr(project, attr, None)
+                if isinstance(meta, Path) and meta.is_file():
                     targets.setdefault(meta.resolve(), meta.name)
         for component in report.components:
             if component.resolved:
@@ -542,6 +549,14 @@ def watch_targets(paths: list[Path]) -> dict[Path, str]:
             for dep in getattr(stage, "deps", ()) or ():
                 target = (project.root / dep).resolve()
                 targets.setdefault(target, f"{dep} (input to `{stage.name}`)")
+    # A sidecar is provenance: writing `x.png.prov.yaml` changes what figmint
+    # says about `x.png` without touching a single byte of it. Registered even
+    # when absent, because appearing is exactly the event worth reacting to.
+    for target in list(targets):
+        for suffix in (".prov.yaml", ".c2pa"):
+            sidecar = target.with_name(target.name + suffix)
+            targets.setdefault(sidecar, f"{targets[target]}{suffix}")
+
     return targets
 
 

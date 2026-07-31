@@ -70,6 +70,10 @@ class Stage:
     #: that editing a plotting script updates a preview even though the script
     #: is not itself a component.
     deps: tuple[str, ...] = ()
+    #: Which pipeline declared it. figmint reads more than one — a rule in a
+    #: Snakefile answers "what produces this file?" exactly as a Calkit stage
+    #: does, and a project that uses Snakemake is not less reproducible for it.
+    pipeline: str = "Calkit"
 
     @property
     def verified(self) -> bool:
@@ -77,7 +81,8 @@ class Stage:
         return self.current is not False
 
     def describe(self) -> str:
-        parts = [f"Calkit stage `{self.name}`"]
+        noun = "rule" if self.pipeline == "Snakemake" else "stage"
+        parts = [f"{self.pipeline} {noun} `{self.name}`"]
         if self.entrypoint:
             parts.append(f"({self.entrypoint})")
         return " ".join(parts)
@@ -85,6 +90,11 @@ class Stage:
     def describe_staleness(self) -> str:
         """Why the stage cannot be vouched for, in a form worth printing."""
         if self.current is None:
+            if self.pipeline != "Calkit":
+                return (
+                    f"{self.pipeline} declares it as an output of "
+                    f"`{self.name}`, but records no run to check it against"
+                )
             return (
                 f"stage `{self.name}` declares it, but `dvc.lock` has no record "
                 f"of it ever running here"
@@ -92,8 +102,9 @@ class Stage:
         changed = ", ".join(self.changed_deps) or "its dependencies"
         blamed = self.stale_stage or self.name
         via = "" if blamed == self.name else f" (upstream of `{self.name}`)"
+        noun = "rule" if self.pipeline == "Snakemake" else "stage"
         return (
-            f"stage `{blamed}`{via} is out of date: {changed} changed since it "
+            f"{noun} `{blamed}`{via} is out of date: {changed} changed since it "
             f"last ran, so this file is the output of a previous version"
         )
 

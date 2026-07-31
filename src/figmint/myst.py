@@ -38,7 +38,7 @@ from urllib.parse import quote
 
 from .openserver import URL_ENV as OPEN_URL_ENV
 from .provenance import Level
-from .report import ComponentReport, FigureReport, inspect_document
+from .report import ComponentReport, FigureReport, inspect_any, inspect_document
 from .status import SourceState
 
 # --------------------------------------------------------------------------
@@ -160,7 +160,12 @@ def source_word(component: ComponentReport) -> str:
     if component.stage and component.stage_current:
         return "✅ up to date"
     if component.stage:
-        # A stage exists but there is no lock to check it against.
+        # A stage exists but nothing records a run to check it against. For
+        # Calkit that means `dvc.lock` has no entry; for Snakemake there is no
+        # equivalent record at all, and saying "never run here" would imply a
+        # missing run rather than a missing mechanism.
+        if component.stage_pipeline and component.stage_pipeline != "Calkit":
+            return "❔ freshness not tracked"
         return "❔ never run here"
     return "— not generated here"
 
@@ -179,7 +184,7 @@ def embedded_word(component: ComponentReport) -> str:
     return f"{STATE_MARK[component.state]} {STATE_WORD[component.state]}"
 
 
-def component_row(component: ComponentReport) -> dict[str, Any]:
+def component_row(component: ComponentReport, *, standalone: bool = False) -> dict[str, Any]:
     """One line of the provenance table."""
     origin: dict[str, Any] = (
         code(component.origin) if component.origin else text(component.label)
@@ -197,27 +202,29 @@ def component_row(component: ComponentReport) -> dict[str, Any]:
     if component.detail:
         detail.append(text(f" — {component.detail}"))
 
-    return row(
-        cell(origin),
-        cell(text(level)),
-        cell(text(source_word(component))),
-        cell(text(embedded)),
-        cell(*detail),
-    )
+    cells = [cell(origin), cell(text(level)), cell(text(source_word(component)))]
+    if not standalone:
+        cells.append(cell(text(embedded)))
+    cells.append(cell(*detail))
+    return row(*cells)
 
 
 def provenance_table(report: FigureReport) -> dict[str, Any]:
+    # A standalone artifact has no embedded copy that could drift from its
+    # source, because it *is* the source. Showing an "In figure" column would
+    # be answering a question that does not apply.
+    header = [
+        cell(strong("Artifact" if report.standalone else "Component"), header=True),
+        cell(strong("Provenance"), header=True),
+        cell(strong("Source"), header=True),
+    ]
+    if not report.standalone:
+        header.append(cell(strong("In figure"), header=True))
+    header.append(cell(strong("Basis"), header=True))
+
     return table(
-        row(
-            cell(strong("Component"), header=True),
-            cell(strong("Provenance"), header=True),
-            # Two freshness columns, because there are two ways to be out of
-            # date and one can be fine while the other is not.
-            cell(strong("Source"), header=True),
-            cell(strong("In figure"), header=True),
-            cell(strong("Basis"), header=True),
-        ),
-        *(component_row(c) for c in report.components),
+        row(*header),
+        *(component_row(c, standalone=report.standalone) for c in report.components),
     )
 
 
@@ -263,6 +270,12 @@ def headline(report: FigureReport) -> tuple[str, str]:
 
     violations = report.violations
     if violations:
+        if report.standalone:
+            return (
+                "warning",
+                f"No stated origin — below the project's "
+                f"`{report.policy.require.slug}` bar",
+            )
         return (
             "warning",
             f"{len(violations)} component(s) below the project's "
@@ -279,6 +292,12 @@ def headline(report: FigureReport) -> tuple[str, str]:
             "warning",
             f"Input data with no stated origin: {', '.join(roots)}",
         )
+
+    if report.standalone:
+        component = report.components[0]
+        machine = (component.credentials or {}).get("machineGenerated")
+        disclosure = ", machine-generated" if machine else ""
+        return "note", f"Identified: {component.level.slug}{disclosure}"
 
     n = len(report.components)
     return "note", f"{n} component(s), everything up to date"
@@ -380,9 +399,9 @@ def graph_block(
     from .graph import GraphUnavailable, figure_mermaid
 
     root = source.parent
-    from . import calkit as calkit_mod
+    from . import pipelines as pipelines_mod
 
-    project_root = calkit_mod.find_project(root) or Path.cwd()
+    project_root = pipelines_mod.find_project(root) or Path.cwd()
     try:
         return mermaid(
             figure_mermaid(report, project_root, preset=preset, detail=detail)
@@ -509,6 +528,14 @@ SPEC: dict[str, Any] = {
                 },
                 "graph-detail": {"type": "string", "doc": "low, medium, high."},
                 "table": {"type": "boolean", "doc": "Show the figure table."},
+                "artifacts": {
+                    "type": "string",
+                    "doc": (
+                        "Whitespace-separated paths to include as standalone "
+                        "artifacts. For projects whose figures are plain files "
+                        "rather than figmint composites."
+                    ),
+                },
             },
             "body": {"type": "parsed", "doc": "Optional lead-in text."},
         },
@@ -524,9 +551,10 @@ def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
     figure; this collects it.
     """
     from . import formats
-    from .calkit import find_project
+    from .pipelines import find_project
     from .graph import GraphUnavailable, document_graph, project as project_graph
     from .graph import to_mermaid
+    from .report import inspect_asset
 
     options = data.get("options") or {}
     cwd = Path.cwd()
@@ -557,6 +585,15 @@ def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
         report = inspect_document(document)
         if not report.error and report.components:
             reports.append((document, report))
+
+    # Explicitly named artifacts. A project whose figures are plain PNGs written
+    # by a pipeline has no composites to discover, and discovering every file in
+    # the tree instead would be noise — so this stays opt-in and exact.
+    for name in str(options.get("artifacts") or "").split():
+        candidate = (cwd / name).resolve()
+        report = inspect_asset(candidate)
+        if not report.error:
+            reports.append((candidate, report))
 
     if not reports:
         return [
@@ -638,7 +675,8 @@ def _page_path(data: dict[str, Any], root: Path) -> Path | None:
     if explicit:
         return root / explicit
 
-    from .calkit import _stage_input_paths, project_for
+    from .calkit import _stage_input_paths
+    from .pipelines import project_for
 
     project_ = project_for(root)
     if project_ is None:
@@ -683,7 +721,7 @@ def document_table(root: Path, reports) -> dict[str, Any]:
         rows.append(
             row(
                 cell(code(shown)),
-                cell(text(str(len(report.components)))),
+                cell(text("—" if report.standalone else str(len(report.components)))),
                 cell(
                     text(
                         f"{LEVEL_MARK[report.weakest]} {report.weakest.slug}"
@@ -741,6 +779,11 @@ def as_bool(value: Any, default: bool = True) -> bool:
     return str(value).strip().lower() not in ("false", "no", "0", "off")
 
 
+#: What MyST can put in an `image` node. A tracked artifact need not be one —
+#: a dataset has provenance worth showing and nothing to display.
+_RENDERABLE = (".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf")
+
+
 def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
     options = data.get("options") or {}
     node = data.get("node") or {}
@@ -750,28 +793,46 @@ def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
     if not source.is_absolute():
         source = Path.cwd() / source
 
-    image: dict[str, Any] = {"type": "image", "url": target}
-    for key in ("width", "align", "alt"):
-        if options.get(key):
-            image[key] = options[key]
-
-    figure: dict[str, Any] = {
-        "type": "container",
-        "kind": "figure",
-        "children": [image],
-    }
-    if options.get("name"):
-        figure["identifier"] = str(options["name"]).lower()
-        figure["label"] = str(options["name"])
-
+    out: list[dict[str, Any]] = []
     caption = caption_children(node)
-    if caption:
-        figure["children"].append({"type": "caption", "children": caption})
 
-    out: list[dict[str, Any]] = [figure]
+    from . import formats
+
+    # A figure document is a figure by construction — the author asked for it,
+    # and MyST copies it as a static asset. Anything else has to look like an
+    # image before it gets an `image` node.
+    displayable = target.lower().endswith(_RENDERABLE) or formats.is_document(source)
+
+    if displayable:
+        image: dict[str, Any] = {"type": "image", "url": target}
+        for key in ("width", "align", "alt"):
+            if options.get(key):
+                image[key] = options[key]
+
+        figure: dict[str, Any] = {
+            "type": "container",
+            "kind": "figure",
+            "children": [image],
+        }
+        if options.get("name"):
+            figure["identifier"] = str(options["name"]).lower()
+            figure["label"] = str(options["name"])
+        if caption:
+            figure["children"].append({"type": "caption", "children": caption})
+        out.append(figure)
+    else:
+        # Not an image. Naming it and showing its provenance is the whole point;
+        # emitting an `image` node for a CSV makes MyST warn about an
+        # unsupported extension and renders a broken picture.
+        lead: list[dict[str, Any]] = [code(target)]
+        if caption:
+            lead.append(text(" — "))
+            for child in caption:
+                lead.extend(child.get("children") or [child])
+        out.append(paragraph(*lead))
 
     if as_bool(options.get("provenance")):
-        report = inspect_document(source)
+        report = inspect_any(source)
         out.append(
             render(
                 report,

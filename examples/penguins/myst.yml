@@ -1,0 +1,17 @@
+# A mystmd project for `provenance.md` only.
+#
+# The paper itself (`article.myst`) is built by Stencila, not mystmd — see the
+# `execute_article` and `render_article` rules in the Snakefile. This config
+# exists so figmint's provenance panel can be pointed at the artifacts that
+# pipeline produces, without touching it.
+version: 1
+project:
+  id: penguins-provenance
+  title: Penguins — provenance probe
+  plugins:
+    - type: executable
+      path: ./.venv/bin/figmint-myst
+  toc:
+    - file: provenance.md
+site:
+  template: book-theme

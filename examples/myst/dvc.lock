@@ -13,12 +13,12 @@ stages:
       size: 1100
     - path: uv.lock
       hash: md5
-      md5: a37f67adecdf233f234f5b547101795a
-      size: 422539
+      md5: 68d32048a183e8363d9faf823bee4118
+      size: 422568
     outs:
     - path: figures/cp_curve.svg
       hash: md5
-      md5: aad68424a16e9a0f41faa91790afea1a
+      md5: ea5fa59442699b99bc593208abacef40
       size: 20539
   embed-figure:
     cmd: calkit xenv -n main --no-check -- figmint reimport 
@@ -30,7 +30,7 @@ stages:
       size: 2063653
     - path: figures/cp_curve.svg
       hash: md5
-      md5: aad68424a16e9a0f41faa91790afea1a
+      md5: ea5fa59442699b99bc593208abacef40
       size: 20539
     - path: figures/turbine.png
       hash: md5
@@ -38,12 +38,12 @@ stages:
       size: 1524838
     - path: uv.lock
       hash: md5
-      md5: a37f67adecdf233f234f5b547101795a
-      size: 422539
+      md5: 68d32048a183e8363d9faf823bee4118
+      size: 422568
     outs:
     - path: .build/composite.drawio
       hash: md5
-      md5: 0892a158c4860fbe03791a8ce2a00d61
+      md5: b534afd4dc2326615ac2657e6248731d
       size: 2063662
   render-figure:
     cmd: calkit xenv -n main --no-check -- drawio -x -f svg --embed-diagram 
@@ -51,16 +51,16 @@ stages:
     deps:
     - path: .build/composite.drawio
       hash: md5
-      md5: 0892a158c4860fbe03791a8ce2a00d61
+      md5: b534afd4dc2326615ac2657e6248731d
       size: 2063662
     - path: uv.lock
       hash: md5
-      md5: a37f67adecdf233f234f5b547101795a
-      size: 422539
+      md5: 68d32048a183e8363d9faf823bee4118
+      size: 422568
     outs:
     - path: figures/composite.drawio.svg
       hash: md5
-      md5: 6ff853a3eaa9e122b569d1adab38210d
+      md5: edf8a0474caa7d9f217066ee338a499f
       size: 4195964
   check-provenance:
     cmd: calkit xenv -n main --no-check -- figmint check 
@@ -68,22 +68,22 @@ stages:
     deps:
     - path: figures/composite.drawio.svg
       hash: md5
-      md5: 6ff853a3eaa9e122b569d1adab38210d
+      md5: edf8a0474caa7d9f217066ee338a499f
       size: 4195964
     - path: uv.lock
       hash: md5
-      md5: a37f67adecdf233f234f5b547101795a
-      size: 422539
+      md5: 68d32048a183e8363d9faf823bee4118
+      size: 422568
   build-site:
     cmd: calkit xenv -n main --no-check -- myst build --html --execute
     deps:
     - path: figures/composite.drawio.svg
       hash: md5
-      md5: 6ff853a3eaa9e122b569d1adab38210d
+      md5: edf8a0474caa7d9f217066ee338a499f
       size: 4195964
     - path: figures/cp_fit.svg
       hash: md5
-      md5: 743ffd02cd9bf3a3b197c681e3682378
+      md5: 5633071d7dda4ff1e9df901b12e2df28
       size: 30080
     - path: index.md
       hash: md5
@@ -99,8 +99,8 @@ stages:
       size: 147
     - path: uv.lock
       hash: md5
-      md5: a37f67adecdf233f234f5b547101795a
-      size: 422539
+      md5: 68d32048a183e8363d9faf823bee4118
+      size: 422568
   fit-peak:
     cmd: calkit xenv -n main --no-check -- python scripts/fit_peak.py
     deps:
@@ -118,12 +118,12 @@ stages:
       size: 4076
     - path: uv.lock
       hash: md5
-      md5: a37f67adecdf233f234f5b547101795a
-      size: 422539
+      md5: 68d32048a183e8363d9faf823bee4118
+      size: 422568
     outs:
     - path: figures/cp_fit.svg
       hash: md5
-      md5: 743ffd02cd9bf3a3b197c681e3682378
+      md5: 5633071d7dda4ff1e9df901b12e2df28
       size: 30080
     - path: results/peak.json
       hash: md5

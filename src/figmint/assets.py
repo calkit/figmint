@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from . import calkit as calkit_mod
+from . import pipelines as pipelines_mod
 from . import credentials as credentials_mod
 from . import provenance as provenance_mod
 
@@ -319,7 +320,7 @@ def scan(root: Path, subdir: str | None = None) -> list[Asset]:
         return []
 
     # Resolve the Calkit project once for the whole scan, not per file.
-    project = calkit_mod.project_for(root)
+    project = pipelines_mod.project_for(root)
 
     assets: list[Asset] = []
     for path in sorted(base.rglob("*")):

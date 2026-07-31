@@ -18,9 +18,9 @@ from pathlib import Path
 import pytest
 
 from figmint.formats import open_document
-from figmint.myst import OPEN_URL_ENV, SPEC, main, run_directive
+from figmint.myst import OPEN_URL_ENV, SPEC, document_directive, main, run_directive
 from figmint.provenance import Level
-from figmint.report import inspect_document
+from figmint.report import inspect_any, inspect_asset, inspect_document
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
@@ -82,7 +82,7 @@ def all_text(node) -> str:
 @pytest.fixture
 def figure(tmp_path: Path) -> Path:
     """A diagram with one identified component, in its own project."""
-    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git").mkdir(exist_ok=True)
     (tmp_path / "figures").mkdir()
     shutil.copy(EXAMPLES / "figures" / "cp_curve.svg", tmp_path / "figures" / "plot.svg")
     shutil.copy(
@@ -584,3 +584,100 @@ class TestReportLayer:
     def test_components_match_the_document(self, figure: Path):
         keys = [c.key for c in open_document(figure).components()]
         assert [c.key for c in inspect_document(figure).components] == keys
+
+
+class TestStandaloneArtifacts:
+    """Not every figure is a document figmint can open.
+
+    A plot written straight to PNG by a pipeline still has the question "where
+    did this come from, and is it identified well enough to publish?" — and the
+    answer is the same one `figmint check` gives for a directory scan.
+    """
+
+    @pytest.fixture
+    def artifact(self, tmp_path: Path) -> Path:
+        (tmp_path / ".git").mkdir(exist_ok=True)
+        target = tmp_path / "plot.svg"
+        shutil.copy(EXAMPLES / "figures" / "cp_curve.svg", target)
+        return target
+
+    def test_an_unidentified_file_is_reported_not_an_error(
+        self, artifact: Path, monkeypatch
+    ):
+        """Previously this said "figmint could not read this figure", which is
+        true of the *format* and useless as provenance."""
+        monkeypatch.chdir(artifact.parent)
+        nodes = run_directive(directive_payload("plot.svg"))
+        panel = find(nodes, "admonition")
+        assert panel["kind"] == "warning"
+        assert "No stated origin" in all_text(panel)
+        assert "could not read" not in all_text(panel)
+
+    def test_a_sidecar_lifts_it(self, artifact: Path, monkeypatch):
+        shutil.copy(
+            EXAMPLES / "figures" / "cp_curve.svg.prov.yaml",
+            artifact.with_name("plot.svg.prov.yaml"),
+        )
+        monkeypatch.chdir(artifact.parent)
+        panel = find(run_directive(directive_payload("plot.svg")), "admonition")
+        assert panel["kind"] == "note"
+        assert "generated" in all_text(panel)
+
+    def test_the_in_figure_column_is_dropped(self, artifact: Path, monkeypatch):
+        """A standalone artifact has no embedded copy that could drift from its
+        source, because it *is* the source. The column would answer a question
+        that does not apply."""
+        monkeypatch.chdir(artifact.parent)
+        header = find(find(run_directive(directive_payload("plot.svg")), "admonition"), "tableRow")
+        assert [all_text(c) for c in header["children"]] == [
+            "Artifact",
+            "Provenance",
+            "Source",
+            "Basis",
+        ]
+
+    def test_the_figure_still_renders(self, artifact: Path, monkeypatch):
+        monkeypatch.chdir(artifact.parent)
+        nodes = run_directive(directive_payload("plot.svg", name="fig-x"))
+        assert find(nodes, "container")["identifier"] == "fig-x"
+        assert find(nodes, "image")["url"] == "plot.svg"
+
+    def test_inspect_any_dispatches_on_the_file(self, artifact: Path, figure: Path):
+        assert inspect_any(artifact).standalone
+        assert not inspect_any(figure).standalone
+
+    def test_a_missing_file_is_an_error_not_a_crash(self, tmp_path: Path):
+        report = inspect_asset(tmp_path / "nope.png")
+        assert report.error and "no such file" in report.error
+
+    def test_a_non_image_artifact_gets_no_image_node(
+        self, artifact: Path, monkeypatch
+    ):
+        """A dataset has provenance worth showing and nothing to display.
+
+        Emitting an `image` node for a CSV makes MyST warn about an unsupported
+        extension and renders a broken picture where a filename belongs.
+        """
+        monkeypatch.chdir(artifact.parent)
+        (artifact.parent / "data.csv").write_text("a,b\n1,2\n")
+        nodes = run_directive(directive_payload("data.csv"))
+        assert find(nodes, "image") is None
+        assert find(nodes, "container") is None
+        assert "data.csv" in all_text(nodes[0])
+        # The panel is still the point, and still there.
+        assert find(nodes, "admonition") is not None
+
+    def test_the_document_summary_accepts_explicit_artifacts(
+        self, artifact: Path, monkeypatch
+    ):
+        """A project whose figures are plain files has no composites to find."""
+        monkeypatch.chdir(artifact.parent)
+        nodes = document_directive(
+            {"options": {"table": True, "graph": False, "artifacts": "plot.svg"},
+             "node": {}}
+        )
+        panel = find(nodes, "admonition")
+        assert "plot.svg" in all_text(panel)
+        # The component count is meaningless for a standalone artifact.
+        rows = find(panel, "table")["children"]
+        assert all_text(rows[1]["children"][1]) == "—"

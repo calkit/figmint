@@ -58,3 +58,7 @@ stencila-types = { path = "../stencila/python/stencila_types", editable = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Only this repo's tests. The examples are self-contained projects with their
+# own environments and their own suites; collecting them here fails on their
+# dependencies and tells us nothing about figmint.
+testpaths = ["tests"]
