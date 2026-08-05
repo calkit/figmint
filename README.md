@@ -35,6 +35,7 @@ Practically this means that the command must start with one of the following:
 - `pixi run`
 - `bun run`
 - `cargo run`
+- `nix develop --command` (as long as a `flake.nix` file is present)
 - `calkit xenv` (use for Docker, Conda, Julia, renv environments)
 - `calkit nb exec`
 - `calkit latex build`
