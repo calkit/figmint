@@ -31,8 +31,10 @@ import os
 import shutil
 import subprocess
 import threading
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 #: Loopback only. This opens local applications on request; it has no business
@@ -69,7 +71,7 @@ class OpenHandler(BaseHTTPRequestHandler):
     #: class attribute by that name is overwritten with "GET" on every request
     #: and then splatted character by character into the argv.
     editor: list[str] = []
-    on_open = None
+    on_open: Callable[[Path], None] | None = None
 
     def do_GET(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
         parsed = urlparse(self.path)
@@ -115,12 +117,14 @@ class OpenHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
-    def log_message(self, *args) -> None:
+    def log_message(self, *args: Any) -> None:
         """Silence the default per-request logging on stderr."""
 
 
 def serve(
-    root: Path, port: int = DEFAULT_PORT, on_open=None
+    root: Path,
+    port: int = DEFAULT_PORT,
+    on_open: Callable[[Path], None] | None = None,
 ) -> tuple[HTTPServer, str]:
     """Start the opener in a background thread. Returns the server and its URL."""
     handler = type(

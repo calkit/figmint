@@ -26,7 +26,7 @@ The redundancy people notice first is that `dvc.lock` and `figmint.toml` look
 alike.
 They do—`dvc.lock` records `cmd`, `deps`, and `outs` with hashes, including
 the environment lock file, which is the same model.
-The difference is what the hashes are *for*, and that difference is load
+The difference is what the hashes are _for_, and that difference is load
 bearing.
 
 ## How a stage uses Figmint
@@ -51,7 +51,7 @@ figmint run -i data/performance.csv -o figures/cp_curve.png \
 ```
 
 `calkit run` remains the project entrypoint.
-Figmint wraps the *stage command*, not Calkit itself.
+Figmint wraps the _stage command_, not Calkit itself.
 Wrapping Calkit would make Figmint the entrypoint, which is the thing this
 arrangement exists to avoid.
 
@@ -61,7 +61,7 @@ inputs and outputs.
 
 ### Why the wrapper has to be inside the stage
 
-Figmint signs an artifact *before* hashing it, because embedding a C2PA
+Figmint signs an artifact _before_ hashing it, because embedding a C2PA
 manifest changes the bytes.
 If DVC hashed an output and Figmint signed it afterward, the hash in
 `dvc.lock` would be wrong the moment signing finished, DVC would see the
@@ -80,17 +80,17 @@ identical bytes twice produces two different files.
 An unsigned Matplotlib figure, by contrast, is byte-identical across runs.
 
 The consequence under DVC is specific.
-Edit a comment in a plotting script: DVC reruns the stage, and *without*
+Edit a comment in a plotting script: DVC reruns the stage, and _without_
 signing the figure comes out byte-identical, so its hash is unchanged and
 every downstream stage is skipped.
-*With* signing, the same no-op edit produces a new signature, a new hash, and
+_With_ signing, the same no-op edit produces a new signature, a new hash, and
 the whole chain reruns—the composite re-embed, the export, the document build.
 
 This only costs anything on changes that do not affect content, but those are
 common: comments, formatting, a lock file bump that does not reach the output.
 
 The remedy is to sign at the boundary rather than throughout.
-Content Credentials earn their keep on artifacts that *leave the repository*—
+Content Credentials earn their keep on artifacts that _leave the repository_—
 the published figure, the file pasted into a manuscript.
 An internal panel or a `.drawio` source never travels, so leaving it unsigned
 costs nothing and stops the cascade.
@@ -144,7 +144,7 @@ disagree the panel says so.
 
 ## Reading `dvc.lock`
 
-Figmint can read `dvc.lock` for the *structure*—which command produced which
+Figmint can read `dvc.lock` for the _structure_—which command produced which
 outputs from which inputs.
 That removes any need for Figmint to discover the graph itself in a Calkit
 project.
@@ -167,13 +167,13 @@ signature state—and can point at stage names instead of restating commands.
 
 It is tempting to compile the Figmint graph into `dvc.yaml`.
 It does not work in general, for the reason the record exists: `figmint.toml`
-is *observed*, written after the fact, and a build plan has to be known
+is _observed_, written after the fact, and a build plan has to be known
 before anything runs.
 A first run would have nothing to compile from, and a stale record would
 compile a stale plan.
 
 The composite figure case is the real exception, and it is worth serving.
-The panels a diagram embeds are readable *from the diagram* before running,
+The panels a diagram embeds are readable _from the diagram_ before running,
 from the `src` attributes Figmint writes on each shape.
 That is a query on a file, not a record of the past, so it belongs in a plan.
 

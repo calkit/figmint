@@ -237,8 +237,8 @@ class Diagram:
     """A `.drawio` (or `.drawio.svg`) document, opened for reading or writing."""
 
     path: Path
-    tree: ET.ElementTree
-    model: ET.Element
+    tree: ET.ElementTree[ET.Element[str]]
+    model: ET.Element[str]
     #: True for a `.drawio.svg`, which carries the diagram inside a rendered
     #: picture. figmint will not write one back: it can update the embedded XML
     #: but not the rendering around it, and a file whose picture and metadata
@@ -251,7 +251,7 @@ class Diagram:
         if not path.is_file():
             raise DrawioError(f"no such diagram: {path}")
         try:
-            tree = ET.parse(path)
+            tree: ET.ElementTree[ET.Element[str]] = ET.parse(path)
         except ET.ParseError as exc:
             raise DrawioError(f"{path}: {exc}") from exc
 
@@ -285,8 +285,10 @@ class Diagram:
     @classmethod
     def create(cls, path: Path, page: str = "Page-1") -> "Diagram":
         root = ET.fromstring(EMPTY.format(id=Path(path).stem, page=page))
-        tree = ET.ElementTree(root)
+        tree: ET.ElementTree[ET.Element[str]] = ET.ElementTree(root)
         model = root.find(".//mxGraphModel")
+        if model is None:  # pragma: no cover - EMPTY always has one
+            raise DrawioError(f"{path}: no <mxGraphModel> found")
         return cls(path=Path(path), tree=tree, model=model)
 
     # -- reading ----------------------------------------------------------
@@ -312,8 +314,10 @@ class Diagram:
                 attrs = _provenance_attrs(node.attrib)
                 cell = node.find("mxCell")
                 style = (
-                    cell.get("style") if cell is not None else None
-                ) or node.get("style", "")
+                    (cell.get("style") if cell is not None else None)
+                    or node.get("style")
+                    or ""
+                )
                 uri = _image_from_style(style)
                 if uri is None and not attrs:
                     continue
@@ -377,7 +381,7 @@ class Diagram:
 
     # -- writing ----------------------------------------------------------
 
-    def shape_for(self, relative: str):
+    def shape_for(self, relative: str) -> ET.Element[str] | None:
         """The wrapper already carrying this source path, if the diagram has one."""
         root = self.model.find("root")
         if root is None:
@@ -447,18 +451,16 @@ class Diagram:
         # Giving one dimension scales the other by the artwork's aspect ratio;
         # asking for a 300-unit-wide panel and getting one at the image's full
         # natural height would be a surprise.
+        ratio = aspect if aspect else 0.75
         if width is None and height is None:
-            if natural:
-                width, height = (
-                    from_points(natural[0]),
-                    from_points(natural[1]),
-                )
-            else:
-                width, height = 200.0, 150.0
-        elif height is None:
-            height = width * aspect if aspect else width * 0.75
-        elif width is None:
-            width = height / aspect if aspect else height / 0.75
+            box_w, box_h = (
+                (from_points(natural[0]), from_points(natural[1]))
+                if natural
+                else (200.0, 150.0)
+            )
+        else:
+            box_w = width if width is not None else (height or 0.0) / ratio
+            box_h = height if height is not None else box_w * ratio
 
         if prior is not None:
             # Replacing a panel keeps where the author put it and how big they
@@ -506,8 +508,8 @@ class Diagram:
         geometry = ET.SubElement(cell, "mxGeometry")
         geometry.set("x", _number(x))
         geometry.set("y", _number(y))
-        geometry.set("width", _number(width))
-        geometry.set("height", _number(height))
+        geometry.set("width", _number(box_w))
+        geometry.set("height", _number(box_h))
         geometry.set("as", "geometry")
         return shape_id
 

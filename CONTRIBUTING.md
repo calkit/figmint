@@ -73,6 +73,28 @@ This guide will help you get started.
   to the description.
 - Wait for a review and make necessary changes.
 
+## 🚀 Releasing
+
+Releases are cut from GitHub, not from a laptop.
+There is no version to bump: `pyproject.toml` declares the version dynamic
+and [hatch-vcs](https://github.com/ofek/hatch-vcs) derives it from the git
+tag, so tagging _is_ the release.
+[Draft a new release](https://github.com/calkit/figmint/releases/new) with a
+tag of the form `v0.2.0` and publish it.
+
+Between releases the version is a development one derived from the last tag
+and the commit, e.g. `0.2.1.dev4+g1a2b3c4`, which is what `figmint --version`
+reports from a working copy.
+
+Publishing the release runs the `Publish to PyPI` and `Publish to TestPyPI`
+workflows, which build the wheel and the source tarball with `uv build` and
+upload them with
+[trusted publishing](https://docs.pypi.org/trusted-publishers/), so no API
+token is stored anywhere.
+Both PyPI and TestPyPI need a trusted publisher configured for the
+`figmint` project pointing at the `publish.yml`/`publish-test.yml` workflows,
+and the repository needs matching `pypi` and `testpypi` environments.
+
 ## 💡 Other ways to contribute
 
 - **Report bugs**: Open an issue with detailed reproduction steps.

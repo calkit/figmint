@@ -1,0 +1,33 @@
+name: Run tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  main:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # hatch-vcs derives the version from the git tag.
+          fetch-depth: 0
+      - name: Configure Git credentials
+        run: |
+          git config --global user.name github-actions[bot]
+          git config --global user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git config --global init.defaultBranch main
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+      - name: Run tests
+        run: uv run pytest --durations=10

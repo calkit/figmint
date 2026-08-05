@@ -1,0 +1,30 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  all:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # hatch-vcs derives the version from the git tag.
+          fetch-depth: 0
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+      - name: Setup Node.js
+        # Prettier, which the pre-commit hooks run on Markdown, YAML, and JSON.
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Format, lock file consistency, and mypy — the same checks `make check`
+      # runs locally, so CI cannot drift from what contributors are told to do.
+      - name: Check format, lock file, and types
+        run: make check

@@ -35,7 +35,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 from .openserver import URL_ENV as OPEN_URL_ENV
@@ -46,7 +46,12 @@ from .status import (
     check_artifact,
     check_path,
 )
-from .store import Artifact, Store, hash_file, project_root
+from .store import Artifact, Input, Store, hash_file, project_root
+
+if TYPE_CHECKING:
+    # Only for annotations: `credentials` pulls in c2pa, which is slow to
+    # import, so the runtime imports stay inside the functions that need it.
+    from .credentials import ContentCredentials
 
 # --------------------------------------------------------------------------
 # Presentation
@@ -201,7 +206,7 @@ def _ancestors(path: str, store: Store) -> set[str]:
     return seen
 
 
-def credentials_for(path: Path):
+def credentials_for(path: Path) -> ContentCredentials | None:
     """Content Credentials on the artifact itself, if it carries any."""
     from . import credentials as credentials_mod
 
@@ -211,7 +216,7 @@ def credentials_for(path: Path):
         return None
 
 
-def provenance_cell(item, store: Store) -> dict[str, Any]:
+def provenance_cell(item: ChainItem, store: Store) -> dict[str, Any]:
     """What the record says about where one input came from.
 
     This is the column a reader actually needs. "file" told them nothing they
@@ -325,10 +330,10 @@ def chain_items(report: ArtifactStatus, store: Store) -> list[ChainItem]:
 
     # The first record naming a file also fixes the hash it is checked against,
     # which is what lets a file no command produced be checked at all.
-    named: dict[str, Any] = {}
-    for artifact in store.artifacts.values():
-        for item in artifact.inputs:
-            named.setdefault(item.path, item)
+    named: dict[str, Input] = {}
+    for recorded in store.artifacts.values():
+        for recorded_input in recorded.inputs:
+            named.setdefault(recorded_input.path, recorded_input)
 
     # Direct inputs first, then everything behind them: "what this was made
     # from" before "and what that came from" is the order a reader asks in.
@@ -337,7 +342,7 @@ def chain_items(report: ArtifactStatus, store: Store) -> list[ChainItem]:
         item = named.get(path)
         artifact = store.artifacts.get(path)
         derived = artifact is not None and bool(artifact.command)
-        if derived:
+        if artifact is not None and derived:
             state = check_artifact(store, artifact).state
         elif item is None:
             state = State.UNTRACKED
@@ -378,7 +383,7 @@ def state_words(item: "ChainItem") -> str:
     return STATE_WORD[item.state]
 
 
-def input_row(item, store: Store) -> dict[str, Any]:
+def input_row(item: ChainItem, store: Store) -> dict[str, Any]:
     return row(
         cell(code(item.path)),
         provenance_cell(item, store),
@@ -423,7 +428,7 @@ def origin_paragraph(report: ArtifactStatus) -> dict[str, Any] | None:
 
 def headline(
     report: ArtifactStatus,
-    creds,
+    creds: ContentCredentials | None,
     chain: list[ChainItem],
     noun: str = "Figure",
 ) -> tuple[str, str]:
@@ -461,15 +466,15 @@ def headline(
         # Which file *changed* and which merely fell behind are different
         # facts, and collapsing them sends a reader to fix the wrong one: a
         # figure that is stale did not change, its inputs did.
-        changed = [i.path for i in broken if not i.derived]
+        changed_paths = [i.path for i in broken if not i.derived]
         behind = [i.path for i in broken if i.derived]
-        if changed and behind:
+        if changed_paths and behind:
             detail = (
-                f"{', '.join(changed)} changed, and "
+                f"{', '.join(changed_paths)} changed, and "
                 f"{', '.join(behind)} has not been regenerated since"
             )
-        elif changed:
-            detail = f"{', '.join(changed)} changed since this was made"
+        elif changed_paths:
+            detail = f"{', '.join(changed_paths)} changed since this was made"
         else:
             detail = (
                 f"{', '.join(behind)} has not been regenerated from its "
@@ -483,7 +488,9 @@ def headline(
     return "note", f"🌿 {noun} is up to date"
 
 
-def credentials_paragraph(creds) -> dict[str, Any] | None:
+def credentials_paragraph(
+    creds: ContentCredentials | None,
+) -> dict[str, Any] | None:
     """What the artifact's own manifest says, when it has one.
 
     Kept separate from the inputs table because it answers a different
@@ -891,7 +898,8 @@ def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
     # just broke is the exact confusion this avoids.
     outputs = [r for r in others if is_output(store.artifacts.get(r.path))]
 
-    children: list[dict[str, Any]] = list(rebuild_block(mine, store))
+    # Sorted, because `mine` is a set and the blocks are rendered in order.
+    children: list[dict[str, Any]] = list(rebuild_block(sorted(mine), store))
     if as_bool(options.get("table")):
         children.append(document_table(outputs))
 

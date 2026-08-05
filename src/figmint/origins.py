@@ -51,6 +51,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 #: `host/owner/project/path@rev`. The scheme comes from which flag was used, so
 #: it is not repeated here — `--git git:github.com/...` would be noise.
@@ -229,7 +230,7 @@ def attested(*authors: Author) -> Origin:
     return Origin(kind="attested", value="", authors=collected)
 
 
-def git_authors_for(path, cwd) -> list[Author]:
+def git_authors_for(path: Path, cwd: Path) -> list[Author]:
     """Everyone git has seen touch a file.
 
     Both the commit authors and the `Co-authored-by:` trailers, because the
@@ -270,7 +271,7 @@ def git_authors_for(path, cwd) -> list[Author]:
     return list(dedupe(reversed(found)))
 
 
-def git_author(cwd) -> str | None:
+def git_author(cwd: Path) -> str | None:
     """Whoever git thinks is working here, as a default attribution."""
     import subprocess
 

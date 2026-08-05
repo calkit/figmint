@@ -1,0 +1,27 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: "v4.4.0"
+    hooks:
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      # The example's figures are signed artifacts whose hashes figmint has
+      # recorded, so a hook that rewrites their bytes makes the record wrong.
+      - id: end-of-file-fixer
+        exclude: ^examples/myst/figures/
+      - id: trailing-whitespace
+        exclude: ^examples/myst/figures/
+      - id: check-yaml
+        args: ["--unsafe"]
+      - id: check-json
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: "v0.6.3"
+    hooks:
+      - id: ruff
+        args: [--exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: "v3.0.3"
+    hooks:
+      - id: prettier

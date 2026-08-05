@@ -36,6 +36,7 @@ import datetime as _datetime
 import json
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -446,7 +447,7 @@ def ingredient_json(ingredient: Ingredient) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _signer_for(private_key: Any):
+def _signer_for(private_key: Any) -> tuple[Any, Callable[[bytes], bytes]]:
     """Pick the signing algorithm from the key, and return a matching callback.
 
     The algorithm is a property of the key, not a choice: signing an ECDSA key
@@ -483,6 +484,9 @@ def _signer_for(private_key: Any):
 
     if isinstance(private_key, ec.EllipticCurvePrivateKey):
         curve = private_key.curve.name
+        # Declared up front so the three branches are not read as narrowing to
+        # whichever digest happens to come first.
+        digest: hashes.HashAlgorithm
         if curve == "secp256r1":
             digest, alg, size = hashes.SHA256(), C2paSigningAlg.ES256, 32
         elif curve == "secp384r1":

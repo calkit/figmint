@@ -154,7 +154,7 @@ def _calkit_lock(command: list[str], cwd: Path) -> Path:
             f"reports no lock file, so what it pins cannot be recorded"
         )
 
-    resolved = (Path(cwd) / lock).resolve()
+    resolved: Path = (Path(cwd) / lock).resolve()
     if not resolved.is_file():
         raise EnvironmentError_(
             f"Calkit names `{lock}` as the lock for `{name}`, but it does not "

@@ -60,7 +60,7 @@ figmint declare <path> --mine
 This records your "attestation". AI agents should similarly declare
 when they've created primary artifacts so readers can assess if that
 is an acceptable use of generative AI — but an agent cannot be the one
-answering for the file, so the tool is disclosed *beside* a person rather
+answering for the file, so the tool is disclosed _beside_ a person rather
 than in place of one:
 
 ```sh
@@ -92,7 +92,7 @@ Whether an author is a person or a tool is a guess when it comes from git, so
 
 Hand-authored artifacts have authors too. A `.drawio` canvas is assembled from
 recorded panels but arranged by people and agents, so it carries a derivation
-chain *and* an author list; declaring it adds the authors without disturbing
+chain _and_ an author list; declaring it adds the authors without disturbing
 its inputs.
 
 An attestation is the weakest thing in the record: nothing verifies it, and
@@ -114,7 +114,7 @@ Scripts count too. A figure resting on a script nobody will claim is as
 unplaceable as one resting on data nobody collected, and a script a model wrote
 is exactly what a reader needs told.
 
-A declaration is about *people*, not bytes, so editing a declared file does not
+A declaration is about _people_, not bytes, so editing a declared file does not
 invalidate it and never needs redoing. `figmint declare` records a hash too,
 but only as a note of what was seen — nothing checks it. `figmint run` keeps it
 current whenever it uses the file, so the record does not drift, and says so
@@ -190,7 +190,7 @@ figmint status <path>
 The states are kept apart, because they have different fixes:
 
 - **stale** — an input changed; regenerate it.
-- **modified** — a *produced* output changed without going through figmint, so
+- **modified** — a _produced_ output changed without going through figmint, so
   the record no longer describes the file it names. This is how tampering with
   an output after generation is caught.
 - **upstream** — sound in every direct link, but resting on one that is not.
@@ -209,6 +209,7 @@ requires re-declaring anything. The consequence shows up where it can be acted
 on: on the outputs built from the old bytes. The honest cost is that a declared
 file nothing consumes — no output to go stale — is not watched at all; if it is
 swapped, nothing notices.
+
 - **upstream** — this artifact is sound in every direct link but rests on one
   that is not. Staleness does not stop at the first link: a composite whose
   `.drawio` is untouched passes every direct check even when the data three
@@ -257,7 +258,7 @@ figmint drawio import my-figure.png my-composite-figure.drawio
 It's important to use the Figmint CLI since this will embed metadata into
 the `.drawio` file.
 
-`import` is an *authoring* step: it puts a new panel on the canvas. You should
+`import` is an _authoring_ step: it puts a new panel on the canvas. You should
 not need to run it again when a figure is redrawn, and you don't — each shape
 records the `src` it came from and the hash it had, so the export below
 re-embeds any panel that has moved on, keeping the position and size you gave
@@ -271,7 +272,7 @@ figmint drawio export my-diagram.drawio my-diagram.svg
 ```
 
 Export is the build step. It refreshes stale panels first — draw.io renders the
-*copy* inside the diagram, so refreshing afterwards would publish the old
+_copy_ inside the diagram, so refreshing afterwards would publish the old
 pictures — then renders, signs the result with every panel as an ingredient,
 and re-records the diagram itself.
 
@@ -308,8 +309,8 @@ tables are truncated at `:rows:` (25 by default) with a note saying so — a
 table is for reading, and a thousand rows of it is a scroll bar.
 
 Anything that is neither a picture nor a table renders as its filename with the
-panel attached, and the panel names what it is looking at: *Figure*, *Table*,
-or *Artifact*.
+panel attached, and the panel names what it is looking at: _Figure_, _Table_,
+or _Artifact_.
 
 The document-level panel takes an `:artifact:` option naming the document's own
 output(s):
@@ -335,16 +336,16 @@ The table lists **outputs** — anything the project made, including
 intermediates like a `.drawio` — and for each one names the input responsible
 when it is behind:
 
-| Output | Built from | State |
-| --- | --- | --- |
-| `figures/cp_curve.png` | 3 | ⚠️ `scripts/plot_cp.py` changed |
-| `figures/composite.svg` | 1 | ⚠️ waiting on `figures/cp_curve.png` |
+| Output                  | Built from | State                                |
+| ----------------------- | ---------- | ------------------------------------ |
+| `figures/cp_curve.png`  | 3          | ⚠️ `scripts/plot_cp.py` changed      |
+| `figures/composite.svg` | 1          | ⚠️ waiting on `figures/cp_curve.png` |
 
 Sources are what those answers point at, not rows of their own. Asking whether
 a plotting script is "up to date" has no answer — nothing produces it — and
 listing it green above the figure it just broke is the confusion this avoids.
 
-One caveat about live preview. `myst start` re-renders when one of *its own*
+One caveat about live preview. `myst start` re-renders when one of _its own_
 sources changes: markdown, `myst.yml`, a linked image. Editing a script or a
 dataset is invisible to it, so the panels keep showing the previous render and
 a stale figure looks current for as long as the tab is open. The example's

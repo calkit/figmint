@@ -13,9 +13,15 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from . import __version__
+if TYPE_CHECKING:
+    # Only for annotations. The runtime imports stay inside the commands that
+    # need them, to keep CLI startup fast.
+    from .status import ArtifactStatus
+    from .store import Artifact
 
 EXIT_OK = 0
 EXIT_STALE = 1
@@ -30,7 +36,7 @@ MARK = {
 }
 
 
-def _signing_note(artifact, args: argparse.Namespace) -> str:
+def _signing_note(artifact: Artifact, args: argparse.Namespace) -> str:
     """Why an artifact does or does not carry Content Credentials.
 
     Said at the moment it applies. A PDF or an HTML page cannot carry a
@@ -93,7 +99,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _print_plan(reports, args: argparse.Namespace) -> None:
+def _print_plan(
+    reports: list[ArtifactStatus], args: argparse.Namespace
+) -> None:
     """Point at the command that fixes it.
 
     Printing the individual commands and asking someone to retype them was a
@@ -338,11 +346,32 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+class _VersionAction(argparse.Action):
+    """`--version`, resolved only when asked for.
+
+    argparse's stock "version" action wants the string when the parser is
+    built, which is every run — and reading it imports `importlib.metadata`,
+    which is most of the startup cost of a command that does not need it.
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[str] | None,
+        option_string: str | None = None,
+    ) -> None:
+        from . import __version__
+
+        # Printed rather than handed to `parser.exit`, which writes to stderr;
+        # a version belongs on stdout, where the stock action puts it.
+        print(f"figmint {__version__}")
+        parser.exit()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="figmint", description=__doc__)
-    parser.add_argument(
-        "--version", action="version", version=f"figmint {__version__}"
-    )
+    parser.add_argument("--version", action=_VersionAction, nargs=0)
     sub = parser.add_subparsers(dest="command", required=True)
 
     run_cmd = sub.add_parser(

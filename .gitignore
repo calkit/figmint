@@ -212,3 +212,6 @@ CLAUDE.md
 _build/
 
 .claude
+
+# macOS Finder metadata
+.DS_Store
