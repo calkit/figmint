@@ -447,7 +447,7 @@ wheels = [
 ]
 
 [[package]]
-name = "figmint-python"
+name = "figmint-fresh"
 source = { editable = "." }
 dependencies = [
     { name = "c2pa-python" },

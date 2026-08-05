@@ -90,14 +90,14 @@ Publishing the release runs the `Publish to PyPI` workflow, which builds the
 wheel and the source tarball with `uv build` and uploads them with
 [trusted publishing](https://docs.pypi.org/trusted-publishers/), so no API
 token is stored anywhere.
-PyPI needs a trusted publisher configured for the `figmint-python` project
+PyPI needs a trusted publisher configured for the `figmint-fresh` project
 pointing at the `publish.yml` workflow, and the repository needs a matching
 `pypi` environment.
 
-The distribution is `figmint-python` because `figmint` was taken on PyPI by an
-unrelated project.
-Only the name you `pip install` is affected—the import name, the CLI, and this
-repository are all still `figmint`, the same split as `calkit-python`.
+The distribution is `figmint-fresh`—after "create fresh figures"—because
+`figmint` was taken on PyPI by an unrelated project.
+Only the name you `pip install` is affected: the import name, the CLI, and
+this repository are all still `figmint`, the same split `calkit-python` has.
 
 ## 💡 Other ways to contribute
 

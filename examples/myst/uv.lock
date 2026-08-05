@@ -315,24 +315,7 @@ wheels = [
 ]
 
 [[package]]
-name = "figmint-myst-example"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "figmint-python" },
-    { name = "matplotlib" },
-    { name = "mystmd" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "figmint-python", editable = "../../" },
-    { name = "matplotlib", specifier = ">=3.8" },
-    { name = "mystmd", specifier = ">=1.6" },
-]
-
-[[package]]
-name = "figmint-python"
+name = "figmint-fresh"
 source = { editable = "../../" }
 dependencies = [
     { name = "c2pa-python" },
@@ -353,6 +336,23 @@ dev = [
     { name = "pre-commit", specifier = ">=3.8.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
+]
+
+[[package]]
+name = "figmint-myst-example"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "figmint-fresh" },
+    { name = "matplotlib" },
+    { name = "mystmd" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "figmint-fresh", editable = "../../" },
+    { name = "matplotlib", specifier = ">=3.8" },
+    { name = "mystmd", specifier = ">=1.6" },
 ]
 
 [[package]]

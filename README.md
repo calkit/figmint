@@ -1,4 +1,4 @@
-# 🌿 Figmint
+# 🌿 Figmint: Create fresh figures
 
 Figmint provides artifact provenance tracking, including support for
 composite artifacts like figure PNGs, publication PDFs,
@@ -18,11 +18,11 @@ falsified evidence in scientific projects.
 ## Installation
 
 ```sh
-uv tool install figmint-python
+uv tool install figmint-fresh
 ```
 
-The distribution is `figmint-python`—`figmint` on PyPI is an unrelated
-project—but the command it installs is `figmint`.
+The distribution is `figmint-fresh`, after the tagline—`figmint` on PyPI is
+an unrelated project—but the command it installs is `figmint`.
 
 ## Usage
 

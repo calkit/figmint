@@ -7,7 +7,7 @@ version = "0.1.0"
 description = "MyST document whose figures carry their provenance"
 requires-python = ">=3.12"
 dependencies = [
-    "figmint-python",
+    "figmint-fresh",
     "matplotlib>=3.8",
     # mystmd ships on PyPI as a wrapper around the Node CLI, so the document
     # builder lives in the same environment as everything else.
@@ -15,4 +15,4 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-figmint-python = { path = "../..", editable = true }
+figmint-fresh = { path = "../..", editable = true }

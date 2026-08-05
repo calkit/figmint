@@ -1,5 +1,5 @@
 [project]
-name = "figmint-python"
+name = "figmint-fresh"
 # Taken from the git tag by hatch-vcs, so a release is cut by tagging and
 # there is no version to forget to bump.
 dynamic = ["version"]
