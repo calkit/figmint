@@ -40,6 +40,19 @@ Practically this means that the command must start with one of the following:
 - `calkit nb exec`
 - `calkit latex build`
 
+### Declaring primary artifacts
+
+Primary artifacts, e.g., raw data collected manually to CSV, can be declared
+as such with:
+
+```sh
+figmint i-created <path>
+```
+
+This will record your "attestation". AI agents should similarly declare
+when they've created primary artifacts so readers can assess if that
+is an acceptable use of generative AI.
+
 ### Freshness checking
 
 To see if a given output's inputs (including environment lock files) have
