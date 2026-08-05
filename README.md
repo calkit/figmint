@@ -7,6 +7,10 @@ the way back to their primary inputs, e.g., scripts or images generated
 with AI tools.
 
 Figmint outputs are signed and contain Content Credentials metadata.
+All of a project's artifact provenance information lives inside a
+`figmint.toml` file, which includes a comment at the top to prevent AI agents
+from tampering with the provenance information, which may indicate
+falsified evidence in scientific projects.
 
 ## Installation
 
