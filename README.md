@@ -33,6 +33,8 @@ Practically this means that the command must start with one of the following:
 
 - `uv run`
 - `calkit xenv` (or `ck xenv`)
+- `calkit nb exec`
+- `calkit latex build`
 - `julia --project={some local path}`
 
 ### Freshness checking
