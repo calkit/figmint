@@ -18,8 +18,11 @@ falsified evidence in scientific projects.
 ## Installation
 
 ```sh
-uv tool install figmint
+uv tool install figmint-python
 ```
+
+The distribution is `figmint-python`—`figmint` on PyPI is an unrelated
+project—but the command it installs is `figmint`.
 
 ## Usage
 

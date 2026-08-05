@@ -86,14 +86,18 @@ Between releases the version is a development one derived from the last tag
 and the commit, e.g. `0.2.1.dev4+g1a2b3c4`, which is what `figmint --version`
 reports from a working copy.
 
-Publishing the release runs the `Publish to PyPI` and `Publish to TestPyPI`
-workflows, which build the wheel and the source tarball with `uv build` and
-upload them with
+Publishing the release runs the `Publish to PyPI` workflow, which builds the
+wheel and the source tarball with `uv build` and uploads them with
 [trusted publishing](https://docs.pypi.org/trusted-publishers/), so no API
 token is stored anywhere.
-Both PyPI and TestPyPI need a trusted publisher configured for the
-`figmint` project pointing at the `publish.yml`/`publish-test.yml` workflows,
-and the repository needs matching `pypi` and `testpypi` environments.
+PyPI needs a trusted publisher configured for the `figmint-python` project
+pointing at the `publish.yml` workflow, and the repository needs a matching
+`pypi` environment.
+
+The distribution is `figmint-python` because `figmint` was taken on PyPI by an
+unrelated project.
+Only the name you `pip install` is affected—the import name, the CLI, and this
+repository are all still `figmint`, the same split as `calkit-python`.
 
 ## 💡 Other ways to contribute
 

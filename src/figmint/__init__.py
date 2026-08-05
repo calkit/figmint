@@ -13,5 +13,5 @@ def __getattr__(name: str) -> str:
     if name == "__version__":
         from importlib.metadata import version
 
-        return version("figmint")
+        return version("figmint-python")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
