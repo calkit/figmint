@@ -135,9 +135,9 @@ def to_mermaid(graph: Graph, *, direction: str = "LR") -> str:
         open_, close = SHAPES.get(node.kind, SHAPES["source"])
         label = node.label
         if node.state is not None and node.state is not State.OK:
-            # Marked in the label rather than by colour alone: a reader
+            # Marked in the label rather than by color alone: a reader
             # skimming the diagram should see the problem without consulting a
-            # legend, and colour is the first thing lost in print.
+            # legend, and color is the first thing lost in print.
             label = f"{label} ⚠"
         lines.append(
             f"  {_identifier(node.id, ids)}{open_}{_quote(label)}{close}"

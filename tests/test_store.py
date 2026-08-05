@@ -187,14 +187,14 @@ class TestDeclarations:
 
     def test_an_attestation_records_who_claimed_it(self, project: Path):
         from figmint.declare import declare
-        from figmint.origins import attested
+        from figmint.origins import Author, attested
 
         artifact = declare(
-            project / "data" / "raw.csv", attested("A Researcher")
+            project / "data" / "raw.csv", attested(Author("A Researcher"))
         )
         assert artifact.kind == "primary"
         assert artifact.origin_kind == "attested"
-        assert artifact.origin == "A Researcher"
+        assert [a.name for a in artifact.authors] == ["A Researcher"]
 
     def test_a_declaration_round_trips(self, project: Path):
         from figmint.declare import declare
@@ -207,3 +207,49 @@ class TestDeclarations:
         artifact = Store.load(project).get("data/raw.csv")
         assert artifact.origin_kind == "git"
         assert artifact.origin_revision == "a1b2c3d"
+
+
+class TestDeclarationSurvivesRewrites:
+    """A declaration is the one thing in the record nothing else can rebuild.
+
+    Every writer constructs a fresh `Artifact` describing what it just did, and
+    none of them know who declared the file. Merging is done once, in `record`,
+    so a writer added later cannot get it wrong.
+    """
+
+    def test_authors_survive_a_later_rewrite(self, project: Path):
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        target = project / "data" / "raw.csv"
+        declare(
+            target, attested(Author("A Researcher"), Author("Claude", "ai"))
+        )
+
+        store = Store.load(project)
+        store.record(
+            Artifact(
+                path="data/raw.csv",
+                hash=hash_file(target),
+                kind="authored",
+                inputs=[Input("other.csv", "sha256:aa")],
+            )
+        )
+        store.save()
+
+        artifact = Store.load(project).get("data/raw.csv")
+        assert [a.name for a in artifact.authors] == ["A Researcher", "Claude"]
+        assert artifact.origin_kind == "attested"
+        # ...and the rewrite's own content is kept.
+        assert [i.path for i in artifact.inputs] == ["other.csv"]
+
+    def test_an_explicit_new_declaration_wins(self, project: Path):
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        target = project / "data" / "raw.csv"
+        declare(target, attested(Author("First")))
+        declare(target, attested(Author("Second")))
+        assert [
+            a.name for a in Store.load(project).get("data/raw.csv").authors
+        ] == ["Second"]

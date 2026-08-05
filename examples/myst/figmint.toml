@@ -22,21 +22,60 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+[artifact."_build/html/index.html"]
+hash = "sha256:c32a1d095666ff2e26d2287092deffe94fa3f8d046dd65f6e65d402938238b0c"
+kind = "run"
+command = "uv run myst build --html"
+recorded = "2026-08-05T16:02:01+00:00"
+
+[[artifact."_build/html/index.html".inputs]]
+path = "index.md"
+hash = "sha256:a11be445b42c66cfdb2e687977eaa187a42dd0f81792021c7a31ecd4c0ac3416"
+kind = "file"
+
+[[artifact."_build/html/index.html".inputs]]
+path = "myst.yml"
+hash = "sha256:ef7395cd980e3330e24976c1d2d5212877a585700e356632038a066a2d4b1752"
+kind = "file"
+
+[[artifact."_build/html/index.html".inputs]]
+path = "figures/composite.svg"
+hash = "sha256:11427cc076e5e6c3699d9d4ecbec200637086e3bd820e97e6c7a76640df41fc5"
+kind = "file"
+
+[[artifact."_build/html/index.html".inputs]]
+path = "uv.lock"
+hash = "sha256:76350b9f5a54cbca1380dc23b2d566740f3a87afc285471efd2e8d45b8df1070"
+kind = "environment"
+
 [artifact."data/performance.csv"]
 hash = "sha256:da736db8e856206999bddc068e158b7345dd3e2f4df840be0892b3bed8de31a9"
 kind = "primary"
-recorded = "2026-08-05T12:27:18+00:00"
-origin = "Pete Bachant <petebachant@gmail.com>"
+recorded = "2026-08-05T15:22:03+00:00"
 origin_kind = "attested"
+origin = "Pete Bachant <petebachant@gmail.com>"
+
+[[artifact."data/performance.csv".authors]]
+name = "Pete Bachant <petebachant@gmail.com>"
+kind = "person"
 
 [artifact."figures/composite.drawio"]
-hash = "sha256:423847e99720b565fc02938df651040eb81d9771d66aa06e9ed609ba079fad98"
-kind = "drawio-import"
-recorded = "2026-08-05T12:47:59+00:00"
+hash = "sha256:76338b89e5f02eeb7ac48bcf661403bef766ac91dd81bc23986f9d37d6c7633d"
+kind = "authored"
+recorded = "2026-08-05T15:29:29+00:00"
+origin_kind = "attested"
+
+[[artifact."figures/composite.drawio".authors]]
+name = "Pete Bachant <petebachant@gmail.com>"
+kind = "person"
+
+[[artifact."figures/composite.drawio".authors]]
+name = "Claude Opus 5"
+kind = "ai"
 
 [[artifact."figures/composite.drawio".inputs]]
 path = "figures/cp_curve.png"
-hash = "sha256:ec458c8a16874712b07c307ee6066933ab0eac046b53fddddb6e8516bdd914c8"
+hash = "sha256:d2f6ef7cf4cf42ef80412115e6286e2a67e86b0898740592af2636ce68e526b1"
 kind = "file"
 
 [[artifact."figures/composite.drawio".inputs]]
@@ -45,22 +84,22 @@ hash = "sha256:5861b9520838edc2886e794dccc626168d3dc6806fb5ad89d23907453d08c8e4"
 kind = "file"
 
 [artifact."figures/composite.svg"]
-hash = "sha256:5c7a9c9b3d9f3a658d356a54c7243b29678db518ae16847e835b45f8ed048e33"
+hash = "sha256:11427cc076e5e6c3699d9d4ecbec200637086e3bd820e97e6c7a76640df41fc5"
 kind = "drawio-export"
 command = "figmint drawio export figures/composite.drawio figures/composite.svg"
-recorded = "2026-08-05T12:47:59+00:00"
+recorded = "2026-08-05T15:29:29+00:00"
 signed = true
 
 [[artifact."figures/composite.svg".inputs]]
 path = "figures/composite.drawio"
-hash = "sha256:423847e99720b565fc02938df651040eb81d9771d66aa06e9ed609ba079fad98"
+hash = "sha256:76338b89e5f02eeb7ac48bcf661403bef766ac91dd81bc23986f9d37d6c7633d"
 kind = "file"
 
 [artifact."figures/cp_curve.png"]
-hash = "sha256:ec458c8a16874712b07c307ee6066933ab0eac046b53fddddb6e8516bdd914c8"
+hash = "sha256:d2f6ef7cf4cf42ef80412115e6286e2a67e86b0898740592af2636ce68e526b1"
 kind = "run"
 command = "uv run python scripts/plot_cp.py"
-recorded = "2026-08-05T12:29:03+00:00"
+recorded = "2026-08-05T15:29:28+00:00"
 signed = true
 
 [[artifact."figures/cp_curve.png".inputs]]
@@ -81,15 +120,48 @@ kind = "code"
 [artifact."figures/turbine.png"]
 hash = "sha256:5861b9520838edc2886e794dccc626168d3dc6806fb5ad89d23907453d08c8e4"
 kind = "primary"
-recorded = "2026-08-05T12:58:10+00:00"
-origin = "Pete Bachant <petebachant@gmail.com>"
+recorded = "2026-08-05T13:17:22+00:00"
 origin_kind = "attested"
-origin_ai = "Google Gemini"
+
+[[artifact."figures/turbine.png".authors]]
+name = "Pete Bachant <petebachant@gmail.com>"
+kind = "person"
+
+[artifact."index.md"]
+hash = "sha256:a11be445b42c66cfdb2e687977eaa187a42dd0f81792021c7a31ecd4c0ac3416"
+kind = "primary"
+recorded = "2026-08-05T16:01:58+00:00"
+origin_kind = "attested"
+
+[[artifact."index.md".authors]]
+name = "Pete Bachant <petebachant@gmail.com>"
+kind = "person"
+
+[[artifact."index.md".authors]]
+name = "Claude Opus 5"
+kind = "ai"
+
+[artifact."myst.yml"]
+hash = "sha256:ef7395cd980e3330e24976c1d2d5212877a585700e356632038a066a2d4b1752"
+kind = "primary"
+recorded = "2026-08-05T13:14:26+00:00"
+origin_kind = "attested"
+
+[[artifact."myst.yml".authors]]
+name = "Pete Bachant <petebachant@gmail.com>"
+kind = "person"
 
 [artifact."scripts/plot_cp.py"]
 hash = "sha256:05b0a7501bc2e58a04e49287b47fe7554dabb5b48f6ee3b4b24da37e5d88b014"
 kind = "primary"
-recorded = "2026-08-05T12:58:10+00:00"
-origin = "Pete Bachant <petebachant@gmail.com>"
+recorded = "2026-08-05T15:23:35+00:00"
 origin_kind = "attested"
-origin_ai = "Claude Opus 5"
+origin = "Pete Bachant <petebachant@gmail.com>"
+
+[[artifact."scripts/plot_cp.py".authors]]
+name = "Pete Bachant <petebachant@gmail.com>"
+kind = "person"
+
+[[artifact."scripts/plot_cp.py".authors]]
+name = "Claude Opus 5"
+kind = "ai"

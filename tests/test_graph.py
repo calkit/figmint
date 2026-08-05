@@ -144,7 +144,7 @@ class TestMermaid:
         assert '[("uv.lock")]' in out  # environment
 
     def test_a_stale_node_is_marked_in_the_label(self, project: Path):
-        """Not by colour alone: colour is the first thing lost in print, and a
+        """Not by color alone: color is the first thing lost in print, and a
         reader skimming the diagram should see the problem without a legend."""
         (project / "data.csv").write_text("changed")
         out = project_mermaid(project)

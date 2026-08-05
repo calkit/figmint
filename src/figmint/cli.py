@@ -25,9 +25,32 @@ MARK = {
     "ok": "ok   ",
     "stale": "STALE",
     "missing": "GONE ",
-    "modified": "EDITED",
+    "modified": "CHANGED",
     "untracked": "?    ",
 }
+
+
+def _signing_note(artifact, args: argparse.Namespace) -> str:
+    """Why an artifact does or does not carry Content Credentials.
+
+    Said at the moment it applies. A PDF or an HTML page cannot carry a
+    manifest, so a build that produced one is recorded and skipped silently —
+    and a reader who expected the provenance to travel with the file would
+    otherwise find out much later, from its absence.
+    """
+    from .credentials import SIGNABLE_SUFFIXES
+
+    if artifact.signed:
+        return " (signed)"
+    if args.no_sign:
+        return " (not signed: --no-sign)"
+    suffix = Path(artifact.path).suffix.lower()
+    if suffix not in SIGNABLE_SUFFIXES:
+        return (
+            f" (not signed: {suffix or 'this format'} cannot carry Content "
+            f"Credentials; the record in figmint.toml is its only provenance)"
+        )
+    return " (not signed)"
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -57,12 +80,49 @@ def cmd_run(args: argparse.Namespace) -> int:
         return EXIT_ERROR
 
     for artifact in result.artifacts:
-        signed = " (signed)" if artifact.signed else ""
-        print(f"recorded {artifact.path}{signed}")
+        print(f"recorded {artifact.path}{_signing_note(artifact, args)}")
         for item in artifact.inputs:
             marker = "env" if item.kind == "environment" else "in "
             print(f"   {marker}  {item.path}")
+
+    for path in result.refreshed:
+        # Never silent. Rewriting a recorded hash is the one operation the
+        # header in figmint.toml warns against, and the fact that figmint is
+        # doing it legitimately here is exactly why it has to be said out loud.
+        print(f"   refreshed hash for {path} (declared; authorship unchanged)")
     return EXIT_OK
+
+
+def _print_plan(reports, args: argparse.Namespace) -> None:
+    """Point at the command that fixes it.
+
+    Printing the individual commands and asking someone to retype them was a
+    half-measure: a copied command is a command that can be mistyped, and one
+    wrong `-i` produces a record that is confidently false. The record already
+    knows the sequence, so `figmint rebuild` runs it.
+    """
+    from .status import project_store
+    from .store import StoreError
+
+    first = args.paths[0] if args.paths else None
+    try:
+        store = project_store(first)
+    except (StoreError, OSError):
+        # A hint must not break the command it is trying to help with.
+        return
+
+    if not any(
+        store.artifacts.get(r.path) and store.artifacts[r.path].command
+        for r in reports
+        if not r.trustworthy
+    ):
+        return
+    print("\nto bring it up to date, run:", file=sys.stderr)
+    print("   figmint rebuild", file=sys.stderr)
+    print(
+        "   (`--dry-run` first, if you want to see what it would do)",
+        file=sys.stderr,
+    )
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -85,9 +145,28 @@ def cmd_status(args: argparse.Namespace) -> int:
     exit_code = EXIT_OK
     unaccounted: list[str] = []
     for report in reports:
-        print(f"{report.path}  [{report.state.value}]")
+        label = report.state.value
+        if not report.stale and report.changed:
+            # A declared file whose bytes are not what was built from them.
+            # Named first because it is the cause: everything else in this list
+            # is a consequence of somebody editing this file.
+            label = "changed"
+        elif not report.stale and report.upstream:
+            # Sound in itself, resting on something that is not. Given its own
+            # word because the remedy differs: this file was never touched, so
+            # "modified" would point at the wrong culprit.
+            label = "upstream"
+        print(f"{report.path}  [{label}]")
+        if not report.stale and report.changed:
+            behind = ", ".join(report.diverged_from)
+            print(f"   {behind} was built from different bytes")
         if report.detail:
             print(f"   {report.detail}")
+        if not report.stale and report.upstream:
+            behind = ", ".join(report.upstream)
+            print(
+                f"   rests on {behind}, which {'is' if len(report.upstream) == 1 else 'are'} not ok"
+            )
         for item in report.inputs:
             if (
                 item.state is State.OK
@@ -102,7 +181,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
         for item in report.unaccounted_inputs:
             unaccounted.append(item.path)
-        if report.stale:
+        if report.stale or report.upstream:
             exit_code = max(exit_code, EXIT_STALE)
         elif report.state is State.UNTRACKED:
             exit_code = max(exit_code, EXIT_STALE)
@@ -126,6 +205,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             "make this pass",
             file=sys.stderr,
         )
+        _print_plan(reports, args)
     return exit_code
 
 
@@ -136,8 +216,10 @@ def cmd_declare(args: argparse.Namespace) -> int:
     try:
         origin = resolve_origin(
             mine=args.mine,
-            author=args.author,
+            authors=args.author,
             with_ai=args.with_ai,
+            from_git=args.from_git_history,
+            path=args.path,
             doi=args.doi,
             git=args.git,
             calkit=args.calkit,
@@ -149,6 +231,11 @@ def cmd_declare(args: argparse.Namespace) -> int:
 
     print(f"declared {artifact.path}")
     print(f"   {artifact.origin_kind}: {origin.describe()}")
+    for author in origin.authors:
+        # Printed back because the person/tool split is a guess when it came
+        # from git history, and a wrong guess should be visible immediately
+        # rather than discovered in a rendered document later.
+        print(f"     - {author.name} [{author.kind}]")
     if not origin.verifiable:
         # Said out loud rather than left to inference: an attestation is the
         # weakest thing in the record and should not read like the others.
@@ -196,6 +283,10 @@ def cmd_drawio_export(args: argparse.Namespace) -> int:
         print(f"{exc}", file=sys.stderr)
         return EXIT_ERROR
 
+    for path in result.refreshed:
+        # Said out loud: the diagram is a file the author owns, and figmint
+        # just rewrote part of it.
+        print(f"   re-embedded {path} (it had been redrawn)")
     signed = " (signed)" if result.signed else ""
     print(f"exported {result.diagram} -> {result.output}{signed}")
     return EXIT_OK
@@ -213,6 +304,37 @@ def cmd_gimp_export(args: argparse.Namespace) -> int:
     print(f"exported {artifact.path}")
     for item in artifact.inputs:
         print(f"   in   {item.path}")
+    return EXIT_OK
+
+
+def cmd_rebuild(args: argparse.Namespace) -> int:
+    from .drawio import DrawioError
+    from .rebuild import RebuildError, rebuild
+    from .run import RunError
+
+    try:
+        result = rebuild(
+            [str(p) for p in args.paths],
+            cert=args.cert,
+            key=args.key,
+            dry_run=args.dry_run,
+        )
+    except (RebuildError, RunError, DrawioError) as exc:
+        print(f"{exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if result.empty:
+        print("nothing to rebuild; everything is up to date")
+        return EXIT_OK
+
+    for path, reason in result.skipped:
+        print(f"skipped {path} ({reason})", file=sys.stderr)
+    if args.dry_run:
+        print("would rebuild, in this order:")
+        for path in result.rebuilt:
+            print(f"   {path}")
+    elif result.rebuilt:
+        print(f"rebuilt {len(result.rebuilt)} artifact(s)")
     return EXIT_OK
 
 
@@ -281,6 +403,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status.set_defaults(func=cmd_status)
 
+    rebuild_cmd = sub.add_parser(
+        "rebuild",
+        help="rebuild whatever is out of date, in derivation order",
+        description=(
+            "Repeat the recorded commands for everything that is stale, "
+            "dependencies first. The record already holds the command that "
+            "made each artifact and the inputs it was made from, so the "
+            "repair sequence is a property of the record rather than "
+            "something you have to reconstruct. Naming a path rebuilds that "
+            "artifact and everything behind it."
+        ),
+    )
+    rebuild_cmd.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        help="artifacts to bring up to date (default: everything)",
+    )
+    rebuild_cmd.add_argument(
+        "-n",
+        "--dry-run",
+        action="store_true",
+        help="say what would be rebuilt, and in what order, without doing it",
+    )
+    rebuild_cmd.add_argument("--cert", type=Path, help="signing certificate")
+    rebuild_cmd.add_argument("--key", type=Path, help="signing key")
+    rebuild_cmd.set_defaults(func=cmd_rebuild)
+
     declare_cmd = sub.add_parser(
         "declare",
         help="record where a primary artifact came from",
@@ -298,14 +448,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     declare_cmd.add_argument(
         "--author",
-        help="who to attribute the attestation to (default: git user)",
+        action="append",
+        metavar="NAME",
+        help="a person who made it; repeat for several (default: git user)",
     )
     declare_cmd.add_argument(
         "--with-ai",
+        action="append",
         metavar="TOOL",
         help=(
-            "disclose a generative tool the author used; requires --mine or "
-            "--author, because a tool cannot be accountable for a file"
+            "a generative tool that made part of it; repeat for several. At "
+            "least one person is still required: a tool cannot be accountable "
+            "for a file."
+        ),
+    )
+    declare_cmd.add_argument(
+        "--from-git-history",
+        action="store_true",
+        help=(
+            "read the authors from git, including Co-authored-by trailers, "
+            "instead of naming them by hand"
         ),
     )
     declare_cmd.add_argument("--doi", help="DOI of a published source")

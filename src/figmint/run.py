@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .environments import Environment, describe, format_command
@@ -52,6 +52,9 @@ class RunResult:
     artifacts: list[Artifact]
     returncode: int
     environment: Environment
+    #: Declared artifacts whose recorded hash was brought up to date because
+    #: this run used them. Reported rather than applied silently.
+    refreshed: list[str] = field(default_factory=list)
 
 
 def _files_named_in(command: list[str], cwd: Path, store: Store) -> list[Path]:
@@ -142,6 +145,19 @@ def run(
     for output in outputs:
         Path(output).resolve().parent.mkdir(parents=True, exist_ok=True)
 
+    # Before the command, and written to disk: the command may *read* the
+    # record. A document build renders provenance panels out of `figmint.toml`,
+    # so refreshing afterwards would bake the pre-run state into the very page
+    # this run produces — it would report its own sources as edited, and only a
+    # second build would clear it.
+    #
+    # Refreshing early is honest on its own terms: it records that these bytes
+    # are what figmint observed, which is true whether or not the command then
+    # succeeds.
+    refreshed = _refresh_declared(recorded_inputs, store)
+    if refreshed:
+        store.save()
+
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -194,7 +210,41 @@ def run(
         artifacts=produced,
         returncode=completed.returncode,
         environment=environment,
+        refreshed=refreshed,
     )
+
+
+def _refresh_declared(inputs: list[Input], store: Store) -> list[str]:
+    """Bring a declared input's recorded hash up to date with what was used.
+
+    A declaration answers "who is responsible for this file", and that does not
+    change when somebody edits a line of it. But `declare` also records a hash,
+    and without this every edit to a declared script or document left it sitting
+    in `figmint status` as *modified* until it was declared again — a treadmill
+    that taught people to re-run `declare` reflexively, which is the last habit
+    this tool should be building.
+
+    So a run refreshes it: figmint has just watched the file being used, which
+    is first-hand observation rather than a re-assertion of somebody's claim.
+    The authorship is untouched.
+
+    Only artifacts with no command are eligible. Anything figmint produced
+    itself has a hash that is *evidence*, and quietly rewriting that is exactly
+    the tampering the record exists to catch.
+    """
+    refreshed: list[str] = []
+    for item in inputs:
+        if item.kind == "environment":
+            continue
+        artifact = store.artifacts.get(item.path)
+        if artifact is None or artifact.command:
+            continue
+        if artifact.hash == item.hash:
+            continue
+        artifact.hash = item.hash
+        store.record(artifact)
+        refreshed.append(item.path)
+    return refreshed
 
 
 def _sign(
@@ -214,7 +264,7 @@ def _sign(
     from . import credentials as credentials_mod
     from . import sign as sign_mod
 
-    if output.suffix.lower() not in credentials_mod.CREDENTIALED_SUFFIXES:
+    if output.suffix.lower() not in credentials_mod.SIGNABLE_SUFFIXES:
         return False
 
     try:

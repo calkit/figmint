@@ -17,7 +17,7 @@ between a reader and a forged chain of custody.
 
 **It is rewritten wholesale.** figmint owns the file, so there is no attempt to
 preserve unknown keys or user formatting. Anything a human put here is lost on
-the next `figmint run`, which is the correct behaviour for a record nobody
+the next `figmint run`, which is the correct behavior for a record nobody
 should be writing by hand.
 """
 
@@ -28,7 +28,10 @@ import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .origins import Author
 
 STORE_NAME = "figmint.toml"
 
@@ -147,8 +150,11 @@ class Artifact:
     inputs: list[Input] = field(default_factory=list)
     command: str | None = None
     recorded: str | None = None
-    #: How it was produced: `run`, `drawio-import`, `drawio-export`,
-    #: `gimp-export`, or `primary` for something figmint did not make.
+    #: How it was produced: `run`, `drawio-export`, `gimp-export`, `primary`
+    #: for something figmint did not make, or `authored` for something made by
+    #: hand *from* recorded inputs — a `.drawio` canvas is assembled from
+    #: tracked panels but arranged by people and agents, so it has a derivation
+    #: chain and an author list at the same time.
     kind: str = "run"
     #: For a primary artifact: what kind of claim its origin is —
     #: `attested`, `doi`, `git`, `calkit`.
@@ -157,9 +163,10 @@ class Artifact:
     origin: str | None = None
     #: Revision, for the location forms.
     origin_revision: str | None = None
-    #: A generative tool the author used. Recorded beside the attestation, never
-    #: instead of it: a model cannot answer for a file.
-    origin_ai: str | None = None
+    #: Everyone who made a declared artifact, in order. An artifact rarely has
+    #: exactly one author and code almost never does, so this is a list rather
+    #: than a name, and each entry records whether it is a person or a tool.
+    authors: list["Author"] = field(default_factory=list)
     #: True when a C2PA manifest was embedded. Signing rewrites the file, so the
     #: hash above is of the *signed* bytes — the ones on disk.
     signed: bool = False
@@ -174,9 +181,14 @@ class Artifact:
         if not self.origin_kind:
             return ""
         if self.origin_kind == "attested":
-            if self.origin_ai:
-                return f"created by {self.origin} with {self.origin_ai}"
-            return f"created by {self.origin}"
+            names = [a.describe() for a in self.authors] or [
+                self.origin or "?"
+            ]
+            if len(names) > 1:
+                joined = f"{', '.join(names[:-1])} and {names[-1]}"
+            else:
+                joined = names[0]
+            return f"created by {joined}"
         if self.origin_kind == "doi":
             return f"doi:{self.origin}"
         return f"{self.origin_kind}:{self.origin}@{self.origin_revision}"
@@ -189,13 +201,14 @@ class Artifact:
             out["recorded"] = self.recorded
         if self.signed:
             out["signed"] = True
-        if self.origin:
-            out["origin"] = self.origin
+        if self.origin or self.origin_kind:
             out["origin_kind"] = self.origin_kind
+            if self.origin:
+                out["origin"] = self.origin
             if self.origin_revision:
                 out["origin_revision"] = self.origin_revision
-            if self.origin_ai:
-                out["origin_ai"] = self.origin_ai
+        if self.authors:
+            out["authors"] = [a.to_dict() for a in self.authors]
         out["inputs"] = [i.to_dict() for i in self.inputs]
         return out
 
@@ -207,13 +220,53 @@ class Artifact:
             inputs=[Input.from_dict(i) for i in data.get("inputs", []) or []],
             command=data.get("command"),
             recorded=data.get("recorded"),
-            kind=str(data.get("kind", "run")),
+            kind=_KIND_ALIASES.get(
+                str(data.get("kind", "run")), str(data.get("kind", "run"))
+            ),
             signed=bool(data.get("signed", False)),
             origin_kind=data.get("origin_kind"),
             origin=data.get("origin"),
             origin_revision=data.get("origin_revision"),
-            origin_ai=data.get("origin_ai"),
+            authors=_read_authors(data),
         )
+
+
+def _read_authors(data: dict[str, Any]) -> list["Author"]:
+    """Author list, tolerating records written before it existed.
+
+    The older shape put a single name in `origin` and a single tool in
+    `origin_ai`. Reading it forward rather than ignoring it matters more here
+    than tidiness would: silently dropping an author from a record whose whole
+    purpose is accountability is the one failure this file must not have.
+    """
+    from .origins import Author
+
+    listed = data.get("authors") or []
+    if listed:
+        return [
+            Author(
+                name=str(a.get("name", "")),
+                kind=str(a.get("kind", "person")),
+            )
+            for a in listed
+            if a.get("name")
+        ]
+
+    if data.get("origin_kind") != "attested":
+        return []
+    authors = []
+    if data.get("origin"):
+        authors.append(Author(str(data["origin"]), "person"))
+    if data.get("origin_ai"):
+        authors.append(Author(str(data["origin_ai"]), "ai"))
+    return authors
+
+
+#: Kinds that were renamed. Mapped on read so an existing record keeps working:
+#: `drawio-import` described the command that happened to make the file, but
+#: what matters about a `.drawio` is that it was arranged by hand from recorded
+#: inputs, which is true however it got there.
+_KIND_ALIASES = {"drawio-import": "authored"}
 
 
 class StoreError(RuntimeError):
@@ -274,6 +327,26 @@ class Store:
     # -- writing ----------------------------------------------------------
 
     def record(self, artifact: Artifact) -> None:
+        """Store an artifact, carrying its declaration forward.
+
+        Every writer builds a fresh `Artifact` describing what it just did, and
+        none of them know or care who declared the file. Without this, importing
+        a panel into a diagram somebody had signed their name to would silently
+        drop the authorship — the record would lose the one thing about that
+        file nothing else can reconstruct.
+
+        Merged here rather than at each call site so a writer added later cannot
+        get it wrong.
+        """
+        previous = self.artifacts.get(artifact.path)
+        if previous is not None:
+            if not artifact.authors:
+                artifact.authors = list(previous.authors)
+            if not artifact.origin_kind:
+                artifact.origin_kind = previous.origin_kind
+                artifact.origin = previous.origin
+                artifact.origin_revision = previous.origin_revision
+
         artifact.recorded = datetime.now(timezone.utc).isoformat(
             timespec="seconds"
         )
@@ -282,7 +355,7 @@ class Store:
     def save(self) -> None:
         """Write the record, header first.
 
-        Serialised by hand rather than through a TOML writer, for one reason:
+        Serialized by hand rather than through a TOML writer, for one reason:
         the header has to be there, and no writer emits comments. Sorted so a
         diff shows what changed rather than what moved.
         """
@@ -298,17 +371,20 @@ class Store:
                 lines.append(f"recorded = {_string(artifact.recorded)}")
             if artifact.signed:
                 lines.append("signed = true")
-            if artifact.origin:
-                lines.append(f"origin = {_string(artifact.origin)}")
+            if artifact.origin or artifact.origin_kind:
                 lines.append(
                     f"origin_kind = {_string(artifact.origin_kind or '')}"
                 )
+                if artifact.origin:
+                    lines.append(f"origin = {_string(artifact.origin)}")
                 if artifact.origin_revision:
                     lines.append(
                         f"origin_revision = {_string(artifact.origin_revision)}"
                     )
-                if artifact.origin_ai:
-                    lines.append(f"origin_ai = {_string(artifact.origin_ai)}")
+            for author in artifact.authors:
+                lines.append(f"\n[[artifact.{_key(key)}.authors]]")
+                lines.append(f"name = {_string(author.name)}")
+                lines.append(f"kind = {_string(author.kind)}")
             for item in artifact.inputs:
                 lines.append(f"\n[[artifact.{_key(key)}.inputs]]")
                 lines.append(f"path = {_string(item.path)}")

@@ -47,7 +47,7 @@ class Environment:
 
 @dataclass(frozen=True)
 class Manager:
-    """A recognised command prefix and the lock it implies."""
+    """A recognized command prefix and the lock it implies."""
 
     #: Words the command must begin with.
     prefix: tuple[str, ...]
@@ -166,7 +166,7 @@ def _calkit_lock(command: list[str], cwd: Path) -> Path:
 def describe(command: list[str], cwd: Path) -> Environment:
     """Identify the environment manager in `command` and locate its lock file.
 
-    Raises when the command is not run through a recognised manager. A hard
+    Raises when the command is not run through a recognized manager. A hard
     failure rather than a warning: recording an artifact whose environment is
     unknown would put a claim in `figmint.toml` that the file cannot support,
     and the whole value of the record is that everything in it is checkable.
@@ -202,7 +202,7 @@ def describe(command: list[str], cwd: Path) -> Environment:
 
     accepted = ", ".join("`" + " ".join(m.prefix) + "`" for m in MANAGERS)
     raise EnvironmentError_(
-        f"`{shlex.join(command[:3])}` is not run through a recognised "
+        f"`{shlex.join(command[:3])}` is not run through a recognized "
         f"environment manager. The command must start with one of {accepted}, "
         f"`calkit xenv`, `calkit nb exec`, or `calkit latex build`, so the "
         f"environment can be hashed as an input alongside the data."
