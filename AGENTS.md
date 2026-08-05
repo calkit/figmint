@@ -19,6 +19,8 @@ preceded by a `<!-- prettier-ignore -->` comment. Otherwise Prettier reformats
 the block and strips the 4-space indentation of the admonition body, which
 breaks rendering.
 
+Use American English spellings in prose.
+
 Agents should never make commits to Git.
 
 Prefer tests that include multiple scenarios to comprehensively test
