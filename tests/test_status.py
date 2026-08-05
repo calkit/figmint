@@ -149,9 +149,9 @@ class TestUnaccountedInputs:
 
     def test_declaring_it_clears_the_flag(self, project: Path):
         from figmint.declare import declare
-        from figmint.origins import attested
+        from figmint.origins import Author, attested
 
-        declare(project / "data.csv", attested("A Researcher"))
+        declare(project / "data.csv", attested(Author("A Researcher")))
         assert check_path(project / "plot.png").unaccounted_inputs == []
 
     def test_a_recorded_input_needs_no_declaration(self, project: Path):
@@ -189,7 +189,7 @@ class TestUnaccountedInputs:
 
     def test_declaring_a_script_clears_it(self, project: Path):
         from figmint.declare import declare
-        from figmint.origins import attested
+        from figmint.origins import Author, attested
 
         store = Store.load(project)
         (project / "plot.py").write_text("x")
@@ -200,7 +200,206 @@ class TestUnaccountedInputs:
         store.record(artifact)
         store.save()
 
-        declare(project / "plot.py", attested("A Researcher", "Claude Opus 5"))
+        declare(
+            project / "plot.py",
+            attested(Author("A Researcher"), Author("Claude Opus 5", "ai")),
+        )
         assert "plot.py" not in [
             i.path for i in check_path(project / "plot.png").unaccounted_inputs
         ]
+
+
+class TestUpstreamTrouble:
+    """Tamper detection has to survive the links above it.
+
+    An artifact can be sound in every direct link and still rest on a file that
+    was tampered with, because nothing in between was regenerated. Every check
+    passes, which is exactly why it needs saying.
+    """
+
+    def build_chain(self, project: Path) -> None:
+        """plot.png -> composite -> final. Only plot.png names data.csv."""
+        store = Store.load(project)
+        for name, source in (
+            ("composite", "plot.png"),
+            ("final", "composite"),
+        ):
+            (project / name).write_text(name)
+            store.record(
+                Artifact(
+                    path=name,
+                    hash=hash_file(project / name),
+                    inputs=[Input(source, hash_file(project / source))],
+                )
+            )
+            store.save()
+
+    def test_a_clean_chain_reports_nothing(self, project: Path):
+        self.build_chain(project)
+        assert check_path(project / "final").upstream == []
+        assert check_path(project / "final").trustworthy
+
+    def test_a_tampered_output_is_seen_from_the_far_end(self, project: Path):
+        """The direct input `composite` is untouched, so every link above
+        plot.png passes on its own."""
+        self.build_chain(project)
+        (project / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\ntampered")
+
+        report = check_path(project / "final")
+        # `final` names only `composite`, whose bytes never moved, so nothing
+        # about `final` itself is wrong.
+        assert report.state is State.OK
+        assert report.inputs[0].state is State.OK
+        # But the tampering is still visible from here.
+        assert "plot.png" in report.upstream
+        assert not report.trustworthy
+
+    def test_the_whole_project_view_agrees(self, project: Path):
+        self.build_chain(project)
+        (project / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\ntampered")
+        by_path = {r.path: r for r in check_all(project)}
+        assert "plot.png" in by_path["final"].upstream
+        assert by_path["plot.png"].state is State.MODIFIED
+
+    def test_an_artifact_is_not_its_own_upstream(self, project: Path):
+        (project / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\ntampered")
+        assert check_path(project / "plot.png").upstream == []
+
+
+class TestRebuildPlan:
+    """ "Regenerate the stale artifacts" is true and useless.
+
+    It does not say which command, and rebuilding a document before the figure
+    it embeds accomplishes nothing — so someone runs everything twice before
+    noticing. Everything needed to answer properly is already in the record.
+    """
+
+    def chain(self, project: Path) -> None:
+        from figmint.store import Store
+
+        store = Store.load(project)
+        (project / "composite.svg").write_text("<svg/>")
+        store.record(
+            Artifact(
+                path="composite.svg",
+                hash=hash_file(project / "composite.svg"),
+                command="figmint drawio export c.drawio composite.svg",
+                inputs=[Input("plot.png", hash_file(project / "plot.png"))],
+            )
+        )
+        store.save()
+
+    def plan(self, project: Path) -> list[str]:
+        from figmint.status import project_store, rebuild_plan
+
+        return rebuild_plan(project_store(project), check_all(project))
+
+    def test_a_clean_project_needs_nothing(self, project: Path):
+        assert self.plan(project) == []
+
+    def test_it_reconstructs_a_full_figmint_invocation(self, project: Path):
+        """Not the bare recorded command: re-running that directly would
+        produce the file *outside* figmint, and the record would then call it
+        modified — turning "stale" into "tampered with"."""
+        (project / "data.csv").write_text("x,y\n9,9\n")
+        assert self.plan(project) == [
+            "figmint run -i data.csv -o plot.png -- uv run plot.py"
+        ]
+
+    def test_the_lock_is_not_repeated_as_an_input(self, project: Path):
+        """It is discovered from the command, not passed in."""
+        (project / "data.csv").write_text("x,y\n9,9\n")
+        assert "uv.lock" not in self.plan(project)[0]
+
+    def test_dependencies_come_first(self, project: Path):
+        """Alphabetical would put composite.svg before plot.png and have the
+        user rebuild the composite from a figure that had not been redrawn."""
+        self.chain(project)
+        (project / "data.csv").write_text("x,y\n9,9\n")
+
+        plan = self.plan(project)
+        assert plan.index(
+            "figmint run -i data.csv -o plot.png -- uv run plot.py"
+        ) < plan.index("figmint drawio export c.drawio composite.svg")
+
+    def test_an_existing_figmint_command_is_passed_through(
+        self, project: Path
+    ):
+        self.chain(project)
+        (project / "data.csv").write_text("x,y\n9,9\n")
+        assert "figmint drawio export c.drawio composite.svg" in self.plan(
+            project
+        )
+
+    def test_a_hand_authored_diagram_gets_a_re_import(self, project: Path):
+        """It has no command to re-run, but it holds a copy of each panel, and
+        a panel that moved on is exactly what makes it stale."""
+        from figmint.store import Store
+
+        store = Store.load(project)
+        (project / "c.drawio").write_text("<mxfile/>")
+        store.record(
+            Artifact(
+                path="c.drawio",
+                hash=hash_file(project / "c.drawio"),
+                kind="authored",
+                inputs=[Input("plot.png", hash_file(project / "plot.png"))],
+            )
+        )
+        store.save()
+        (project / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\nredrawn")
+
+        assert "figmint drawio import plot.png c.drawio" in self.plan(project)
+
+    def test_nothing_is_suggested_for_a_declared_file(self, project: Path):
+        """Nobody can regenerate raw data; the remedy is elsewhere."""
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        declare(project / "data.csv", attested(Author("A Researcher")))
+        (project / "data.csv").write_text("x,y\n9,9\n")
+        assert not any("data.csv -o data.csv" in c for c in self.plan(project))
+
+
+class TestDeclaredArtifacts:
+    """A declaration is not a claim about bytes.
+
+    It says who is answerable for a file. Nothing produced a declared artifact,
+    so its content changing means a person edited it — and what matters about
+    that is whether the edit reached an output, which the input hashes on each
+    output already record.
+    """
+
+    def declare_data(self, project: Path) -> None:
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        declare(project / "data.csv", attested(Author("A Researcher")))
+
+    def test_editing_it_is_not_a_finding(self, project: Path):
+        self.declare_data(project)
+        (project / "data.csv").write_text("x,y\n9,9\n")
+
+        report = check_path(project / "data.csv")
+        assert report.state is State.OK
+        assert not report.stale
+        assert report.trustworthy
+
+    def test_what_was_built_from_it_still_goes_stale(self, project: Path):
+        """The edit is reported where it actually matters."""
+        self.declare_data(project)
+        (project / "data.csv").write_text("x,y\n9,9\n")
+        assert check_path(project / "plot.png").state is State.STALE
+
+    def test_a_deleted_declaration_is_still_reported(self, project: Path):
+        """Not checking the hash is not the same as not checking at all."""
+        self.declare_data(project)
+        (project / "data.csv").unlink()
+        assert check_path(project / "data.csv").state is State.MISSING
+
+    def test_a_produced_artifact_is_still_checked(self, project: Path):
+        """The tampering check is untouched — that hash is evidence."""
+        (project / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\ntampered")
+        report = check_path(project / "plot.png")
+        assert report.state is State.MODIFIED
+        assert "without going through figmint" in report.detail

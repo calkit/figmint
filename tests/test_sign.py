@@ -174,3 +174,98 @@ class TestSigning:
         )
         assert result.artifacts[0].signed is False
         assert credentials.read(project / "plot.png") is None
+
+
+class TestFormatSupport:
+    """Which formats can actually carry a manifest.
+
+    Verified against the library rather than assumed, because the failure is
+    invisible until signing time: a format c2pa cannot embed into raises
+    `NotSupported`, and a `figmint run` that produced a PDF would die at the
+    last step of an otherwise successful build.
+    """
+
+    @pytest.mark.parametrize("suffix", [".pdf", ".html", ".mp4", ".heic"])
+    def test_unsignable_formats_are_not_claimed(self, suffix: str):
+        from figmint.credentials import SIGNABLE_SUFFIXES
+
+        assert suffix not in SIGNABLE_SUFFIXES
+
+    @pytest.mark.parametrize("suffix", [".png", ".jpg", ".svg", ".webp"])
+    def test_signable_formats_are_claimed(self, suffix: str):
+        from figmint.credentials import SIGNABLE_SUFFIXES
+
+        assert suffix in SIGNABLE_SUFFIXES
+
+    def test_every_claimed_format_really_signs(self, tmp_path: Path):
+        """The list is only worth having if the library agrees with it."""
+        from figmint.credentials import SIGNABLE_SUFFIXES
+        from figmint.sign import SigningError, sign_artifact
+
+        for suffix in sorted(SIGNABLE_SUFFIXES):
+            target = tmp_path / f"probe{suffix}"
+            target.write_bytes(b"\x00" * 64)  # invalid content on purpose
+            try:
+                sign_artifact(target, [], tmp_path, command="probe")
+            except SigningError as exc:
+                # Rejecting the *content* is expected; rejecting the *type* is
+                # the claim being tested.
+                assert "type is unsupported" not in str(exc), suffix
+
+    def test_a_pdf_output_does_not_break_a_run(self, tmp_path: Path):
+        """`calkit latex build` produces a PDF, and that has to keep working
+        even though the PDF cannot carry credentials."""
+        (tmp_path / ".git").mkdir()
+        (tmp_path / "uv.lock").write_text("lock")
+        (tmp_path / "make_pdf.py").write_text(
+            "open('paper.pdf','wb').write(b'%PDF-1.4')\n"
+        )
+        from figmint.run import run
+
+        result = run(
+            ["uv", "run", "python", "make_pdf.py"],
+            inputs=[],
+            outputs=[tmp_path / "paper.pdf"],
+            cwd=tmp_path,
+        )
+        assert (tmp_path / "paper.pdf").is_file()
+        assert result.artifacts[0].signed is False
+
+
+class TestReadableButNotSignable:
+    """PDF is the asymmetric case, and the asymmetry is the point.
+
+    c2pa-rs recognises a PDF well enough to look for a manifest in one, but
+    cannot embed a manifest into it. So figmint keeps two lists: what it can
+    read credentials from, and the strictly smaller set it can write them to.
+    """
+
+    def test_pdf_can_be_read_from_but_not_signed(self):
+        from figmint.credentials import (
+            CREDENTIALED_SUFFIXES,
+            SIGNABLE_SUFFIXES,
+        )
+
+        assert ".pdf" in CREDENTIALED_SUFFIXES
+        assert ".pdf" not in SIGNABLE_SUFFIXES
+
+    def test_everything_signable_is_also_readable(self):
+        from figmint.credentials import (
+            CREDENTIALED_SUFFIXES,
+            SIGNABLE_SUFFIXES,
+        )
+
+        assert SIGNABLE_SUFFIXES <= CREDENTIALED_SUFFIXES
+
+    def test_the_reader_really_accepts_a_pdf(self, tmp_path: Path):
+        """Verified against the library, since the whole split rests on it."""
+        from c2pa import Reader
+
+        pdf = tmp_path / "t.pdf"
+        pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+        try:
+            with pdf.open("rb") as handle:
+                Reader("application/pdf", handle)
+        except Exception as exc:  # noqa: BLE001
+            # "no manifest here" is fine; "I don't know this type" is not.
+            assert "unsupported" not in str(exc).lower()

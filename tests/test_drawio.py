@@ -83,7 +83,7 @@ class TestImport:
         )
         artifact = Store.load(project).get("composite.drawio")
         assert artifact is not None
-        assert artifact.kind == "drawio-import"
+        assert artifact.kind == "authored"
         assert [i.path for i in artifact.inputs] == ["figures/plot.png"]
 
     def test_a_regenerated_panel_makes_the_composite_stale(
@@ -254,7 +254,10 @@ class TestExport:
         (project / "c.drawio").write_text(
             text.replace("</root>", '<mxCell id="9" value="note"/></root>')
         )
-        assert check_path(project / "c.drawio").state is State.MODIFIED
+        # Not a finding: nothing produced the diagram, so a person rearranging
+        # it in draw.io is normal authoring, and the export below is what
+        # carries the change onward.
+        assert check_path(project / "c.drawio").state is State.OK
 
         export(project / "c.drawio", project / "c.svg", sign=False)
         assert check_path(project / "c.drawio").state is State.OK
@@ -321,3 +324,183 @@ class TestExport:
             Store.load(project).get("c.svg").command
             == "figmint drawio export c.drawio c.svg"
         )
+
+
+class TestReimport:
+    """Re-importing a regenerated panel refreshes it rather than duplicating it.
+
+    When a figure is redrawn the diagram holds a stale copy of it, and the only
+    sane repair is to replace that copy. Appending a second one would leave the
+    old bytes on the canvas beside the new — wrong on the page and wrong in the
+    record.
+    """
+
+    def test_the_same_source_is_replaced_not_appended(self, project: Path):
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        _png(project / "figures" / "plot.png", size=(500, 250))
+        import_image(project / "figures/plot.png", project / "c.drawio")
+
+        assert len(Diagram.open(project / "c.drawio").embedded()) == 1
+
+    def test_the_refreshed_bytes_are_the_new_ones(self, project: Path):
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        _png(project / "figures" / "plot.png", size=(500, 250))
+        import_image(project / "figures/plot.png", project / "c.drawio")
+
+        source = (project / "figures/plot.png").read_bytes()
+        assert embedded_bytes(project / "c.drawio") == source
+
+    def test_re_importing_clears_the_staleness(self, project: Path):
+        """The whole point: a redrawn panel should be repairable by re-running
+        the same command, not by hand."""
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        _png(project / "figures" / "plot.png", size=(500, 250))
+        assert check_path(project / "c.drawio").state is State.STALE
+
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        assert check_path(project / "c.drawio").state is State.OK
+
+    def test_the_authors_layout_is_kept(self, project: Path):
+        """Position is the author's decision; an import must not undo it."""
+        import_image(
+            project / "figures/plot.png", project / "c.drawio", x=123, y=456
+        )
+        _png(project / "figures" / "plot.png", size=(500, 250))
+        import_image(project / "figures/plot.png", project / "c.drawio")
+
+        text = (project / "c.drawio").read_text()
+        assert 'x="123" y="456"' in text
+
+    def test_the_authors_sizing_is_kept(self, project: Path):
+        """Laying out a composite *is* resizing its panels.
+
+        Refreshing the picture inside one must not snap it back to the image's
+        natural dimensions — that silently rearranges the whole page.
+        """
+        import_image(
+            project / "figures/plot.png", project / "c.drawio", width=300
+        )
+        before = re.search(
+            r'width="([\d.]+)" height="([\d.]+)"',
+            (project / "c.drawio").read_text(),
+        ).groups()
+
+        # Redrawn at a different natural size, which would otherwise win.
+        _png(project / "figures" / "plot.png", size=(900, 300))
+        import_image(project / "figures/plot.png", project / "c.drawio")
+
+        after = re.search(
+            r'width="([\d.]+)" height="([\d.]+)"',
+            (project / "c.drawio").read_text(),
+        ).groups()
+        assert after == before
+
+    def test_an_explicit_size_still_wins(self, project: Path):
+        import_image(
+            project / "figures/plot.png", project / "c.drawio", width=300
+        )
+        import_image(
+            project / "figures/plot.png", project / "c.drawio", width=500
+        )
+        width = re.search(
+            r'width="([\d.]+)"', (project / "c.drawio").read_text()
+        ).group(1)
+        assert float(width) == 500
+
+    def test_a_different_source_still_appends(self, project: Path):
+        _png(project / "figures" / "other.png")
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        import_image(project / "figures/other.png", project / "c.drawio")
+        assert len(Diagram.open(project / "c.drawio").embedded()) == 2
+
+
+class TestAutomaticRefresh:
+    """Export re-embeds redrawn panels; nothing needs re-importing by hand.
+
+    A diagram holds a *copy* of each panel, and the copy is what draw.io
+    renders. Each shape already records the `src` it came from and the hash it
+    had, so the diagram has everything needed to notice a figure has moved on —
+    making the author run an import command to tell it so is busywork.
+    """
+
+    def test_a_redrawn_panel_is_re_embedded(self, project: Path, monkeypatch):
+        seen = TestExport().fake_drawio(project, monkeypatch)
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        _png(project / "figures" / "plot.png", size=(500, 250))
+
+        result = export(project / "c.drawio", project / "c.svg", sign=False)
+        assert result.refreshed == ["figures/plot.png"]
+        assert (
+            embedded_bytes(project / "c.drawio")
+            == (project / "figures/plot.png").read_bytes()
+        )
+        del seen
+
+    def test_the_refresh_happens_before_the_render(
+        self, project: Path, monkeypatch
+    ):
+        """Refreshing afterwards would publish the old panels and only take
+        effect on the next export."""
+        captured: dict = {}
+
+        def fake_run(command, **kwargs):
+            import subprocess as sp
+
+            captured["embedded"] = embedded_bytes(project / "c.drawio")
+            Path(command[command.index("-o") + 1]).write_bytes(b"<svg/>")
+            return sp.CompletedProcess(command, 0, stdout="", stderr="")
+
+        monkeypatch.setattr(
+            "figmint.drawio.shutil.which", lambda name: "/fake/drawio"
+        )
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        _png(project / "figures" / "plot.png", size=(500, 250))
+        monkeypatch.setattr("figmint.drawio.subprocess.run", fake_run)
+
+        export(project / "c.drawio", project / "c.svg", sign=False)
+        assert (
+            captured["embedded"] == (project / "figures/plot.png").read_bytes()
+        )
+
+    def test_it_clears_the_staleness(self, project: Path, monkeypatch):
+        TestExport().fake_drawio(project, monkeypatch)
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        _png(project / "figures" / "plot.png", size=(500, 250))
+        assert check_path(project / "c.drawio").state is State.STALE
+
+        export(project / "c.drawio", project / "c.svg", sign=False)
+        assert check_path(project / "c.drawio").state is State.OK
+
+    def test_an_untouched_panel_is_left_alone(
+        self, project: Path, monkeypatch
+    ):
+        """No gratuitous rewriting of a file the author owns."""
+        TestExport().fake_drawio(project, monkeypatch)
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        before = (project / "c.drawio").read_bytes()
+
+        result = export(project / "c.drawio", project / "c.svg", sign=False)
+        assert result.refreshed == []
+        assert (project / "c.drawio").read_bytes() == before
+
+    def test_the_layout_survives_the_refresh(self, project: Path, monkeypatch):
+        TestExport().fake_drawio(project, monkeypatch)
+        import_image(
+            project / "figures/plot.png", project / "c.drawio", x=123, y=456
+        )
+        _png(project / "figures" / "plot.png", size=(900, 300))
+
+        export(project / "c.drawio", project / "c.svg", sign=False)
+        assert 'x="123" y="456"' in (project / "c.drawio").read_text()
+
+    def test_a_missing_panel_does_not_block_the_export(
+        self, project: Path, monkeypatch
+    ):
+        """`figmint status` reports the missing input; failing here would block
+        the one command that could still produce something useful."""
+        TestExport().fake_drawio(project, monkeypatch)
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        (project / "figures/plot.png").unlink()
+
+        result = export(project / "c.drawio", project / "c.svg", sign=False)
+        assert result.refreshed == []

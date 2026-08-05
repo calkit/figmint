@@ -27,8 +27,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-#: Formats c2pa-rs can read a manifest from. Note PDF is read-only upstream,
-#: which is fine here, and SVG/PNG support full embedding.
+#: Formats c2pa-rs can read a manifest from.
 CREDENTIALED_SUFFIXES = {
     ".svg",
     ".png",
@@ -46,6 +45,29 @@ CREDENTIALED_SUFFIXES = {
     ".mov",
     ".wav",
     ".mp3",
+}
+
+#: Formats c2pa-rs can *embed* a manifest into, which is a strictly smaller set
+#: than it can read. Verified against c2pa 0.37.4 by signing a file of each
+#: type: everything outside this set answers `NotSupported: type is
+#: unsupported`.
+#:
+#: PDF is the absence that matters most. A built paper is exactly the artifact
+#: you would want to hand someone with its credentials attached, and it cannot
+#: carry them — so for `calkit latex build`, and for a MyST PDF, the provenance
+#: lives in `figmint.toml` and nowhere else. The same goes for the HTML a
+#: notebook renders to. Recording the gap here rather than discovering it at
+#: signing time is the difference between a skipped step and a failed build.
+SIGNABLE_SUFFIXES = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".svg",
+    ".tif",
+    ".tiff",
+    ".webp",
+    ".wav",
 }
 
 #: IPTC digital source types, keyed by the last segment of the vocabulary URI.

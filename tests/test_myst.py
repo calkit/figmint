@@ -16,7 +16,14 @@ from pathlib import Path
 
 import pytest
 
-from figmint.myst import SPEC, document_directive, main, run_directive
+from figmint.myst import (
+    SPEC,
+    chain_items,
+    document_directive,
+    main,
+    run_directive,
+)
+from figmint.status import State, check_path
 from figmint.store import Artifact, Input, Store, hash_file
 
 
@@ -73,6 +80,20 @@ def all_text(node) -> str:
     return " ".join(
         [value or "", all_text(node.get("children") or [])]
     ).strip()
+
+
+def _creds(machine_generated: bool):
+    """A stand-in for a parsed C2PA manifest, with the fields the panel reads."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        machineGenerated=machine_generated,
+        validationState="Valid",
+        signedBy="a test",
+        warnings=[],
+        digitalSourceType=None,
+        machineGeneratedBy=None,
+    )
 
 
 @pytest.fixture
@@ -211,9 +232,9 @@ class TestPanel:
         so the panel says where each one came from.
         """
         from figmint.declare import declare
-        from figmint.origins import attested
+        from figmint.origins import Author, attested
 
-        declare(project / "data.csv", attested("A Researcher"))
+        declare(project / "data.csv", attested(Author("A Researcher")))
         text = all_text(find(run_directive(payload("plot.png")), "admonition"))
         assert "created by A Researcher" in text
         assert "undeclared" not in text
@@ -224,15 +245,16 @@ class TestPanel:
         """A model cannot answer for a file, so the disclosure never appears
         without an accountable name attached to it."""
         from figmint.declare import declare
-        from figmint.origins import attested
+        from figmint.origins import Author, attested
 
         declare(
-            project / "data.csv", attested("A Researcher", "Claude Opus 5")
+            project / "data.csv",
+            attested(Author("A Researcher"), Author("Claude Opus 5", "ai")),
         )
         shown = all_text(
             find(run_directive(payload("plot.png")), "admonition")
         )
-        assert "created by A Researcher with Claude Opus 5" in shown
+        assert "created by A Researcher and Claude Opus 5 (AI)" in shown
 
     def test_a_derived_input_is_named_as_such(self, project: Path):
         store = Store.load(project)
@@ -263,9 +285,9 @@ class TestPanel:
 
     def test_an_attestation_is_not_dressed_up_as_proof(self, project: Path):
         from figmint.declare import declare
-        from figmint.origins import attested
+        from figmint.origins import Author, attested
 
-        declare(project / "data.csv", attested("A Researcher"))
+        declare(project / "data.csv", attested(Author("A Researcher")))
         assert "nothing can verify it" in all_text(
             find(run_directive(payload("data.csv")), "admonition")
         )
@@ -282,7 +304,7 @@ class TestPanel:
             Artifact(
                 path="composite.drawio",
                 hash=hash_file(project / "composite.drawio"),
-                kind="drawio-import",
+                kind="authored",
                 inputs=[Input("plot.png", hash_file(project / "plot.png"))],
             )
         )
@@ -304,7 +326,7 @@ class TestPanel:
             Artifact(
                 path="composite.drawio",
                 hash=hash_file(project / "composite.drawio"),
-                kind="drawio-import",
+                kind="authored",
                 inputs=[Input("plot.png", hash_file(project / "plot.png"))],
             )
         )
@@ -328,7 +350,7 @@ class TestPanel:
             Artifact(
                 path="composite.drawio",
                 hash=hash_file(project / "composite.drawio"),
-                kind="drawio-import",
+                kind="authored",
                 inputs=[Input("plot.png", hash_file(project / "plot.png"))],
             )
         )
@@ -347,7 +369,7 @@ class TestPanel:
             )
         )
         store.save()
-        assert "assembled in draw.io" in all_text(
+        assert "hand-authored, no authors declared" in all_text(
             find(run_directive(payload("out.svg")), "admonition")
         )
 
@@ -366,7 +388,7 @@ class TestPanel:
             Artifact(
                 path="composite.drawio",
                 hash=hash_file(project / "composite.drawio"),
-                kind="drawio-import",
+                kind="authored",
                 inputs=[Input("plot.png", hash_file(project / "plot.png"))],
             )
         )
@@ -385,6 +407,68 @@ class TestPanel:
         assert "Out of date upstream" in all_text(panel)
         assert "data.csv" in all_text(panel)
         assert "do not edit figmint.toml" in all_text(panel)
+
+    def test_ai_is_read_from_the_file_when_it_carries_credentials(
+        self, project: Path, monkeypatch
+    ):
+        """No need to restate in the record what the file already asserts.
+
+        A manifest is signed by whoever made the file, so it is the stronger
+        evidence; copying it into `figmint.toml` would create a second copy that
+        can drift.
+        """
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        declare(project / "data.csv", attested(Author("A Researcher")))
+        monkeypatch.setattr(
+            "figmint.myst.credentials_for", lambda path: _creds(True)
+        )
+        shown = all_text(
+            find(run_directive(payload("plot.png")), "admonition")
+        )
+        assert "per the file's own credentials" in shown
+
+    def test_ai_lives_in_the_record_when_the_format_cannot_carry_it(
+        self, project: Path
+    ):
+        """A `.py` or `.csv` has nowhere to put a manifest, so the record is the
+        only place the disclosure can live."""
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        declare(
+            project / "data.csv",
+            attested(Author("A Researcher"), Author("Claude Opus 5", "ai")),
+        )
+        shown = all_text(
+            find(run_directive(payload("plot.png")), "admonition")
+        )
+        assert "per the record" in shown
+
+    def test_a_stripped_disclosure_is_reported_not_hidden(
+        self, project: Path, monkeypatch
+    ):
+        """The failure the record exists to catch.
+
+        Any tool that re-encodes an image silently discards its manifest. If the
+        record deferred to the file, the AI disclosure would evaporate the first
+        time someone opened it in an editor.
+        """
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        declare(
+            project / "data.csv",
+            attested(Author("A Researcher"), Author("Claude Opus 5", "ai")),
+        )
+        monkeypatch.setattr(
+            "figmint.myst.credentials_for", lambda path: _creds(False)
+        )
+        shown = all_text(
+            find(run_directive(payload("plot.png")), "admonition")
+        )
+        assert "no longer say so" in shown
 
     def test_the_command_is_shown(self, project: Path):
         assert "uv run plot.py" in all_text(
@@ -468,3 +552,167 @@ class TestDocumentSummary:
             document_directive({"options": {}, "node": {}}), "admonition"
         )
         assert "Nothing recorded" in all_text(panel)
+
+
+class TestDocumentSelfReference:
+    """A document cannot honestly report on its own freshness from inside itself.
+
+    While the page is being written its recorded hash still describes the
+    *previous* build, so it shows as out of date every single time — a panel
+    that cries wolf permanently, which is worse than no panel.
+    """
+
+    def record_document(self, project: Path) -> None:
+        (project / "doc.html").write_text("<html>old</html>")
+        store = Store.load(project)
+        store.record(
+            Artifact(
+                path="doc.html",
+                hash=hash_file(project / "doc.html"),
+                command="uv run myst build --html",
+                inputs=[Input("plot.png", hash_file(project / "plot.png"))],
+            )
+        )
+        store.save()
+
+    def options(self, **extra) -> dict:
+        return {"options": {"artifact": "doc.html", **extra}, "node": {}}
+
+    def test_the_rebuild_command_is_shown(self, project: Path):
+        """Taken from the record, so it cannot drift from the command that
+        actually produced the file sitting next to it."""
+        self.record_document(project)
+        panel = find(document_directive(self.options()), "admonition")
+        assert "uv run myst build --html" in all_text(panel)
+
+    def test_its_own_output_is_left_out_of_the_tally(self, project: Path):
+        self.record_document(project)
+        # The document is mid-build: what is on disk is not what was recorded.
+        (project / "doc.html").write_text("<html>being written</html>")
+
+        panel = find(document_directive(self.options()), "admonition")
+        assert panel["kind"] == "note"
+        assert "all up to date" in all_text(panel)
+
+    def test_it_stays_collapsible_when_nothing_is_wrong(self, project: Path):
+        self.record_document(project)
+        (project / "doc.html").write_text("<html>being written</html>")
+        panel = find(document_directive(self.options()), "admonition")
+        assert panel["class"] == "dropdown"
+
+    def test_a_real_problem_still_shows(self, project: Path):
+        """Excluding the document must not excuse anything else."""
+        self.record_document(project)
+        (project / "data.csv").write_text("x,y\n9,9\n")
+        panel = find(document_directive(self.options()), "admonition")
+        assert panel["kind"] == "danger"
+        assert panel.get("class") != "dropdown"
+
+    def test_it_says_where_its_own_freshness_is_checked(self, project: Path):
+        self.record_document(project)
+        panel = find(document_directive(self.options()), "admonition")
+        assert "figmint status" in all_text(panel)
+
+    def test_an_unrecorded_document_is_nudged(self, project: Path):
+        """Naming an output nothing produced should say so, not stay silent."""
+        panel = find(
+            document_directive(
+                {"options": {"artifact": "nowhere.html"}, "node": {}}
+            ),
+            "admonition",
+        )
+        assert "not recorded" in all_text(panel)
+
+    def test_without_the_option_nothing_changes(self, project: Path):
+        self.record_document(project)
+        panel = find(
+            document_directive({"options": {}, "node": {}}), "admonition"
+        )
+        assert "doc.html" in all_text(find(panel, "table"))
+
+
+class TestNamingTheCause:
+    """A stale figure did not change — its inputs did.
+
+    Using one word for both sends a reader looking for an edit to a file nobody
+    touched, and leaves the file they *did* edit unmentioned.
+    """
+
+    def build_chain(self, project: Path) -> None:
+        """plot.py -> plot.png -> composite."""
+        store = Store.load(project)
+        (project / "plot.py").write_text("print('draw')")
+        artifact = store.get("plot.png")
+        artifact.inputs.append(
+            Input("plot.py", hash_file(project / "plot.py"), kind="code")
+        )
+        store.record(artifact)
+
+        (project / "composite.svg").write_text("<svg/>")
+        store.record(
+            Artifact(
+                path="composite.svg",
+                hash=hash_file(project / "composite.svg"),
+                command="figmint drawio export c.drawio composite.svg",
+                inputs=[Input("plot.png", hash_file(project / "plot.png"))],
+            )
+        )
+        store.save()
+
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        declare(project / "plot.py", attested(Author("A Researcher")))
+
+    def test_the_edited_script_is_named(self, project: Path):
+        self.build_chain(project)
+        (project / "plot.py").write_text("print('draw differently')")
+
+        panel = find(run_directive(payload("composite.svg")), "admonition")
+        title = all_text(panel["children"][0])
+        assert "plot.py changed" in title
+
+    def test_the_stale_figure_is_not_called_changed(self, project: Path):
+        """It is the same bytes it always was."""
+        self.build_chain(project)
+        (project / "plot.py").write_text("print('draw differently')")
+
+        panel = find(run_directive(payload("composite.svg")), "admonition")
+        title = all_text(panel["children"][0])
+        assert "plot.png changed" not in title
+        assert "plot.png has not been regenerated" in title
+
+    def test_the_table_says_needs_regenerating(self, project: Path):
+        self.build_chain(project)
+        (project / "plot.py").write_text("print('draw differently')")
+
+        rows = find(
+            find(run_directive(payload("composite.svg")), "admonition"),
+            "table",
+        )["children"]
+        by_path = {
+            all_text(r["children"][0]): all_text(r["children"][-1])
+            for r in rows
+        }
+        assert by_path["plot.png"] == "⚠️ needs regenerating"
+        assert by_path["plot.py"] == "⚠️ changed since"
+
+    def test_a_declared_source_is_still_compared_downstream(
+        self, project: Path
+    ):
+        """`status` does not check a declaration against its own hash, but the
+        chain asks a different question that does have an answer: are these the
+        bytes the thing downstream was built from?"""
+        self.build_chain(project)
+        assert check_path(project / "plot.py").state is State.OK
+
+        (project / "plot.py").write_text("print('edited')")
+        assert check_path(project / "plot.py").state is State.OK
+
+        chain = {
+            i.path: i.state
+            for i in chain_items(
+                check_path(project / "composite.svg"), Store.load(project)
+            )
+        }
+        assert chain["plot.py"] is State.STALE

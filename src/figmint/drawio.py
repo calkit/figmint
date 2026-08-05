@@ -34,7 +34,7 @@ import subprocess
 import urllib.parse
 import xml.etree.ElementTree as ET
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .sign import MEDIA_TYPES
@@ -377,6 +377,42 @@ class Diagram:
 
     # -- writing ----------------------------------------------------------
 
+    def shape_for(self, relative: str):
+        """The wrapper already carrying this source path, if the diagram has one."""
+        root = self.model.find("root")
+        if root is None:
+            return None
+        for wrapper in root.findall("object"):
+            if wrapper.get(ATTR_SRC) == relative:
+                return wrapper
+        return None
+
+    def geometry_for(
+        self, relative: str
+    ) -> tuple[float, float, float, float] | None:
+        """An existing panel's box, so replacing it does not rearrange the page.
+
+        Size as well as position. A panel is almost always resized once it is on
+        the canvas — that is what laying out a composite *is* — and refreshing
+        the picture inside it must not throw that away and snap it back to the
+        image's natural dimensions.
+        """
+        wrapper = self.shape_for(relative)
+        if wrapper is None:
+            return None
+        geometry = wrapper.find("mxCell/mxGeometry")
+        if geometry is None:
+            return None
+        try:
+            return (
+                float(geometry.get("x", 0)),
+                float(geometry.get("y", 0)),
+                float(geometry.get("width", 0)),
+                float(geometry.get("height", 0)),
+            )
+        except (TypeError, ValueError):
+            return None
+
     def place(
         self,
         source: Path,
@@ -401,6 +437,13 @@ class Diagram:
         if natural and natural[0] and natural[1]:
             aspect = natural[1] / natural[0]
 
+        prior = self.geometry_for(relative)
+        if prior is not None and width is None and height is None:
+            # An existing panel's box wins over the artwork's natural size:
+            # refreshing the picture inside a laid-out composite must not
+            # resize it.
+            width, height = prior[2] or None, prior[3] or None
+
         # Giving one dimension scales the other by the artwork's aspect ratio;
         # asking for a 300-unit-wide panel and getting one at the image's full
         # natural height would be a surprise.
@@ -417,6 +460,11 @@ class Diagram:
         elif width is None:
             width = height / aspect if aspect else height / 0.75
 
+        if prior is not None:
+            # Replacing a panel keeps where the author put it and how big they
+            # made it, unless this call says otherwise.
+            x = prior[0] if x is None else x
+            y = prior[1] if y is None else y
         if x is None or y is None:
             # Below whatever is already there, so a placed image never lands on
             # top of existing work.
@@ -424,10 +472,25 @@ class Diagram:
             x = 40.0 if x is None else x
             y = (bottom + 40.0) if y is None else y
 
-        shape_id = self.next_free_id()
-        wrapper = ET.SubElement(root, "object")
-        wrapper.set("label", "")
-        wrapper.set("id", shape_id)
+        # A panel already in the diagram is *replaced*, not added again. When a
+        # figure is regenerated the diagram holds a stale copy of it, and the
+        # only sane repair is to refresh that copy in place — appending a second
+        # one would leave the old bytes on the canvas beside the new, which is
+        # both wrong on the page and wrong in the record.
+        existing = self.shape_for(relative)
+        if existing is not None:
+            wrapper = existing
+            shape_id = wrapper.get("id") or self.next_free_id()
+            # Keep whatever the author arranged: position and size are their
+            # layout decisions, not something an import should undo.
+            cell = wrapper.find("mxCell")
+            if cell is not None:
+                wrapper.remove(cell)
+        else:
+            shape_id = self.next_free_id()
+            wrapper = ET.SubElement(root, "object")
+            wrapper.set("label", "")
+            wrapper.set("id", shape_id)
         wrapper.set(ATTR_SRC, relative)
         wrapper.set(ATTR_HASH, f"sha256:{hashlib.sha256(data).hexdigest()}")
 
@@ -447,6 +510,35 @@ class Diagram:
         geometry.set("height", _number(height))
         geometry.set("as", "geometry")
         return shape_id
+
+    def refresh(self, root_dir: Path) -> list[str]:
+        """Re-embed every panel whose source file has moved on.
+
+        A diagram holds a *copy* of each panel, and the copy is what draw.io
+        renders. Once a figure is redrawn the copy is stale, and re-importing by
+        hand to fix that is busywork the diagram already has the information to
+        avoid: each shape carries the `src` it came from and the hash it had.
+
+        Position and size are the author's; only the picture inside is
+        replaced. Returns the paths refreshed, so the caller can say what it
+        did rather than change files silently.
+        """
+        refreshed: list[str] = []
+        for item in self.embedded():
+            if not item.src:
+                continue
+            source = Path(root_dir) / item.src
+            if not source.is_file():
+                # Nothing to refresh from. `figmint status` reports the missing
+                # input; failing the export here would only block the one
+                # command that could still produce something useful.
+                continue
+            current = hash_file(source)
+            if current == (item.hash or item.embedded_hash):
+                continue
+            self.place(source, relative=item.src)
+            refreshed.append(item.src)
+        return refreshed
 
     def save(self) -> None:
         if self.rendered:
@@ -569,7 +661,7 @@ def import_image(
         hash=hash_file(diagram),
         inputs=inputs,
         command=None,
-        kind="drawio-import",
+        kind="authored",
     )
     store.record(artifact)
     store.save()
@@ -588,6 +680,9 @@ class ExportResult:
     output: str
     artifact: Artifact
     signed: bool
+    #: Panels whose embedded copy was stale and has been re-embedded. Reported
+    #: rather than done quietly: the diagram is a file the author owns.
+    refreshed: list[str] = field(default_factory=list)
 
 
 def export(
@@ -643,6 +738,20 @@ def export(
     if suffix not in ("svg", "png", "pdf", "jpg", "jpeg"):
         raise DrawioError(f"draw.io cannot export to {output.suffix}")
 
+    # Refresh stale panels first, because draw.io renders the *copy* inside the
+    # diagram. Each shape already carries the `src` it came from and the hash it
+    # had, so nothing needs re-importing by hand: a redrawn figure is picked up
+    # here, its picture replaced and its hash updated, with the layout the
+    # author gave it left alone.
+    #
+    # Before the render, obviously — refreshing afterwards would publish the old
+    # panels and only take effect on the next export.
+    store = Store.for_path(diagram)
+    document = Diagram.open(diagram)
+    refreshed = document.refresh(store.root)
+    if refreshed:
+        document.save()
+
     output.parent.mkdir(parents=True, exist_ok=True)
     command = [executable, "-x", "-f", suffix, "--yes"]
     if suffix == "svg":
@@ -660,7 +769,6 @@ def export(
             + (f":\n{detail}" if detail else "")
         )
 
-    store = Store.for_path(output)
     inputs = [Input(store.relative(diagram), hash_file(diagram))]
 
     # Re-record the diagram: exporting is the act that blesses the arrangement.
@@ -675,7 +783,7 @@ def export(
             path=store.relative(diagram),
             hash=hash_file(diagram),
             inputs=panels,
-            kind="drawio-import",
+            kind="authored",
         )
     )
 
@@ -689,7 +797,7 @@ def export(
         from . import credentials as credentials_mod
         from . import sign as sign_mod
 
-        if output.suffix.lower() in credentials_mod.CREDENTIALED_SUFFIXES:
+        if output.suffix.lower() in credentials_mod.SIGNABLE_SUFFIXES:
             try:
                 # Before hashing: embedding changes the bytes.
                 # Panels as well as the diagram: an AI-generated panel's
@@ -724,5 +832,6 @@ def export(
         diagram=store.relative(diagram),
         output=store.relative(output),
         artifact=artifact,
+        refreshed=refreshed,
         signed=signed,
     )

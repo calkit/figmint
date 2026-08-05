@@ -15,6 +15,7 @@ import pytest
 
 from figmint.environments import EnvironmentError_, describe
 from figmint.run import RunError, run
+from figmint.status import State, check_path
 from figmint.store import Store, hash_file
 
 
@@ -316,3 +317,140 @@ class TestRun:
     def test_an_output_is_required(self, project: Path):
         with pytest.raises(RunError, match="output is required"):
             run(self.command(), inputs=[], outputs=[], cwd=project)
+
+
+class TestDeclaredInputRefresh:
+    """Editing a declared source file should not require re-declaring it.
+
+    A declaration answers "who is responsible for this file", and that does not
+    change when somebody edits a line of it. Before this, every edit left the
+    file sitting in `figmint status` as *modified* until it was declared again —
+    a treadmill that teaches people to re-run `declare` reflexively, which is
+    the last habit this tool should build.
+    """
+
+    def command(self) -> list[str]:
+        return ["uv", "run", "--no-project", sys.executable, "make.py"]
+
+    def declared_script(self, project: Path) -> None:
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        _script(project, "open('out.txt','w').write('one')")
+        declare(project / "make.py", attested(Author("A Researcher")))
+
+    def go(self, project: Path, inputs=None, output="out.txt"):
+        return run(
+            self.command(),
+            inputs=inputs or [project / "data.csv"],
+            outputs=[project / output],
+            cwd=project,
+        )
+
+    def test_a_run_brings_the_recorded_hash_up_to_date(self, project: Path):
+        self.declared_script(project)
+        _script(project, "open('out.txt','w').write('edited')")
+
+        result = self.go(project)
+        assert "make.py" in result.refreshed
+        assert check_path(project / "make.py").state is State.OK
+
+    def test_the_authorship_survives_the_refresh(self, project: Path):
+        """The claim is about a person, not about bytes."""
+        self.declared_script(project)
+        _script(project, "open('out.txt','w').write('edited')")
+        self.go(project)
+
+        artifact = Store.load(project).get("make.py")
+        assert [a.name for a in artifact.authors] == ["A Researcher"]
+        assert artifact.origin_kind == "attested"
+
+    def test_an_unchanged_input_is_not_reported_as_refreshed(
+        self, project: Path
+    ):
+        self.declared_script(project)
+        assert "make.py" not in self.go(project).refreshed
+
+    def test_a_produced_artifact_is_never_refreshed(self, project: Path):
+        """The line that matters.
+
+        A hash figmint wrote itself is evidence. Quietly rewriting it is exactly
+        the tampering the record exists to catch, so only declarations — which
+        nothing produced — are eligible.
+        """
+        _script(project, "open('out.txt','w').write('one')")
+        self.go(project)
+        recorded = Store.load(project).get("out.txt").hash
+
+        (project / "out.txt").write_text("tampered with")
+        assert check_path(project / "out.txt").state is State.MODIFIED
+
+        # A later run that *uses* it must not launder the tampering.
+        _script(project, "open('second.txt','w').write('two')")
+        result = self.go(
+            project, inputs=[project / "out.txt"], output="second.txt"
+        )
+        assert "out.txt" not in result.refreshed
+        after = Store.load(project).get("out.txt").hash
+        assert after == recorded
+        assert after != hash_file(project / "out.txt")
+
+
+class TestRefreshTiming:
+    """The refresh has to land before the command, not after.
+
+    A document build renders provenance panels out of `figmint.toml`. If the
+    refresh happened afterwards, the page produced by that very run would report
+    its own sources as edited, and only a *second* build would clear it — which
+    is exactly the sort of "run it twice" behaviour nobody ever discovers.
+    """
+
+    def command(self) -> list[str]:
+        return ["uv", "run", "--no-project", sys.executable, "make.py"]
+
+    def test_the_command_sees_the_refreshed_record(self, project: Path):
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        _script(project, "x = 1")
+        declare(project / "make.py", attested(Author("A Researcher")))
+
+        # Edit it, then have the run itself read the record back out — standing
+        # in for a document build rendering a provenance panel.
+        _script(
+            project,
+            "import shutil;"
+            "shutil.copy('figmint.toml','seen.toml');"
+            "open('out.txt','w').write('done')",
+        )
+        run(
+            self.command(),
+            inputs=[project / "data.csv"],
+            outputs=[project / "out.txt"],
+            cwd=project,
+        )
+
+        seen = (project / "seen.toml").read_text()
+        assert hash_file(project / "make.py") in seen
+
+    def test_a_failed_command_still_leaves_the_record_readable(
+        self, project: Path
+    ):
+        """The refresh describes the input bytes, which is true either way."""
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        _script(project, "x = 1")
+        declare(project / "make.py", attested(Author("A Researcher")))
+        _script(project, "raise SystemExit(3)")
+
+        with pytest.raises(RunError):
+            run(
+                self.command(),
+                inputs=[project / "data.csv"],
+                outputs=[project / "out.txt"],
+                cwd=project,
+            )
+        # Still a valid record naming the same author.
+        artifact = Store.load(project).get("make.py")
+        assert [a.name for a in artifact.authors] == ["A Researcher"]

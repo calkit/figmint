@@ -45,8 +45,9 @@ from .status import (
     check_all,
     check_artifact,
     check_path,
+    mark_divergence,
 )
-from .store import Store, hash_file, project_root
+from .store import Artifact, Store, hash_file, project_root
 
 # --------------------------------------------------------------------------
 # Presentation
@@ -64,7 +65,7 @@ STATE_WORD: dict[State, str] = {
     State.OK: "unchanged",
     State.STALE: "changed since",
     State.MISSING: "missing",
-    State.MODIFIED: "edited outside figmint",
+    State.MODIFIED: "changed outside figmint",
     State.UNTRACKED: "not recorded",
 }
 
@@ -230,23 +231,69 @@ def provenance_cell(item, store: Store) -> dict[str, Any]:
         return cell(emphasis("⚠ undeclared"))
     if artifact.command:
         return cell(text("derived by figmint"))
-    if artifact.kind == "drawio-import":
-        # Recorded, with inputs, but no command: a diagram is arranged by hand
-        # afterwards, so naming a command would promise a reproduction that does
-        # not exist.
-        return cell(text("assembled in draw.io"))
 
     origin = artifact.origin_description()
     if not origin:
+        if artifact.kind == "authored":
+            # Recorded, with inputs, but no command and nobody named: a canvas
+            # is arranged by hand, so there is a derivation chain *and* an
+            # author list, and only one of them is here.
+            return cell(emphasis("⚠ hand-authored, no authors declared"))
         return cell(emphasis("⚠ no origin recorded"))
     if artifact.origin_kind == "doi":
         return cell(link(f"https://doi.org/{artifact.origin}", origin))
-    if artifact.origin_ai:
+
+    if artifact.kind == "authored":
+        # "created by" would suggest they made it from nothing; they assembled
+        # it from panels the record already accounts for.
+        origin = origin.replace("created by", "assembled by", 1)
+
+    disclosure = ai_disclosure(artifact, store.root / item.path)
+    if disclosure:
         # Machine-generated material is the one origin a reader should not have
         # to squint at, so it is emphasised rather than set flush with the rest.
         # The accountable person is named in the same string, never dropped.
-        return cell(emphasis(origin))
+        return cell(emphasis(f"{origin} — {disclosure}"))
     return cell(text(origin))
+
+
+def ai_disclosure(artifact: Artifact, source: Path) -> str:
+    """What is known about generative AI in this file, from both places.
+
+    The file's own Content Credentials and the record can each carry this, and
+    they can disagree. Neither is dropped in favour of the other:
+
+    * A manifest is the stronger evidence — signed by whoever made the file,
+      and `turbine.png` really does carry Google's own "Created by Google
+      Generative AI". But it is also *fragile*: any tool that re-encodes the
+      bytes silently discards it, which is the entire reason
+      `figmint drawio import` exists.
+    * The record is durable and survives re-encoding, but it is only a claim.
+
+    So a disagreement is reported rather than resolved. If the record says a
+    model was involved and the file no longer says so, that is exactly the
+    situation a reader needs to know about — the alternative is a disclosure
+    that quietly evaporates the first time someone opens the image in an
+    editor.
+    """
+    declared = [a.name for a in artifact.authors if a.is_ai]
+    creds = credentials_for(source) if source.is_file() else None
+    carried = bool(creds and creds.machineGenerated)
+
+    if declared and carried:
+        return "AI-generated, per the record and the file's own credentials"
+    if declared and creds is not None:
+        return (
+            "⚠ the record says AI-generated but the file's credentials no "
+            "longer say so — they were probably stripped by re-encoding"
+        )
+    if declared:
+        # No manifest at all: a `.py` or `.csv` cannot carry one, so the record
+        # is the only place this fact can live.
+        return "AI-generated, per the record"
+    if carried:
+        return "AI-generated, per the file's own credentials"
+    return ""
 
 
 @dataclass
@@ -259,6 +306,10 @@ class ChainItem:
     #: True when the artifact names it directly, rather than inheriting it from
     #: something further back.
     direct: bool
+    #: True when figmint produced this file. A derived file that is out of date
+    #: needs *regenerating*; a source that is out of date has been *changed*,
+    #: and confusing the two points a reader at the wrong file.
+    derived: bool = False
 
 
 def chain_items(report: ArtifactStatus, store: Store) -> list[ChainItem]:
@@ -286,11 +337,17 @@ def chain_items(report: ArtifactStatus, store: Store) -> list[ChainItem]:
     for path in sorted(paths, key=lambda p: (p not in direct, p)):
         item = named.get(path)
         artifact = store.artifacts.get(path)
-        if artifact is not None:
+        derived = artifact is not None and bool(artifact.command)
+        if derived:
             state = check_artifact(store, artifact).state
         elif item is None:
             state = State.UNTRACKED
         else:
+            # A declared file is not checked against its own hash — but the
+            # question *here* is different and does have an answer: are these
+            # the bytes the thing downstream was built from? Comparing against
+            # what the consumer recorded is what names the script somebody
+            # edited, rather than blaming the figure it stopped matching.
             target = store.root / path
             if not target.is_file():
                 state = State.MISSING
@@ -304,16 +361,29 @@ def chain_items(report: ArtifactStatus, store: Store) -> list[ChainItem]:
                 kind=item.kind if item else "file",
                 state=state,
                 direct=path in direct,
+                derived=derived,
             )
         )
     return items
+
+
+def state_words(item: "ChainItem") -> str:
+    """How one row's state reads, given what kind of file it is.
+
+    A derived file that is out of date did not *change* — its inputs did, and
+    it has not caught up. Using the same word for both sends a reader looking
+    for an edit to a file nobody touched.
+    """
+    if item.derived and item.state is State.STALE:
+        return "needs regenerating"
+    return STATE_WORD[item.state]
 
 
 def input_row(item, store: Store) -> dict[str, Any]:
     return row(
         cell(code(item.path)),
         provenance_cell(item, store),
-        cell(text(f"{STATE_MARK[item.state]} {STATE_WORD[item.state]}")),
+        cell(text(f"{STATE_MARK[item.state]} {state_words(item)}")),
     )
 
 
@@ -376,12 +446,24 @@ def headline(
     # be the most misleading thing this panel could print.
     broken = [i for i in chain if i.state is not State.OK]
     if broken:
-        names = ", ".join(i.path for i in broken)
-        return (
-            "danger",
-            f"Out of date upstream — {names} changed, but nothing between "
-            f"that and this figure has been regenerated",
-        )
+        # Which file *changed* and which merely fell behind are different
+        # facts, and collapsing them sends a reader to fix the wrong one: a
+        # figure that is stale did not change, its inputs did.
+        changed = [i.path for i in broken if not i.derived]
+        behind = [i.path for i in broken if i.derived]
+        if changed and behind:
+            detail = (
+                f"{', '.join(changed)} changed, and "
+                f"{', '.join(behind)} has not been regenerated since"
+            )
+        elif changed:
+            detail = f"{', '.join(changed)} changed since this was made"
+        else:
+            detail = (
+                f"{', '.join(behind)} has not been regenerated from its "
+                f"current inputs"
+            )
+        return "danger", f"Out of date upstream — {detail}"
 
     disclosure = ""
     if creds and creds.machineGenerated:
@@ -560,6 +642,14 @@ SPEC: dict[str, Any] = {
                     "type": "string",
                     "doc": "Mermaid direction: LR (default), TD, RL, BT.",
                 },
+                "artifact": {
+                    "type": "string",
+                    "doc": (
+                        "This document's own output(s), comma separated. Named "
+                        "so the panel can show how to rebuild them and leave "
+                        "them out of its own freshness tally."
+                    ),
+                },
             },
             "body": {"type": "parsed", "doc": "Optional lead-in text."},
         },
@@ -616,6 +706,52 @@ def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def own_outputs(options: dict[str, Any]) -> list[str]:
+    """The document's own artifacts, as named by `:artifact:`."""
+    raw = str(options.get("artifact") or "")
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def excluded_paths(outputs: list[str], store: Store) -> set[str]:
+    """The document's own outputs — what the reader is looking at.
+
+    Only the outputs. The sources behind them need no special handling: a
+    declared file is not checked against its own hash, so editing this page
+    while previewing it does not make anything report itself as stale.
+    """
+    del store
+    return set(outputs)
+
+
+def rebuild_block(paths: list[str], store: Store) -> list[dict[str, Any]]:
+    """How to rebuild this document, taken from the record.
+
+    Taken from the record rather than written into the page, so it cannot drift
+    from the command that actually produced the file sitting next to it.
+    """
+    blocks: list[dict[str, Any]] = []
+    for path in paths:
+        artifact = store.artifacts.get(path)
+        if artifact is None:
+            blocks.append(
+                paragraph(
+                    strong("This document: "),
+                    code(path),
+                    text(" — not recorded. Build it with "),
+                    code("figmint run"),
+                    text(" so it can be checked like everything else."),
+                )
+            )
+        elif artifact.command:
+            label = (
+                f"Rebuild {Path(path).suffix.lstrip('.').upper()}: "
+                if len(paths) > 1
+                else "Rebuild this document: "
+            )
+            blocks.append(paragraph(strong(label), code(artifact.command)))
+    return blocks
+
+
 def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
     """The document as a composite, one level up from a single artifact."""
     options = data.get("options") or {}
@@ -630,22 +766,47 @@ def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
             )
         ]
 
-    children: list[dict[str, Any]] = []
+    # A document cannot honestly report on its own freshness from inside
+    # itself: while this page is being written its recorded hash necessarily
+    # describes the *previous* build, so it would show as out of date every
+    # time, and the panel would cry wolf permanently. Its own outputs are
+    # therefore left out of the tally and `figmint status` is named as the
+    # thing that does check them — from outside, where the answer is settled.
+    store = Store.load(root)
+    mine = excluded_paths(own_outputs(options), store)
+    others = [r for r in reports if r.path not in mine]
+
+    # Divergence recomputed against this panel's own exclusions. While the page
+    # is being previewed its markdown differs from what the last build used, and
+    # saying so would be reporting on the file the reader is editing right now.
+    mark_divergence(store, others, ignore=mine)
+
+    children: list[dict[str, Any]] = list(rebuild_block(mine, store))
     if as_bool(options.get("table")):
-        children.append(document_table(reports))
+        children.append(document_table(others))
 
     if as_bool(options.get("graph")):
         children.append(
-            graph_block(root, reports, str(options.get("direction") or "LR"))
+            graph_block(root, others, str(options.get("direction") or "LR"))
         )
 
-    stale = [r for r in reports if r.stale]
-    if stale:
+    if mine:
+        children.append(
+            paragraph(
+                emphasis(
+                    "This document's own output is excluded above — you are "
+                    "looking at it. Check it with `figmint status`."
+                )
+            )
+        )
+
+    troubled = [r for r in others if not r.trustworthy or r.changed]
+    if troubled:
         kind = "danger"
-        title = f"{len(stale)} of {len(reports)} artifact(s) out of date"
+        title = f"{len(troubled)} of {len(others)} artifact(s) out of date"
     else:
         kind = "note"
-        title = f"{len(reports)} artifact(s), all up to date"
+        title = f"{len(others)} artifact(s), all up to date"
 
     return [admonition(kind, title, *children, dropdown=(kind == "note"))]
 
@@ -671,6 +832,32 @@ def graph_block(
         return paragraph(emphasis(f"Provenance graph failed: {exc}"))
 
 
+def document_state(report: ArtifactStatus) -> str:
+    """One row's state, as a reader of the whole project needs it.
+
+    Three different things can be wrong and they read differently: a file was
+    edited, an artifact is behind its inputs, or an artifact is fine in itself
+    but rests on something that is not. Collapsing them into "up to date" or
+    not hides the one that names the file somebody actually touched.
+    """
+    if report.state is not State.OK:
+        word = (
+            "needs regenerating"
+            if report.state is State.STALE
+            else STATE_WORD[report.state]
+        )
+        return f"{STATE_MARK[report.state]} {word}"
+    if report.changed:
+        # A declared file whose bytes are not what its consumers were built
+        # from. Its own hash is never checked — a declaration is not a claim
+        # about content — but this question has an answer, and it is the one
+        # that points at the cause rather than the symptom.
+        return "⚠️ changed since"
+    if report.upstream:
+        return "⚠️ rests on something out of date"
+    return "✅ up to date"
+
+
 def document_table(reports: list[ArtifactStatus]) -> dict[str, Any]:
     rows = [
         row(
@@ -684,13 +871,7 @@ def document_table(reports: list[ArtifactStatus]) -> dict[str, Any]:
             row(
                 cell(code(report.path)),
                 cell(text(str(len(report.inputs)))),
-                cell(
-                    text(
-                        f"{STATE_MARK[report.state]} {STATE_WORD[report.state]}"
-                    )
-                    if report.state is not State.OK
-                    else text("✅ up to date")
-                ),
+                cell(text(document_state(report))),
             )
         )
     return table(*rows)

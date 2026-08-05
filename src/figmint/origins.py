@@ -16,14 +16,19 @@ of claim it is:
   * **`--mine`** — an attestation. "I produced this myself." Nothing verifies it
     and nothing can; what it does is put a name against the claim, so it is on
     the record rather than assumed.
-  * **`--with-ai <tool>`** — a modifier on an attestation, not a claim of its
-    own. A model can produce a file but it cannot answer for one, so the
-    accountable party is always the person attesting; the tool is disclosed
-    alongside them rather than in place of them. "Pete Bachant, with Claude
-    Opus 5" says who is responsible *and* how the file was made, which is what
-    a reader needs to judge whether that use of generative AI is acceptable
-    here. An agent declaring its own output still names the human it worked
-    for.
+  * **`--author <name>`** / **`--with-ai <tool>`** — who made it. Both repeat,
+    because an artifact rarely has exactly one author and code almost never
+    does: a script grows through several hands and, increasingly, several
+    models. The two flags differ only in what they mark the author as, and at
+    least one human is required — a model can produce a file but it cannot
+    answer for one, so an agent declaring its own output still names the people
+    it worked for.
+  * **`--from-git-history`** — read the author list out of the repository
+    instead of retyping it. Git already records this: every commit touching the
+    file names an author, and `Co-authored-by:` trailers name everyone else,
+    which is exactly where an AI agent's own signature lands. Deriving the list
+    from history means it matches what actually happened rather than what
+    somebody remembered at declaration time.
   * **`--doi`** — a published, immutable source. The strongest form here,
     because a DOI resolves to something a reader can fetch.
   * **`--git <location@rev>`** / **`--calkit <location@rev>`** — a
@@ -44,6 +49,7 @@ commit makes it mean something a year later.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 #: `host/owner/project/path@rev`. The scheme comes from which flag was used, so
@@ -58,8 +64,57 @@ _DOI = re.compile(
 SCHEMES = ("git", "calkit")
 
 
+#: Signatures that mark an author as a generative tool rather than a person.
+#: Deliberately a short, explicit, auditable list rather than clever detection:
+#: this is a guess, it is wrong sometimes, and both `figmint declare` and the
+#: rendered panel show what it decided so a wrong guess is visible and can be
+#: overridden with `--author`/`--with-ai`.
+AI_SIGNATURES = (
+    "noreply@anthropic.com",
+    "claude",
+    "chatgpt",
+    "openai.com",
+    "gpt-4",
+    "gpt-5",
+    "copilot",
+    "gemini",
+    "codex",
+    "devin",
+    "cursor",
+)
+
+
 class OriginError(ValueError):
     """Raised when a declared origin cannot be understood."""
+
+
+@dataclass(frozen=True)
+class Author:
+    """One party responsible for an artifact."""
+
+    name: str
+    #: `person` or `ai`. Kept as a field rather than inferred at display time so
+    #: that a correction made once, at declaration, stays corrected.
+    kind: str = "person"
+
+    @property
+    def is_ai(self) -> bool:
+        return self.kind == "ai"
+
+    def describe(self) -> str:
+        return f"{self.name} (AI)" if self.is_ai else self.name
+
+    def to_dict(self) -> dict[str, str]:
+        return {"name": self.name, "kind": self.kind}
+
+
+def looks_like_ai(name: str) -> bool:
+    """Whether an author signature belongs to a generative tool.
+
+    A heuristic, and named like one. See `AI_SIGNATURES`.
+    """
+    lowered = name.lower()
+    return any(signature in lowered for signature in AI_SIGNATURES)
 
 
 @dataclass(frozen=True)
@@ -72,15 +127,13 @@ class Origin:
     value: str
     #: Revision, for the URI forms.
     revision: str | None = None
-    #: The generative tool used, when the person attesting used one. Never
-    #: stands alone: a tool cannot be accountable for a file.
-    ai: str | None = None
+    #: Everyone who made it, in the order they appear. Always contains at least
+    #: one person for an attestation: a tool cannot be accountable for a file.
+    authors: tuple[Author, ...] = ()
 
     def describe(self) -> str:
         if self.kind == "attested":
-            if self.ai:
-                return f"created by {self.value} with {self.ai}"
-            return f"created by {self.value}"
+            return f"created by {describe_authors(self.authors)}"
         if self.kind == "doi":
             return f"https://doi.org/{self.value}"
         return f"{self.kind}:{self.value}@{self.revision}"
@@ -96,7 +149,7 @@ class Origin:
 
     @property
     def machine_generated(self) -> bool:
-        return bool(self.ai)
+        return any(a.is_ai for a in self.authors)
 
 
 def parse_location(scheme: str, value: str) -> Origin:
@@ -134,28 +187,87 @@ def parse_doi(value: str) -> Origin:
     return Origin(kind="doi", value=match.group(1))
 
 
-def attested(author: str, ai: str | None = None) -> Origin:
-    """An "I made this" claim, attributed to somebody.
+def describe_authors(authors: Sequence[Author]) -> str:
+    """An author list as a reader should see it."""
+    names = [a.describe() for a in authors]
+    if not names:
+        return "nobody"
+    if len(names) == 1:
+        return names[0]
+    return f"{', '.join(names[:-1])} and {names[-1]}"
 
-    `ai` names a generative tool the author used. It is deliberately a field on
-    the attestation rather than an origin of its own: a model cannot answer for
-    a file, so there is always a person on the record beside it.
+
+def dedupe(authors: Iterable[Author]) -> tuple[Author, ...]:
+    """First mention wins, so an explicit `--author` beats a later guess."""
+    seen: dict[str, Author] = {}
+    for author in authors:
+        key = author.name.strip().lower()
+        if key and key not in seen:
+            seen[key] = Author(author.name.strip(), author.kind)
+    return tuple(seen.values())
+
+
+def attested(*authors: Author) -> Origin:
+    """An "I made this" claim, attributed to the people who made it.
+
+    Several people, because an artifact rarely has exactly one author and code
+    almost never does. At least one of them must be a person: a model can
+    produce a file but it cannot answer for one, so there is always somebody on
+    the record beside it.
     """
-    if not author or not author.strip():
+    collected = dedupe(authors)
+    if not collected:
         raise OriginError(
             "an attestation needs a name. Pass `--author`, or set user.name in "
             "git, so the claim is attributable to someone."
         )
-    if ai is not None and not ai.strip():
+    if not any(not a.is_ai for a in collected):
         raise OriginError(
-            "say which tool, e.g. `--with-ai 'Claude Opus 5'`, so a reader can "
-            "judge whether that is an acceptable use here."
+            "every author here is a generative tool, and a tool cannot be "
+            "accountable for a file. Name the person who is, with `--author`."
         )
-    return Origin(
-        kind="attested",
-        value=author.strip(),
-        ai=ai.strip() if ai else None,
-    )
+    return Origin(kind="attested", value="", authors=collected)
+
+
+def git_authors_for(path, cwd) -> list[Author]:
+    """Everyone git has seen touch a file.
+
+    Both the commit authors and the `Co-authored-by:` trailers, because the
+    trailer is where a second pair of hands is recorded — and, increasingly,
+    where an AI agent signs its own contribution. Reading it back out means the
+    declaration matches what happened rather than what somebody remembered.
+
+    `--follow` so a rename does not amputate the history.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "log",
+                "--follow",
+                "--format=%an <%ae>%n%(trailers:key=Co-authored-by,valueonly=true)",
+                "--",
+                str(path),
+            ],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, OSError):
+        return []
+    if result.returncode != 0:
+        return []
+
+    found = [
+        Author(line, "ai" if looks_like_ai(line) else "person")
+        for line in (raw.strip() for raw in result.stdout.splitlines())
+        if line
+    ]
+    # Oldest first: an author list reads as the order people arrived, and
+    # `git log` hands them back newest first.
+    return list(dedupe(reversed(found)))
 
 
 def git_author(cwd) -> str | None:

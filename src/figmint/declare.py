@@ -11,10 +11,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from .origins import (
+    Author,
     Origin,
     OriginError,
     attested,
     git_author,
+    git_authors_for,
     parse_doi,
     parse_location,
 )
@@ -24,8 +26,10 @@ from .store import Artifact, Store, hash_file
 def resolve_origin(
     *,
     mine: bool = False,
-    author: str | None = None,
-    with_ai: str | None = None,
+    authors: list[str] | None = None,
+    with_ai: list[str] | None = None,
+    from_git: bool = False,
+    path: Path | None = None,
     doi: str | None = None,
     git: str | None = None,
     calkit: str | None = None,
@@ -36,30 +40,32 @@ def resolve_origin(
     Exactly one, deliberately. A file that is both "mine" and fetched from a DOI
     is two different stories, and a record that holds both says neither.
     """
+    authors = list(authors or [])
+    with_ai = list(with_ai or [])
+    attesting = bool(mine or authors or with_ai or from_git)
+
     claims = {
-        "--mine": bool(mine or author),
+        "--mine": attesting,
         "--doi": bool(doi),
         "--git": bool(git),
         "--calkit": bool(calkit),
     }
     given = [flag for flag, present in claims.items() if present]
 
-    # `--with-ai` modifies an attestation rather than replacing one, so its own
-    # errors come first: they say something specific about what is wrong, and
-    # "say where it came from" would be technically true but useless to someone
-    # who just told us exactly that.
-    if with_ai:
-        if doi or git or calkit:
-            raise OriginError(
-                "`--with-ai` belongs on an attestation. A published or "
-                "revision-pinned source already says where the file came from."
-            )
-        if not claims["--mine"]:
-            raise OriginError(
-                "`--with-ai` names a tool, and a tool cannot be accountable "
-                "for a file. Say who is: add `--mine`, or `--author 'Their "
-                "Name'` if you are declaring on someone's behalf."
-            )
+    # The attestation flags produce their own errors first: they say something
+    # specific about what is wrong, and "say where it came from" would be
+    # technically true but useless to someone who just told us exactly that.
+    if with_ai and (doi or git or calkit):
+        raise OriginError(
+            "`--with-ai` belongs on an attestation. A published or "
+            "revision-pinned source already says where the file came from."
+        )
+    if from_git and (doi or git or calkit):
+        raise OriginError(
+            "`--from-git-history` reads the authors of a file in this project. "
+            "A published or revision-pinned source already says where it "
+            "came from."
+        )
 
     if not given:
         raise OriginError(
@@ -78,26 +84,70 @@ def resolve_origin(
         return parse_location("git", git)
     if calkit:
         return parse_location("calkit", calkit)
-    return attested(author or git_author(cwd or Path.cwd()) or "", with_ai)
+
+    # Explicit names first, so a hand-written `--author` wins over whatever the
+    # history heuristic decided about the same person.
+    collected = [Author(name, "person") for name in authors]
+    collected += [Author(name, "ai") for name in with_ai]
+    if from_git:
+        if path is None:
+            raise OriginError(
+                "`--from-git-history` needs a file to read the history of"
+            )
+        found = git_authors_for(path, cwd or Path.cwd())
+        if not found:
+            raise OriginError(
+                f"git knows nothing about {Path(path).name} — it has no commits "
+                f"yet, or is not in a repository. Name the authors with "
+                f"`--author`/`--with-ai` instead."
+            )
+        collected += found
+    if mine and not collected:
+        collected.append(Author(git_author(cwd or Path.cwd()) or "", "person"))
+    elif mine:
+        # `--mine` alongside other names means "and me", not "only me".
+        collected.insert(
+            0, Author(git_author(cwd or Path.cwd()) or "", "person")
+        )
+    return attested(*[a for a in collected if a.name])
 
 
 def declare(path: Path, origin: Origin) -> Artifact:
-    """Record a primary artifact and the claim about where it came from."""
+    """Record who is answerable for an artifact, and where it came from.
+
+    Two shapes of file end up here. Most are *primary*: measurements, a
+    downloaded dataset, an image somebody was handed — nothing in the project
+    produced them, and without a declaration they sit at the bottom of the chain
+    unexplained.
+
+    The other is an artifact figmint already tracks that was nonetheless made by
+    hand: a `.drawio` canvas is assembled from recorded panels but arranged by
+    people, and increasingly by people and agents together. Those already have
+    inputs, and a declaration must *add* authorship to them rather than replace
+    what is known — overwriting the inputs would trade a real derivation chain
+    for a name.
+    """
     path = Path(path)
     if not path.is_file():
         raise OriginError(f"no such file: {path}")
 
     store = Store.for_path(path)
+    key = store.relative(path)
+    existing = store.artifacts.get(key)
+
     artifact = Artifact(
-        path=store.relative(path),
+        path=key,
         hash=hash_file(path),
-        inputs=[],
-        command=None,
-        kind="primary",
+        inputs=existing.inputs if existing else [],
+        command=existing.command if existing else None,
+        # An artifact nothing produced is primary. One that already has a record
+        # keeps whatever it was; declaring authors does not change how it was
+        # made, only who answers for it.
+        kind=existing.kind if existing else "primary",
         origin_kind=origin.kind,
-        origin=origin.value,
+        origin=origin.value or None,
         origin_revision=origin.revision,
-        origin_ai=origin.ai,
+        authors=list(origin.authors),
     )
     store.record(artifact)
     store.save()

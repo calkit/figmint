@@ -13,8 +13,10 @@ import pytest
 
 from figmint.declare import resolve_origin
 from figmint.origins import (
+    Author,
     OriginError,
     attested,
+    looks_like_ai,
     parse_doi,
     parse_location,
 )
@@ -83,15 +85,31 @@ class TestAttestation:
     def test_it_is_not_verifiable_and_says_so(self):
         """Saying it plainly is the point: an attestation is the weakest thing
         in the record and should not read like the others."""
-        assert attested("A Researcher").verifiable is False
+        assert attested(Author("A Researcher")).verifiable is False
 
     def test_it_needs_a_name(self):
         with pytest.raises(OriginError, match="needs a name"):
-            attested("   ")
+            attested(Author("   "))
+
+    def test_several_authors_are_kept_in_order(self):
+        """An artifact rarely has exactly one author, and code almost never
+        does."""
+        origin = attested(
+            Author("First Author"),
+            Author("Claude Opus 5", "ai"),
+            Author("Second Author"),
+        )
+        assert origin.describe() == (
+            "created by First Author, Claude Opus 5 (AI) and Second Author"
+        )
+
+    def test_the_same_author_twice_is_recorded_once(self):
+        origin = attested(Author("A Researcher"), Author("a researcher"))
+        assert len(origin.authors) == 1
 
 
 class TestAiDisclosure:
-    """A tool is disclosed beside the person attesting, never instead of them.
+    """A tool is named among the authors, never instead of a person.
 
     A model can produce a file but cannot answer for one, so accountability and
     disclosure are separate axes: the reader gets both a responsible name and
@@ -99,25 +117,45 @@ class TestAiDisclosure:
     """
 
     def test_the_person_and_the_tool_are_both_named(self):
-        origin = attested("A Researcher", "Claude Opus 5")
-        assert (
-            origin.describe() == "created by A Researcher with Claude Opus 5"
+        origin = attested(
+            Author("A Researcher"), Author("Claude Opus 5", "ai")
+        )
+        assert origin.describe() == (
+            "created by A Researcher and Claude Opus 5 (AI)"
         )
 
     def test_it_is_marked_as_machine_generated(self):
-        assert attested("A Researcher", "Claude Opus 5").machine_generated
+        assert attested(
+            Author("A Researcher"), Author("Claude Opus 5", "ai")
+        ).machine_generated
 
     def test_a_plain_attestation_is_not(self):
-        assert attested("A Researcher").machine_generated is False
+        assert attested(Author("A Researcher")).machine_generated is False
 
     def test_disclosing_a_tool_does_not_make_it_verifiable(self):
-        assert attested("A Researcher", "Claude Opus 5").verifiable is False
+        origin = attested(
+            Author("A Researcher"), Author("Claude Opus 5", "ai")
+        )
+        assert origin.verifiable is False
 
-    def test_it_needs_to_name_the_tool(self):
-        """ "Made with AI" without saying which tells a reader nothing they can
-        weigh."""
-        with pytest.raises(OriginError, match="say which tool"):
-            attested("A Researcher", "  ")
+    def test_a_tool_cannot_be_the_only_author(self):
+        """A model can produce a file but cannot answer for one."""
+        with pytest.raises(OriginError, match="cannot be accountable"):
+            attested(Author("Claude Opus 5", "ai"))
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Claude <noreply@anthropic.com>",
+            "GitHub Copilot <copilot@github.com>",
+            "Gemini",
+        ],
+    )
+    def test_known_tool_signatures_are_recognised(self, name: str):
+        assert looks_like_ai(name)
+
+    def test_a_person_is_not(self):
+        assert looks_like_ai("Pete Bachant <petebachant@gmail.com>") is False
 
 
 class TestResolution:
@@ -133,22 +171,37 @@ class TestResolution:
         """The whole reason `--with-ai` is a modifier. An agent declaring its
         own output still has to name the person it was working for."""
         with pytest.raises(OriginError, match="cannot be accountable"):
-            resolve_origin(with_ai="Claude Opus 5", cwd=tmp_path)
+            resolve_origin(with_ai=["Claude Opus 5"], cwd=tmp_path)
 
     def test_declaring_on_someone_else_s_behalf_is_enough(
         self, tmp_path: Path
     ):
         origin = resolve_origin(
-            author="A Researcher", with_ai="Claude Opus 5", cwd=tmp_path
+            authors=["A Researcher"],
+            with_ai=["Claude Opus 5"],
+            cwd=tmp_path,
         )
-        assert origin.value == "A Researcher"
-        assert origin.ai == "Claude Opus 5"
+        assert [a.name for a in origin.authors] == [
+            "A Researcher",
+            "Claude Opus 5",
+        ]
+        assert [a.kind for a in origin.authors] == ["person", "ai"]
+
+    def test_several_of_each_are_accepted(self, tmp_path: Path):
+        origin = resolve_origin(
+            authors=["First", "Second"],
+            with_ai=["Claude Opus 5", "Gemini"],
+            cwd=tmp_path,
+        )
+        assert len(origin.authors) == 4
 
     def test_a_tool_cannot_be_bolted_onto_a_fetchable_source(
         self, tmp_path: Path
     ):
         with pytest.raises(OriginError, match="belongs on an attestation"):
-            resolve_origin(doi="10.1/x", with_ai="Claude Opus 5", cwd=tmp_path)
+            resolve_origin(
+                doi="10.1/x", with_ai=["Claude Opus 5"], cwd=tmp_path
+            )
 
     def test_saying_nothing_is_refused(self, tmp_path: Path):
         """A file that is both 'mine' and fetched from a DOI is two different
@@ -156,8 +209,9 @@ class TestResolution:
         with pytest.raises(OriginError, match="say where it came from"):
             resolve_origin(cwd=tmp_path)
 
-    def test_an_explicit_author_wins(self, tmp_path: Path):
-        assert resolve_origin(mine=True, author="X", cwd=tmp_path).value == "X"
+    def test_an_explicit_author_is_recorded(self, tmp_path: Path):
+        origin = resolve_origin(authors=["X"], cwd=tmp_path)
+        assert [a.name for a in origin.authors] == ["X"]
 
     @pytest.mark.parametrize("scheme", ["git", "calkit"])
     def test_each_scheme_has_its_own_flag(self, tmp_path: Path, scheme: str):
@@ -167,7 +221,7 @@ class TestResolution:
 
     def test_an_attestation_carries_the_tool_through(self, tmp_path: Path):
         origin = resolve_origin(
-            mine=True, author="X", with_ai="Claude Opus 5", cwd=tmp_path
+            authors=["X"], with_ai=["Claude Opus 5"], cwd=tmp_path
         )
         assert origin.kind == "attested"
         assert origin.machine_generated

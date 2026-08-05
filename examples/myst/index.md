@@ -122,6 +122,7 @@ record itself, drawn: `figmint.toml` is already a DAG, so nothing here can
 disagree with the freshness reported beside it.
 
 :::{figmint-provenance}
+:artifact: _build/html/index.html
 :table: true
 :graph: true
 :::
@@ -167,24 +168,62 @@ without one points at whatever is there today, a mutable claim wearing the
 costume of a citation. `--calkit` exists because Calkit tracks large files with
 DVC, so a path there can name data that is not in the git tree at all.
 
-Scripts count too, and so does generative AI. `figures/turbine.png` and
-`scripts/plot_cp.py` in this project were both made with a model, which is
-disclosed *beside* an accountable person rather than in place of one — a model
-can produce a file but cannot answer for it:
+Scripts count too, and so does generative AI. A model can produce a file but it
+cannot answer for one, so a tool is named *alongside* an accountable person
+rather than instead of one, and both flags repeat — an artifact rarely has
+exactly one author and code almost never does:
 
 ```sh
-figmint declare figures/turbine.png --mine --with-ai 'Google Gemini'
 figmint declare scripts/plot_cp.py --mine --with-ai 'Claude Opus 5'
+figmint declare figures/composite.drawio --mine --with-ai 'Claude Opus 5'
 ```
 
-Both show up in the provenance panels above as *created by Pete Bachant with
-Google Gemini* and *…with Claude Opus 5*, so a reader can judge whether that is
-an acceptable use here.
+The `.drawio` canvas is in that list because it is assembled from recorded
+panels but *arranged* by hand, by a person and an agent together. It has a
+derivation chain and an author list at the same time, and declaring the authors
+leaves its inputs untouched.
+
+Where git already knows the answer, it can be read out instead of retyped —
+including the `Co-authored-by:` trailers, which is where an agent's own
+signature lands:
+
+```sh
+figmint declare scripts/plot_cp.py --from-git-history
+```
+
+### One fact, one place
+
+`figures/turbine.png` was generated with Google Gemini, and it is *not*
+declared with `--with-ai`. It does not need to be: the PNG carries Google's own
+Content Credentials saying "Created by Google Generative AI", signed by the
+people who made it. Restating that in `figmint.toml` would create a second copy
+that can drift from the first. The panel above reads it from the file, and says
+so — *AI-generated, per the file's own credentials*.
+
+`scripts/plot_cp.py` is the opposite case. A `.py` file has nowhere to put a
+manifest, so the record is the only place its disclosure can live, and the
+panel says *per the record*.
+
+When both exist they are compared, and a disagreement is reported rather than
+resolved. That matters because a manifest is fragile — any tool that re-encodes
+an image silently discards it, which is the whole reason `figmint drawio
+import` exists. A disclosure that evaporates the first time somebody opens the
+figure in an editor is exactly the failure worth seeing.
 
 The declaration lives in `figmint.toml` beside the artifact's hash. There is no
 separate signature: putting the same claim in a sidecar would be exactly as easy
 to delete as the line it duplicates, and would look like a cryptographic
 guarantee without being one.
+
+Editing a declared file does not invalidate the declaration, and never needs it
+redone. A declared artifact is not checked against its own hash at all: nothing
+produced it, so a change means a person edited it, and what matters about that
+is whether the edit reached an output — which the input hashes on every output
+already record. `figmint run` keeps the declared hash current as it goes, so
+the record does not drift.
+
+A hash figmint wrote *itself* is a different matter. That is evidence, it is
+checked, and no amount of later runs will quietly rewrite it.
 
 ## Content Credentials
 
@@ -198,3 +237,48 @@ The manifest names each input as an ingredient and carries an IPTC
 `compositeWithTrainedAlgorithmicMedia` — so "does this figure contain
 AI-generated material?" is answered by the signature rather than by a convention
 somebody has to remember to follow.
+
+## The document is an artifact too
+
+Nothing in the build re-imports a panel. `figmint drawio import` is how a
+figure gets *onto* the canvas in the first place; after that the diagram knows
+where each panel came from, and `figmint drawio export` re-embeds any that have
+been redrawn before it renders — so a changed figure reaches the composite
+without anybody being asked to say so.
+
+`make all` builds whatever is out of date, in dependency order — the Makefile's
+targets are real files with real prerequisites, mirroring the derivation graph
+figmint records. `make site` runs the build through `figmint run`, so the
+rendered document is recorded like any other output — with `index.md`,
+`myst.yml` and the composite figure as its inputs. That makes "is this HTML
+still consistent with everything behind it?" a question `figmint status` can
+answer, which is the one a reader most wants answered and the one nothing else
+checks.
+
+Two kinds of circularity had to be kept out of the way. `figmint.toml` is
+deliberately *not* an input of the document, even though this plugin reads it
+to draw the panels above — recording the file that `figmint run` itself writes
+would make the document stale the instant it finished building.
+
+The subtler one is that a document cannot honestly report on its *own*
+freshness from inside itself. While this page is being written the hash in the
+record still describes the previous build, so the panel above would call itself
+out of date on every render — permanently, and in the one place nobody can act
+on it. That is what the `:artifact:` option is for: it names this document's
+output so the panel can show how to rebuild it and leave it out of its own
+tally. `figmint status` checks it from outside, where the answer has settled.
+
+One consequence is worth knowing about while writing. `myst start` re-renders
+when *its own* sources change — this file, `myst.yml`, the images it links. A
+change to `scripts/plot_cp.py` is invisible to it, so the panels above keep
+showing the state from the last render even though the figure is now stale.
+`figmint status` is the live answer; the panels are a snapshot of the moment
+the page was built.
+
+The HTML is recorded but **not signed**: c2pa does not recognise the type at
+all, so the page you are reading cannot carry a manifest under any tool. The
+same applies to the HTML a notebook renders to. For those outputs
+`figmint.toml` is the only provenance there is, which is exactly why the
+warning at the top of it is not decoration.
+
+<!-- preview edit -->
