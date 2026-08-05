@@ -85,8 +85,52 @@ restore:  ## Undo `make break`
 	@python3 -c "import pathlib; p=pathlib.Path('data/performance.csv'); \
 	    t=p.read_text().replace('2.80,0.455','2.80,0.401'); p.write_text(t)"
 
+# `myst start` re-renders when one of *its own* sources changes — markdown,
+# myst.yml, a linked image. A change to a script or a dataset is invisible to
+# it, so the provenance panels would keep showing the previous render and a
+# stale figure would look current for as long as you left the tab open. This
+# watches everything figmint records as an input and touches index.md when any
+# of it moves, which is the one thing MyST does notice.
+define WATCH_INPUTS
+import pathlib, time, tomllib
+
+record = pathlib.Path("figmint.toml")
+target = pathlib.Path("index.md")
+
+
+def stamps():
+    try:
+        data = tomllib.loads(record.read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    paths = {
+        item["path"]
+        for artifact in (data.get("artifact") or {}).values()
+        for item in (artifact.get("inputs") or [])
+    }
+    # Never the file being touched, or this chases its own tail forever.
+    paths.discard(str(target))
+    return {
+        p: pathlib.Path(p).stat().st_mtime
+        for p in paths
+        if pathlib.Path(p).is_file()
+    }
+
+
+last = stamps()
+while True:
+    time.sleep(1)
+    now = stamps()
+    if now and now != last:
+        last = now
+        target.touch()
+endef
+export WATCH_INPUTS
+
 .PHONY: serve
 serve:  ## Serve the document with live reload
+	@python3 -c "$$WATCH_INPUTS" & \
+	trap 'kill %1 2>/dev/null' EXIT; \
 	$(RUN) myst start
 
 .PHONY: clean

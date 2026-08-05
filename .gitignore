@@ -210,3 +210,5 @@ CLAUDE.md
 
 # MyST build output
 _build/
+
+.claude

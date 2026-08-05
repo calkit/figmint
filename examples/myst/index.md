@@ -133,6 +133,22 @@ make the diagram, the diagram makes the published picture. Rounded nodes are raw
 inputs — nothing in the project produced them, which for `turbine.png` is
 exactly the fact its credentials disclose.
 
+## The data behind it
+
+The directive is not only for figures. Point it at a CSV and it renders the
+numbers as a table, numbered and cross-referenceable like any other, with the
+same provenance panel underneath — and this is where the record earns the most,
+because a CSV cannot carry Content Credentials at all. For
+`data/performance.csv` the line in `figmint.toml` is the *only* provenance
+there is.
+
+:::{figmint} data/performance.csv
+:name: tbl-performance
+The measurements underlying [](#fig-performance).
+:::
+
+The eleven points in [](#tbl-performance) are the whole dataset.
+
 ## Where the chain ends
 
 Follow any figure back far enough and you reach a file figmint did not make.
@@ -270,10 +286,19 @@ tally. `figmint status` checks it from outside, where the answer has settled.
 
 One consequence is worth knowing about while writing. `myst start` re-renders
 when *its own* sources change — this file, `myst.yml`, the images it links. A
-change to `scripts/plot_cp.py` is invisible to it, so the panels above keep
-showing the state from the last render even though the figure is now stale.
-`figmint status` is the live answer; the panels are a snapshot of the moment
-the page was built.
+change to `scripts/plot_cp.py` is invisible to it, so the panels above would
+keep showing the state from the last render even though the figure had gone
+stale, and refreshing the browser would not help: the page you would be
+refreshing was rendered before the edit.
+
+`make serve` closes that gap by watching everything figmint records as an input
+and touching this file when any of it moves, which is the one thing MyST does
+notice. Edit the plotting script with the preview open and the panels go red on
+their own.
+
+When they do, `figmint rebuild` puts it right: the record knows the command
+behind every artifact and the order they depend on each other in, so it runs
+the repair sequence rather than printing it for you to retype.
 
 The HTML is recorded but **not signed**: c2pa does not recognise the type at
 all, so the page you are reading cannot carry a manifest under any tool. The

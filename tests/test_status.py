@@ -331,9 +331,12 @@ class TestRebuildPlan:
             project
         )
 
-    def test_a_hand_authored_diagram_gets_a_re_import(self, project: Path):
-        """It has no command to re-run, but it holds a copy of each panel, and
-        a panel that moved on is exactly what makes it stale."""
+    def test_a_hand_authored_diagram_needs_no_step_of_its_own(
+        self, project: Path
+    ):
+        """Exporting re-embeds any panel that has been redrawn, so the export
+        already in the plan covers it. Naming an import here would be busywork
+        the tool has stopped needing."""
         from figmint.store import Store
 
         store = Store.load(project)
@@ -349,7 +352,7 @@ class TestRebuildPlan:
         store.save()
         (project / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\nredrawn")
 
-        assert "figmint drawio import plot.png c.drawio" in self.plan(project)
+        assert not any("drawio import" in c for c in self.plan(project))
 
     def test_nothing_is_suggested_for_a_declared_file(self, project: Path):
         """Nobody can regenerate raw data; the remedy is elsewhere."""

@@ -45,7 +45,10 @@ class RebuildResult:
 
 
 def _targets(
-    store: Store, reports: list[ArtifactStatus], paths: list[str]
+    store: Store,
+    reports: list[ArtifactStatus],
+    paths: list[str],
+    root: Path,
 ) -> list[ArtifactStatus]:
     """Which reports are in scope, given the paths asked for.
 
@@ -58,7 +61,12 @@ def _targets(
 
     wanted: set[str] = set()
     for path in paths:
-        key = store.relative(Path(path))
+        # Resolved against the project, not the process working directory: a
+        # path typed on the command line means what it says relative to where
+        # the project is, and `store.relative` of a bare name would otherwise
+        # depend on where the shell happened to be.
+        given = Path(path)
+        key = store.relative(given if given.is_absolute() else root / given)
         if key not in store.artifacts:
             raise RebuildError(
                 f"nothing recorded for {key}; produce it with `figmint run` "
@@ -70,10 +78,16 @@ def _targets(
 
 
 def plan(
-    store: Store, reports: list[ArtifactStatus], paths: list[str] | None = None
+    store: Store,
+    reports: list[ArtifactStatus],
+    paths: list[str] | None = None,
+    root: Path | None = None,
 ) -> list[ArtifactStatus]:
     """Everything needing work, dependencies first."""
-    return ordered_repairs(store, _targets(store, reports, list(paths or [])))
+    return ordered_repairs(
+        store,
+        _targets(store, reports, list(paths or []), root or store.root),
+    )
 
 
 def _rebuild_one(
@@ -135,7 +149,7 @@ def rebuild(
     store = Store.for_path(root)
     result = RebuildResult()
 
-    for report in plan(store, check_all(store.root), paths):
+    for report in plan(store, check_all(store.root), paths, store.root):
         artifact = store.artifacts.get(report.path)
         if artifact is None:
             continue

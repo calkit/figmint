@@ -215,28 +215,29 @@ swapped, nothing notices.
   steps back was edited, because nothing regenerated the panel in between.
 
 None of them is repaired by editing `figmint.toml`, which is the one thing a
-reader in a hurry might try. So `status` says what *would* repair them, in an
-order that works — dependencies first, because rebuilding a document before the
-figure it embeds accomplishes nothing:
+reader in a hurry might try.
 
+### Rebuilding
+
+Every artifact records the command that made it and the inputs it was made
+from, so the repair sequence is a property of the record rather than something
+you have to reconstruct:
+
+```sh
+figmint rebuild             # everything that is out of date
+figmint rebuild <path>      # that artifact, and everything behind it
+figmint rebuild --dry-run   # say what would happen, in order
 ```
-to bring it up to date, in this order:
-   figmint run -i data/performance.csv -o figures/cp_curve.png -- uv run python scripts/plot_cp.py
-   figmint drawio import figures/cp_curve.png figures/composite.drawio
-   figmint drawio export figures/composite.drawio figures/composite.svg
-   figmint run -i index.md -o _build/html/index.html -- uv run myst build --html
-```
 
-Each line is reconstructed from the record as a full `figmint run`, not handed
-back as the bare command that was recorded. Re-running the inner command
-directly would produce the file *outside* figmint, and the record would then
-report it as modified — turning "stale" into "tampered with".
+Dependencies first, because rebuilding a document before the figure it embeds
+accomplishes nothing and you would end up running everything twice. Each
+command is repeated in-process rather than through a shell, so nothing depends
+on quoting the record was written to avoid.
 
-An artifact nobody produced gets no suggestion: raw data cannot be regenerated,
-and a declared file that was edited is reported as *edited since it was
-declared*, not as tampering. Nothing made it, so a person changed it — which is
-allowed. What it means is that whatever was built from the old bytes is now out
-of date.
+Nothing is rebuilt that does not need it — an artifact whose inputs still hash
+to what the record says keeps its bytes and its signature. Anything that cannot
+be rebuilt is named rather than passed over: nobody can regenerate raw data,
+and a hand-arranged diagram is refreshed by the export that consumes it.
 
 ### Signing certificates
 
@@ -289,6 +290,27 @@ provenance and freshness.
 It also enables inspecting document-level provenance, since that's a
 composite artifact itself.
 
+The directive is not only for figures. Point it at a `.csv` or `.tsv` and it
+renders the numbers as a table — numbered and cross-referenceable like any
+other, with the same provenance panel underneath:
+
+```
+:::{figmint} data/performance.csv
+:name: tbl-performance
+:rows: 25
+The measurements underlying [](#fig-performance).
+:::
+```
+
+That is where the record earns the most, because a CSV cannot carry Content
+Credentials at all: the line in `figmint.toml` is its only provenance. Long
+tables are truncated at `:rows:` (25 by default) with a note saying so — a
+table is for reading, and a thousand rows of it is a scroll bar.
+
+Anything that is neither a picture nor a table renders as its filename with the
+panel attached, and the panel names what it is looking at: *Figure*, *Table*,
+or *Artifact*.
+
 The document-level panel takes an `:artifact:` option naming the document's own
 output(s):
 
@@ -308,3 +330,23 @@ being written its recorded hash still describes the previous build. Without
 this the panel reads "out of date" on every single build and stops meaning
 anything. `figmint status` checks them from outside, where the answer is
 settled.
+
+The table lists **outputs** — anything the project made, including
+intermediates like a `.drawio` — and for each one names the input responsible
+when it is behind:
+
+| Output | Built from | State |
+| --- | --- | --- |
+| `figures/cp_curve.png` | 3 | ⚠️ `scripts/plot_cp.py` changed |
+| `figures/composite.svg` | 1 | ⚠️ waiting on `figures/cp_curve.png` |
+
+Sources are what those answers point at, not rows of their own. Asking whether
+a plotting script is "up to date" has no answer — nothing produces it — and
+listing it green above the figure it just broke is the confusion this avoids.
+
+One caveat about live preview. `myst start` re-renders when one of *its own*
+sources changes: markdown, `myst.yml`, a linked image. Editing a script or a
+dataset is invisible to it, so the panels keep showing the previous render and
+a stale figure looks current for as long as the tab is open. The example's
+`make serve` works around this by watching everything figmint records as an
+input and touching the document when any of it moves.

@@ -192,16 +192,59 @@ class TestFigureNode:
             == "plot.png"
         )
 
-    def test_a_non_image_artifact_gets_no_image_node(self, project: Path):
-        """A dataset has provenance worth showing and nothing to display.
+    def test_tabular_data_is_rendered_as_a_table(self, project: Path):
+        """Somebody who puts a CSV in a document wants to see the numbers.
 
-        Emitting an `image` node for a CSV makes MyST warn about an unsupported
-        extension and renders a broken picture where a filename belongs.
+        A filename and a provenance panel answers a question nobody asked, and
+        an `image` node would make MyST warn about an unsupported extension and
+        render a broken picture.
         """
         nodes = run_directive(payload("data.csv"))
         assert find(nodes, "image") is None
-        assert "data.csv" in all_text(nodes[0])
-        assert find(nodes, "admonition") is not None
+
+        block = find(nodes, "container")
+        assert block["kind"] == "table"
+        shown = all_text(find(block, "table"))
+        assert "x" in shown and "y" in shown  # header
+        assert "1" in shown and "2" in shown  # the row
+
+    def test_a_table_can_be_cross_referenced(self, project: Path):
+        """Numbered and labelled exactly as a figure is — a table in a paper is
+        an artifact with provenance like any other."""
+        block = find(run_directive(payload("data.csv", name="tbl-x")), "container")
+        assert block["identifier"] == "tbl-x"
+        assert block["label"] == "tbl-x"
+
+    def test_the_panel_calls_it_a_table(self, project: Path):
+        """Calling a table a figure is a small lie in the one place the panel
+        is meant to be exact."""
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        declare(project / "data.csv", attested(Author("A Researcher")))
+        panel = find(run_directive(payload("data.csv")), "admonition")
+        assert "Table is up to date" in all_text(panel)
+
+    def test_long_tables_are_truncated(self, project: Path):
+        (project / "long.csv").write_text(
+            "x,y\n" + "".join(f"{i},{i}\n" for i in range(200))
+        )
+        nodes = run_directive(payload("long.csv", rows=5))
+        assert "First 5 rows" in all_text(nodes)
+
+    def test_an_unreadable_row_count_falls_back(self, project: Path):
+        (project / "empty.csv").write_text("")
+        assert "empty" in all_text(run_directive(payload("empty.csv")))
+
+    def test_something_that_is_neither_gets_a_filename(self, project: Path):
+        """A `.bin` is not a picture and not a table; naming it and showing its
+        provenance is all that is left."""
+        (project / "blob.bin").write_bytes(b"\x00\x01")
+        nodes = run_directive(payload("blob.bin"))
+        assert find(nodes, "image") is None
+        assert find(nodes, "container") is None
+        assert "blob.bin" in all_text(nodes[0])
+        assert "Artifact" in all_text(find(nodes, "admonition"))
 
 
 class TestPanel:
@@ -211,7 +254,7 @@ class TestPanel:
         # Collapsed when nothing is wrong, so a long document does not become a
         # wall of metadata.
         assert panel["class"] == "dropdown"
-        assert "Up to date" in all_text(panel)
+        assert "Figure is up to date" in all_text(panel)
 
     def test_the_inputs_are_listed(self, project: Path):
         panel = find(run_directive(payload("plot.png")), "admonition")
@@ -404,7 +447,7 @@ class TestPanel:
         (project / "data.csv").write_text("x,y\n9,9\n")
         panel = find(run_directive(payload("composite.drawio")), "admonition")
         assert panel["kind"] == "danger"
-        assert "Out of date upstream" in all_text(panel)
+        assert "is out of date" in all_text(panel)
         assert "data.csv" in all_text(panel)
         assert "do not edit figmint.toml" in all_text(panel)
 
@@ -479,7 +522,7 @@ class TestPanel:
         (project / "data.csv").write_text("x,y\n9,9\n")
         panel = find(run_directive(payload("plot.png")), "admonition")
         assert panel["kind"] == "danger"
-        assert "Out of date" in all_text(panel)
+        assert "is out of date" in all_text(panel)
         assert "data.csv" in all_text(panel)
 
     def test_it_says_not_to_edit_the_record(self, project: Path):
@@ -493,13 +536,13 @@ class TestPanel:
         (project / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\ntampered")
         panel = find(run_directive(payload("plot.png")), "admonition")
         assert panel["kind"] == "danger"
-        assert "Edited outside figmint" in all_text(panel)
+        assert "edited outside figmint" in all_text(panel)
 
     def test_an_unrecorded_artifact_says_so(self, project: Path):
         (project / "other.png").write_bytes(b"x")
         panel = find(run_directive(payload("other.png")), "admonition")
         assert panel["kind"] == "warning"
-        assert "Not tracked" in all_text(panel)
+        assert "is not tracked" in all_text(panel)
 
     def test_the_panel_can_be_turned_off(self, project: Path):
         nodes = run_directive(payload("plot.png", provenance=False))
@@ -514,7 +557,7 @@ class TestDocumentSummary:
             "admonition",
         )
         assert "plot.png" in all_text(panel)
-        assert "1 artifact(s), all up to date" in all_text(panel)
+        assert "Document is up to date" in all_text(panel)
 
     def test_it_goes_red_when_anything_is_stale(self, project: Path):
         (project / "data.csv").write_text("x,y\n9,9\n")
@@ -592,7 +635,7 @@ class TestDocumentSelfReference:
 
         panel = find(document_directive(self.options()), "admonition")
         assert panel["kind"] == "note"
-        assert "all up to date" in all_text(panel)
+        assert "Document is up to date" in all_text(panel)
 
     def test_it_stays_collapsible_when_nothing_is_wrong(self, project: Path):
         self.record_document(project)
@@ -716,3 +759,81 @@ class TestNamingTheCause:
             )
         }
         assert chain["plot.py"] is State.STALE
+
+
+class TestDocumentTableIsAboutOutputs:
+    """The table answers "what did this project make, and is it current?".
+
+    Sources are what the answers point *at*, not rows of their own. Asking
+    whether a plotting script is "up to date" has no answer — nothing produces
+    it — and listing it green above the figure it just broke was the single
+    most confusing thing the panel did.
+    """
+
+    def summary(self, project: Path) -> dict:
+        panel = find(
+            document_directive({"options": {"table": True}, "node": {}}),
+            "admonition",
+        )
+        rows = find(panel, "table")["children"][1:]
+        return {
+            all_text(r["children"][0]): all_text(r["children"][-1])
+            for r in rows
+        }
+
+    def test_a_declared_source_is_not_a_row(self, project: Path):
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        declare(project / "data.csv", attested(Author("A Researcher")))
+        assert "data.csv" not in self.summary(project)
+        assert "plot.png" in self.summary(project)
+
+    def test_an_output_names_the_input_that_broke_it(self, project: Path):
+        (project / "data.csv").write_text("x,y\n9,9\n")
+        assert self.summary(project)["plot.png"] == "⚠️ data.csv changed"
+
+    def test_an_intermediate_is_still_listed(self, project: Path):
+        """A hand-arranged diagram has no command but is very much an output —
+        it just has a person in the middle of it."""
+        store = Store.load(project)
+        (project / "c.drawio").write_text("<mxfile/>")
+        store.record(
+            Artifact(
+                path="c.drawio",
+                hash=hash_file(project / "c.drawio"),
+                kind="authored",
+                inputs=[Input("plot.png", hash_file(project / "plot.png"))],
+            )
+        )
+        store.save()
+        assert "c.drawio" in self.summary(project)
+
+    def test_a_downstream_output_says_what_it_waits_on(self, project: Path):
+        store = Store.load(project)
+        (project / "c.svg").write_text("<svg/>")
+        store.record(
+            Artifact(
+                path="c.svg",
+                hash=hash_file(project / "c.svg"),
+                command="figmint drawio export c.drawio c.svg",
+                inputs=[Input("plot.png", hash_file(project / "plot.png"))],
+            )
+        )
+        store.save()
+        (project / "data.csv").write_text("x,y\n9,9\n")
+
+        summary = self.summary(project)
+        assert summary["plot.png"] == "⚠️ data.csv changed"
+        assert summary["c.svg"] == "⚠️ waiting on plot.png"
+
+    def test_the_tally_counts_outputs(self, project: Path):
+        from figmint.declare import declare
+        from figmint.origins import Author, attested
+
+        declare(project / "data.csv", attested(Author("A Researcher")))
+        panel = find(
+            document_directive({"options": {"table": True}, "node": {}}),
+            "admonition",
+        )
+        assert "Document is up to date" in all_text(panel)

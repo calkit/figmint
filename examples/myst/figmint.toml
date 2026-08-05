@@ -23,14 +23,14 @@
 
 
 [artifact."_build/html/index.html"]
-hash = "sha256:7ca001e392a6816d6e90d61855e8fe99193e59e683217273c1b5c2a912b9f066"
+hash = "sha256:ee8c9d9cd6cd333b029bcec283fc23503709eec7037101e0d65e8dc5a2c93a24"
 kind = "run"
 command = "uv run myst build --html"
-recorded = "2026-08-05T14:52:02+00:00"
+recorded = "2026-08-05T15:37:18+00:00"
 
 [[artifact."_build/html/index.html".inputs]]
 path = "index.md"
-hash = "sha256:41d52bc47797df6c74f1e32661eb089ed5590eb189e0eecb9b0483356f88f654"
+hash = "sha256:8690c240bbfd3ed938f13016bbadddb6cd7caf92455fd695bd191425570e7a44"
 kind = "file"
 
 [[artifact."_build/html/index.html".inputs]]
@@ -40,7 +40,7 @@ kind = "file"
 
 [[artifact."_build/html/index.html".inputs]]
 path = "figures/composite.svg"
-hash = "sha256:851d27d8ec949fd81ab328478ffa2107021a604a5093611e6272908e10caeb9f"
+hash = "sha256:11427cc076e5e6c3699d9d4ecbec200637086e3bd820e97e6c7a76640df41fc5"
 kind = "file"
 
 [[artifact."_build/html/index.html".inputs]]
@@ -51,7 +51,7 @@ kind = "environment"
 [artifact."data/performance.csv"]
 hash = "sha256:da736db8e856206999bddc068e158b7345dd3e2f4df840be0892b3bed8de31a9"
 kind = "primary"
-recorded = "2026-08-05T14:35:25+00:00"
+recorded = "2026-08-05T15:22:03+00:00"
 origin_kind = "attested"
 origin = "Pete Bachant <petebachant@gmail.com>"
 
@@ -60,9 +60,9 @@ name = "Pete Bachant <petebachant@gmail.com>"
 kind = "person"
 
 [artifact."figures/composite.drawio"]
-hash = "sha256:099ae832318e9fa24d99203006306aa1d39e873e6bdcc672d154923277ed2c9b"
+hash = "sha256:76338b89e5f02eeb7ac48bcf661403bef766ac91dd81bc23986f9d37d6c7633d"
 kind = "authored"
-recorded = "2026-08-05T14:51:58+00:00"
+recorded = "2026-08-05T15:29:29+00:00"
 origin_kind = "attested"
 
 [[artifact."figures/composite.drawio".authors]]
@@ -75,7 +75,7 @@ kind = "ai"
 
 [[artifact."figures/composite.drawio".inputs]]
 path = "figures/cp_curve.png"
-hash = "sha256:413ec80e68ed45990c495d1b6539a0e4da38e1e0a6d822cfc42edc25fa11ca35"
+hash = "sha256:d2f6ef7cf4cf42ef80412115e6286e2a67e86b0898740592af2636ce68e526b1"
 kind = "file"
 
 [[artifact."figures/composite.drawio".inputs]]
@@ -84,22 +84,22 @@ hash = "sha256:5861b9520838edc2886e794dccc626168d3dc6806fb5ad89d23907453d08c8e4"
 kind = "file"
 
 [artifact."figures/composite.svg"]
-hash = "sha256:851d27d8ec949fd81ab328478ffa2107021a604a5093611e6272908e10caeb9f"
+hash = "sha256:11427cc076e5e6c3699d9d4ecbec200637086e3bd820e97e6c7a76640df41fc5"
 kind = "drawio-export"
 command = "figmint drawio export figures/composite.drawio figures/composite.svg"
-recorded = "2026-08-05T14:51:58+00:00"
+recorded = "2026-08-05T15:29:29+00:00"
 signed = true
 
 [[artifact."figures/composite.svg".inputs]]
 path = "figures/composite.drawio"
-hash = "sha256:099ae832318e9fa24d99203006306aa1d39e873e6bdcc672d154923277ed2c9b"
+hash = "sha256:76338b89e5f02eeb7ac48bcf661403bef766ac91dd81bc23986f9d37d6c7633d"
 kind = "file"
 
 [artifact."figures/cp_curve.png"]
-hash = "sha256:413ec80e68ed45990c495d1b6539a0e4da38e1e0a6d822cfc42edc25fa11ca35"
+hash = "sha256:d2f6ef7cf4cf42ef80412115e6286e2a67e86b0898740592af2636ce68e526b1"
 kind = "run"
 command = "uv run python scripts/plot_cp.py"
-recorded = "2026-08-05T14:51:56+00:00"
+recorded = "2026-08-05T15:29:28+00:00"
 signed = true
 
 [[artifact."figures/cp_curve.png".inputs]]
@@ -128,9 +128,9 @@ name = "Pete Bachant <petebachant@gmail.com>"
 kind = "person"
 
 [artifact."index.md"]
-hash = "sha256:41d52bc47797df6c74f1e32661eb089ed5590eb189e0eecb9b0483356f88f654"
+hash = "sha256:8690c240bbfd3ed938f13016bbadddb6cd7caf92455fd695bd191425570e7a44"
 kind = "primary"
-recorded = "2026-08-05T14:51:55+00:00"
+recorded = "2026-08-05T15:37:55+00:00"
 origin_kind = "attested"
 
 [[artifact."index.md".authors]]
@@ -154,7 +154,7 @@ kind = "person"
 [artifact."scripts/plot_cp.py"]
 hash = "sha256:05b0a7501bc2e58a04e49287b47fe7554dabb5b48f6ee3b4b24da37e5d88b014"
 kind = "primary"
-recorded = "2026-08-05T14:51:55+00:00"
+recorded = "2026-08-05T15:23:35+00:00"
 origin_kind = "attested"
 origin = "Pete Bachant <petebachant@gmail.com>"
 
