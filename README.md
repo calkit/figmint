@@ -27,7 +27,7 @@ figmint run -i data/raw.csv -o figures/plot.png -- uv run plot.py
 ```
 
 The command (what comes after `--`) must be run with an environment manager
-that creates lock files so those can be tracked as part of the provenance,
+that uses lock files so those can be tracked as part of the provenance,
 since they are important input information.
 Practically this means that the command must start with one of the following:
 
@@ -35,7 +35,7 @@ Practically this means that the command must start with one of the following:
 - `pixi run`
 - `bun run`
 - `cargo run`
-- `calkit xenv`
+- `calkit xenv` (use for Docker, Conda, Julia, renv environments)
 - `calkit nb exec`
 - `calkit latex build`
 
