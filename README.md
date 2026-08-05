@@ -31,11 +31,13 @@ that creates lock files so those can be tracked as part of the provenance,
 since they are important input information.
 Practically this means that the command must start with one of the following:
 
-- `uv run`
-- `calkit xenv` (or `ck xenv`)
+- `uv run` (as long as a `uv.lock` file will be created)
+- `pixi run`
+- `bun run`
+- `cargo run`
+- `calkit xenv`
 - `calkit nb exec`
 - `calkit latex build`
-- `julia --project={some local path}`
 
 ### Freshness checking
 
