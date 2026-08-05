@@ -60,7 +60,9 @@ class TestRebuild:
         result = rebuild(cwd=project)
         assert result.rebuilt == ["out.txt"]
         assert check_path(project / "out.txt").state is State.OK
-        assert (project / "out.txt").read_text() == "x,y\n9,9\n"
+        assert (project / "out.txt").read_text(
+            encoding="utf-8"
+        ) == "x,y\n9,9\n"
 
     def test_dependencies_come_first(self, project: Path):
         """Rebuilding `second.txt` before `out.txt` would build it from bytes
@@ -77,14 +79,16 @@ class TestRebuild:
 
         rebuild(cwd=project)
         assert all(r.trustworthy for r in check_all(project))
-        assert (project / "second.txt").read_text() == "x,y\n9,9\n"
+        assert (project / "second.txt").read_text(
+            encoding="utf-8"
+        ) == "x,y\n9,9\n"
 
     def test_a_dry_run_changes_nothing(self, project: Path):
         (project / "data.csv").write_text("x,y\n9,9\n")
-        before = (project / "out.txt").read_text()
+        before = (project / "out.txt").read_text(encoding="utf-8")
 
         rebuild(cwd=project, dry_run=True)
-        assert (project / "out.txt").read_text() == before
+        assert (project / "out.txt").read_text(encoding="utf-8") == before
 
     def test_naming_a_path_includes_what_is_behind_it(self, project: Path):
         """Rebuilding a composite while its inputs are stale would produce a

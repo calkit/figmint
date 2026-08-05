@@ -255,6 +255,9 @@ def git_authors_for(path: Path, cwd: Path) -> list[Author]:
             cwd=cwd,
             capture_output=True,
             text=True,
+            # git speaks UTF-8; `text=True` alone would decode with the
+            # locale codepage and mangle a name on its way into the record.
+            encoding="utf-8",
         )
     except (FileNotFoundError, OSError):
         return []
@@ -281,12 +284,18 @@ def git_author(cwd: Path) -> str | None:
             cwd=cwd,
             capture_output=True,
             text=True,
+            # git speaks UTF-8; `text=True` alone would decode with the
+            # locale codepage and mangle a name on its way into the record.
+            encoding="utf-8",
         ).stdout.strip()
         email = subprocess.run(
             ["git", "config", "user.email"],
             cwd=cwd,
             capture_output=True,
             text=True,
+            # git speaks UTF-8; `text=True` alone would decode with the
+            # locale codepage and mangle a name on its way into the record.
+            encoding="utf-8",
         ).stdout.strip()
     except (FileNotFoundError, OSError):
         return None

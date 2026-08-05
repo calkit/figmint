@@ -44,7 +44,7 @@ def project(tmp_path: Path) -> Path:
 
 
 def embedded_bytes(diagram: Path) -> bytes:
-    text = diagram.read_text()
+    text = diagram.read_text(encoding="utf-8")
     match = re.search(r"image=data:[^;,]+,([A-Za-z0-9+/=]+)", text)
     assert match, "no embedded image found"
     return base64.b64decode(match.group(1))
@@ -71,7 +71,7 @@ class TestImport:
         import_image(
             project / "figures/plot.png", project / "composite.drawio"
         )
-        text = (project / "composite.drawio").read_text()
+        text = (project / "composite.drawio").read_text(encoding="utf-8")
         assert 'src="figures/plot.png"' in text
         assert f'hash="{hash_file(project / "figures/plot.png")}"' in text
 
@@ -112,7 +112,7 @@ class TestImport:
 
         geometries = re.findall(
             r'<mxGeometry x="([\d.]+)" y="([\d.]+)"',
-            (project / "composite.drawio").read_text(),
+            (project / "composite.drawio").read_text(encoding="utf-8"),
         )
         assert len(geometries) == 2
         assert float(geometries[1][1]) > float(geometries[0][1])
@@ -149,7 +149,7 @@ class TestImport:
         )
         match = re.search(
             r'width="([\d.]+)" height="([\d.]+)"',
-            (project / "composite.drawio").read_text(),
+            (project / "composite.drawio").read_text(encoding="utf-8"),
         )
         width, height = float(match.group(1)), float(match.group(2))
         assert width == 300
@@ -250,7 +250,7 @@ class TestExport:
         import_image(project / "figures/plot.png", project / "c.drawio")
 
         # Somebody arranges it in draw.io.
-        text = (project / "c.drawio").read_text()
+        text = (project / "c.drawio").read_text(encoding="utf-8")
         (project / "c.drawio").write_text(
             text.replace("</root>", '<mxCell id="9" value="note"/></root>')
         )
@@ -368,7 +368,7 @@ class TestReimport:
         _png(project / "figures" / "plot.png", size=(500, 250))
         import_image(project / "figures/plot.png", project / "c.drawio")
 
-        text = (project / "c.drawio").read_text()
+        text = (project / "c.drawio").read_text(encoding="utf-8")
         assert 'x="123" y="456"' in text
 
     def test_the_authors_sizing_is_kept(self, project: Path):
@@ -382,7 +382,7 @@ class TestReimport:
         )
         before = re.search(
             r'width="([\d.]+)" height="([\d.]+)"',
-            (project / "c.drawio").read_text(),
+            (project / "c.drawio").read_text(encoding="utf-8"),
         ).groups()
 
         # Redrawn at a different natural size, which would otherwise win.
@@ -391,7 +391,7 @@ class TestReimport:
 
         after = re.search(
             r'width="([\d.]+)" height="([\d.]+)"',
-            (project / "c.drawio").read_text(),
+            (project / "c.drawio").read_text(encoding="utf-8"),
         ).groups()
         assert after == before
 
@@ -403,7 +403,8 @@ class TestReimport:
             project / "figures/plot.png", project / "c.drawio", width=500
         )
         width = re.search(
-            r'width="([\d.]+)"', (project / "c.drawio").read_text()
+            r'width="([\d.]+)"',
+            (project / "c.drawio").read_text(encoding="utf-8"),
         ).group(1)
         assert float(width) == 500
 
@@ -491,7 +492,9 @@ class TestAutomaticRefresh:
         _png(project / "figures" / "plot.png", size=(900, 300))
 
         export(project / "c.drawio", project / "c.svg", sign=False)
-        assert 'x="123" y="456"' in (project / "c.drawio").read_text()
+        assert 'x="123" y="456"' in (project / "c.drawio").read_text(
+            encoding="utf-8"
+        )
 
     def test_a_missing_panel_does_not_block_the_export(
         self, project: Path, monkeypatch

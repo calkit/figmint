@@ -227,8 +227,11 @@ class TestRun:
             outputs=[project / "out.txt"],
             cwd=project,
         )
+        # `is_absolute` rather than a leading-slash check: on Windows an
+        # absolute path is `C:/...`, so the slash test would pass here without
+        # testing anything.
         assert all(
-            not i.path.startswith("/") for i in result.artifacts[0].inputs
+            not Path(i.path).is_absolute() for i in result.artifacts[0].inputs
         )
 
     def test_a_word_that_is_not_a_file_is_ignored(self, project: Path):
@@ -430,7 +433,7 @@ class TestRefreshTiming:
             cwd=project,
         )
 
-        seen = (project / "seen.toml").read_text()
+        seen = (project / "seen.toml").read_text(encoding="utf-8")
         assert hash_file(project / "make.py") in seen
 
     def test_a_failed_command_still_leaves_the_record_readable(

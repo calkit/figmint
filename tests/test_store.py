@@ -64,7 +64,7 @@ class TestHeader:
         convention documented elsewhere would not travel with it.
         """
         recorded(project).save()
-        text = (project / STORE_NAME).read_text()
+        text = (project / STORE_NAME).read_text(encoding="utf-8")
         assert text.startswith(HEADER)
         assert "DO NOT EDIT" in text
         assert "NOTE TO AI AGENTS" in text
@@ -74,7 +74,11 @@ class TestHeader:
         store = recorded(project)
         store.save()
         Store.load(project).save()
-        assert (project / STORE_NAME).read_text().startswith(HEADER)
+        assert (
+            (project / STORE_NAME)
+            .read_text(encoding="utf-8")
+            .startswith(HEADER)
+        )
 
 
 class TestRoundTrip:
@@ -102,10 +106,9 @@ class TestRoundTrip:
 
     def test_paths_with_separators_are_quoted_keys(self, project: Path):
         recorded(project).save()
-        assert (
-            '[artifact."figures/plot.png"]'
-            in (project / STORE_NAME).read_text()
-        )
+        assert '[artifact."figures/plot.png"]' in (
+            project / STORE_NAME
+        ).read_text(encoding="utf-8")
 
     def test_output_is_sorted(self, project: Path):
         """So a diff shows what changed rather than what moved."""
@@ -113,7 +116,7 @@ class TestRoundTrip:
         store.record(Artifact(path="a.png", hash="sha256:aa"))
         store.record(Artifact(path="z.png", hash="sha256:zz"))
         store.save()
-        text = (project / STORE_NAME).read_text()
+        text = (project / STORE_NAME).read_text(encoding="utf-8")
         assert (
             text.index('[artifact."a.png"]')
             < text.index('[artifact."figures/plot.png"]')
@@ -156,7 +159,12 @@ class TestLocation:
         """Silently omitting it would make the chain look complete."""
         outside = tmp_path.parent / "elsewhere.csv"
         store = Store.load(project)
-        assert store.relative(outside).startswith("/")
+        recorded_path = store.relative(outside)
+        # Absolute rather than "starts with a slash": on Windows it is a drive
+        # path, `C:/Users/...`, which `Path.is_absolute` recognizes and a
+        # leading-separator check does not.
+        assert Path(recorded_path).is_absolute()
+        assert recorded_path.endswith("elsewhere.csv")
 
 
 class TestDurability:
@@ -167,7 +175,7 @@ class TestDurability:
         so the write goes through a temporary file."""
         store = recorded(project)
         store.save()
-        original = (project / STORE_NAME).read_text()
+        original = (project / STORE_NAME).read_text(encoding="utf-8")
 
         def boom(self, *args, **kwargs):
             raise OSError("disk full")
@@ -175,7 +183,7 @@ class TestDurability:
         monkeypatch.setattr(Path, "write_text", boom)
         with pytest.raises(OSError):
             store.save()
-        assert (project / STORE_NAME).read_text() == original
+        assert (project / STORE_NAME).read_text(encoding="utf-8") == original
 
     def test_no_temporary_file_is_left_behind(self, project: Path):
         recorded(project).save()

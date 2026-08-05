@@ -126,6 +126,8 @@ def _calkit_lock(command: list[str], cwd: Path) -> Path:
             cwd=cwd,
             capture_output=True,
             text=True,
+            # JSON is UTF-8 by definition; the locale codepage is not.
+            encoding="utf-8",
         )
     except FileNotFoundError as exc:
         raise EnvironmentError_(
