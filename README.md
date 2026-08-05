@@ -67,6 +67,12 @@ figmint drawio import my-figure.png my-composite-figure.drawio
 It's important to use the Figmint CLI since this will embed metadata into
 the `.drawio` file.
 
+To export an SVG containing the provenance information, run:
+
+```sh
+figmint drawio export my-diagram.drawio my-diagram.svg
+```
+
 ### GIMP
 
 To export a PNG from GIMP with provenance tracking, run:
