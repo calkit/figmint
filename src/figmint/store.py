@@ -396,7 +396,12 @@ class Store:
         # truncated record, which would read as "no provenance" rather than as
         # a problem.
         temporary = self.path.with_name(self.path.name + ".tmp")
-        temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # `newline=""` so the record is byte-identical on every platform;
+        # in text mode Windows would write CRLF, and a provenance file that
+        # changes shape depending on who ran the build is a poor one.
+        temporary.write_text(
+            "\n".join(lines) + "\n", encoding="utf-8", newline=""
+        )
         temporary.replace(self.path)
 
 

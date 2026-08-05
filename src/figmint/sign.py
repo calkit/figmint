@@ -36,6 +36,7 @@ import datetime as _datetime
 import json
 import logging
 import os
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -77,14 +78,26 @@ MEDIA_TYPES = {
     ".yml": "text/plain",
 }
 
+
+def _default_config_dir() -> Path:
+    """Where a generated local identity lives, per platform.
+
+    `os.uname` does not exist on Windows, so the platform is read from
+    `sys.platform`. Windows gets `%LOCALAPPDATA%` rather than the roaming
+    `%APPDATA%`: what lands here is a private key, which should not follow an
+    account between machines.
+    """
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "io.figmint"
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA")
+        return (Path(local) if local else Path.home()) / "figmint"
+    return Path.home() / ".config" / "figmint"
+
+
 #: Where a generated local identity lives.
 CONFIG_DIR = Path(
-    os.environ.get("FIGMINT_CONFIG_DIR")
-    or (
-        Path.home() / "Library" / "Application Support" / "io.figmint"
-        if os.uname().sysname == "Darwin"
-        else Path.home() / ".config" / "figmint"
-    )
+    os.environ.get("FIGMINT_CONFIG_DIR") or _default_config_dir()
 )
 
 

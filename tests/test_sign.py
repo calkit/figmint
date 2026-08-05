@@ -17,6 +17,7 @@ from figmint import credentials
 from figmint.run import run
 from figmint.sign import (
     Ingredient,
+    _default_config_dir,
     build_manifest,
     collect_ingredients,
     digital_source_type,
@@ -54,6 +55,29 @@ def _png(path: Path) -> Path:
     figure.savefig(path)
     plt.close(figure)
     return path
+
+
+class TestConfigDir:
+    def test_it_resolves_on_every_platform(self, monkeypatch, tmp_path):
+        # `os.uname` does not exist on Windows, so this is read from
+        # `sys.platform` — getting it wrong is an import-time crash, not a
+        # wrong path.
+        monkeypatch.setattr(sys, "platform", "darwin")
+        assert _default_config_dir().parts[-3:] == (
+            "Library",
+            "Application Support",
+            "io.figmint",
+        )
+        monkeypatch.setattr(sys, "platform", "linux")
+        assert _default_config_dir().parts[-2:] == (".config", "figmint")
+        # Windows keeps the private key out of the roaming profile.
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+        assert (
+            _default_config_dir() == tmp_path / "AppData" / "Local" / "figmint"
+        )
+        monkeypatch.delenv("LOCALAPPDATA")
+        assert _default_config_dir() == Path.home() / "figmint"
 
 
 class TestManifest:
