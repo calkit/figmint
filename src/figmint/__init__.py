@@ -1,2 +1,3 @@
-def hello() -> str:
-    return "Hello from figmint!"
+"""figmint — artifact provenance tracking."""
+
+__version__ = "0.1.0"

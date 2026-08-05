@@ -1,0 +1,18 @@
+[project]
+# A real project environment, so `uv run` has a lock file for figmint to record
+# as an input. That is not incidental: the same script under a different
+# matplotlib draws a different figure, and the lock is what makes that visible.
+name = "figmint-myst-example"
+version = "0.1.0"
+description = "MyST document whose figures carry their provenance"
+requires-python = ">=3.12"
+dependencies = [
+    "figmint",
+    "matplotlib>=3.8",
+    # mystmd ships on PyPI as a wrapper around the Node CLI, so the document
+    # builder lives in the same environment as everything else.
+    "mystmd>=1.6",
+]
+
+[tool.uv.sources]
+figmint = { path = "../..", editable = true }

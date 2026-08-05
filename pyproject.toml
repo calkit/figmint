@@ -7,8 +7,37 @@ authors = [
     { name = "Pete Bachant", email = "petebachant@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "c2pa-python>=0.37.2",
+    "cryptography>=49.0.0",
+]
+
+[project.scripts]
+figmint = "figmint.cli:main"
+# The MyST executable-plugin entry point. mystmd spawns this by path, so it has
+# to exist as a real executable file rather than a `figmint myst` subcommand.
+figmint-myst = "figmint.myst:main"
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.1",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+# Only this repo's tests. The example is a self-contained project with its own
+# environment and its own suite.
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 79
+fix = true
+
+[tool.ruff.lint]
+extend-select = ["I"]  # Import sorting (isort compatibility)
