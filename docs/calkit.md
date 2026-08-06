@@ -1,14 +1,14 @@
 # Use within a Calkit project
 
 A working version of everything below is in
-[`examples/calkit`](https://github.com/calkit/figmint/tree/main/examples/calkit):
-three stages, two of them deliberately unsigned, and a `figmint.toml` sitting
+[`examples/calkit`](https://github.com/calkit/fromwhere/tree/main/examples/calkit):
+three stages, two of them deliberately unsigned, and a `provenance.toml` sitting
 beside a `dvc.lock`.
 
-Calkit and Figmint have different jobs.
+Calkit and `fromwhere` have different jobs.
 Calkit is the overall research project manager with its own environment-aware
 workflow/pipeline system built upon DVC,
-and Figmint is dedicated to provenance tracking for primary, derived,
+and `fromwhere` is dedicated to provenance tracking for primary, derived,
 and composite artifacts.
 
 Both touch "what came from what", so it is worth being precise about which
@@ -18,23 +18,23 @@ one owns what, and where the two must not overlap.
 
 **Calkit owns execution and the graph.** It decides what to run, in what
 order, and what can be skipped.
-DVC is genuinely better at this than Figmint could be: caching, remote
+DVC is genuinely better at this than `fromwhere` could be: caching, remote
 storage, partial reruns.
 
-**Figmint owns evidence.** SHA256 hashes as an attestable record,
+**`fromwhere` owns evidence.** SHA256 hashes as an attestable record,
 declarations of authorship and generative-AI involvement, Content Credentials
 embedded in outputs, and rendering all of that into the published document.
 Calkit has none of this, and adding it would mean maintaining two answers to
 the same question.
 
-The redundancy people notice first is that `dvc.lock` and `figmint.toml` look
+The redundancy people notice first is that `dvc.lock` and `provenance.toml` look
 alike.
 They do—`dvc.lock` records `cmd`, `deps`, and `outs` with hashes, including
 the environment lock file, which is the same model.
 The difference is what the hashes are _for_, and that difference is load
 bearing.
 
-## How a stage uses Figmint
+## How a stage uses `fromwhere`
 
 A Calkit stage wraps its command:
 
@@ -45,19 +45,19 @@ pipeline:
       kind: python-script
       script_path: scripts/plot_cp.py
       environment: main
-      figmint: true
+      fromwhere: true
 ```
 
 which compiles to a stage command of roughly the shape
 
 ```sh
-figmint run -i data/performance.csv -o figures/cp_curve.png \
+fromwhere run -i data/performance.csv -o figures/cp_curve.png \
     -- calkit xenv -n main -- python scripts/plot_cp.py
 ```
 
 `calkit run` remains the project entrypoint.
-Figmint wraps the _stage command_, not Calkit itself.
-Wrapping Calkit would make Figmint the entrypoint, which is the thing this
+`fromwhere` wraps the _stage command_, not Calkit itself.
+Wrapping Calkit would make `fromwhere` the entrypoint, which is the thing this
 arrangement exists to avoid.
 
 Because Calkit compiles the wrapper from the stage definition, the `-i` and
@@ -66,14 +66,14 @@ inputs and outputs.
 
 ### Why the wrapper has to be inside the stage
 
-Figmint signs an artifact _before_ hashing it, because embedding a C2PA
+`fromwhere` signs an artifact _before_ hashing it, because embedding a C2PA
 manifest changes the bytes.
-If DVC hashed an output and Figmint signed it afterward, the hash in
+If DVC hashed an output and `fromwhere` signed it afterward, the hash in
 `dvc.lock` would be wrong the moment signing finished, DVC would see the
 output as modified, and the stage would rerun forever.
 
 So signing has to happen inside the stage, before DVC ever looks at the file.
-That rules out "run the pipeline, then sign" and it rules out Figmint wrapping
+That rules out "run the pipeline, then sign" and it rules out `fromwhere` wrapping
 Calkit, since the signing would then sit outside DVC's view of the stage.
 It leaves exactly one shape, which is the one above.
 
@@ -107,7 +107,7 @@ putting my name on.
 <!-- prettier-ignore -->
 !!! note
     Leaving an intermediate panel unsigned does not lose the AI disclosure.
-    Figmint reads each input's *own* Content Credentials when it builds the
+    `fromwhere` reads each input's *own* Content Credentials when it builds the
     manifest, so an AI-generated panel that carries its generator's manifest
     still makes the composite `compositeWithTrainedAlgorithmicMedia`.
     What is lost is that panel's own ingredient entry, which is detail rather
@@ -127,10 +127,10 @@ datasets:
       git_rev: a1b2c3d
 ```
 
-That is the same fact as Figmint's
+That is the same fact as `fromwhere`'s
 
 ```sh
-figmint declare data/raw.csv \
+fromwhere declare data/raw.csv \
     --calkit calkit.io/someone/their-project/data/raw.csv@a1b2c3d
 ```
 
@@ -138,40 +138,40 @@ Do not record it twice and reconcile them.
 Two copies of one fact drift, and a sync step is a third thing that can be
 wrong—silently, because nothing checks a synchronizer.
 `calkit.yaml` is hand-authored and is the natural home for "this dataset came
-from that project", so Figmint should read it as the origin declaration rather
+from that project", so `fromwhere` should read it as the origin declaration rather
 than storing its own copy.
 
 Where both exist and disagree, report the disagreement rather than picking a
 winner.
-This is the same rule Figmint already applies to Content Credentials: a file
+This is the same rule `fromwhere` already applies to Content Credentials: a file
 that carries its own manifest is not restated in the record, and when the two
 disagree the panel says so.
 
 ## Reading `dvc.lock`
 
-Figmint can read `dvc.lock` for the _structure_—which command produced which
+`fromwhere` can read `dvc.lock` for the _structure_—which command produced which
 outputs from which inputs.
-That removes any need for Figmint to discover the graph itself in a Calkit
+That removes any need for `fromwhere` to discover the graph itself in a Calkit
 project.
 
-Figmint must not adopt its hashes.
+`fromwhere` must not adopt its hashes.
 DVC records `hash: md5`, which is entirely adequate for cache invalidation,
 the only job it has there.
 It is not adequate as evidence: MD5 has practical chosen-prefix collisions, so
 a different figure with a matching MD5 is constructible rather than
 theoretical.
-The header at the top of `figmint.toml` tells agents that altering these
+The header at the top of `provenance.toml` tells agents that altering these
 hashes is falsifying evidence, and that claim is only worth making about a
 hash that cannot be forged.
 
-So: structure from `dvc.lock`, SHA256 from Figmint.
-`figmint.toml` then holds what only it has—content hashes, declarations, and
+So: structure from `dvc.lock`, SHA256 from `fromwhere`.
+`provenance.toml` then holds what only it has—content hashes, declarations, and
 signature state—and can point at stage names instead of restating commands.
 
 ## What not to compile
 
-It is tempting to compile the Figmint graph into `dvc.yaml`.
-It does not work in general, for the reason the record exists: `figmint.toml`
+It is tempting to compile the `fromwhere` graph into `dvc.yaml`.
+It does not work in general, for the reason the record exists: `provenance.toml`
 is _observed_, written after the fact, and a build plan has to be known
 before anything runs.
 A first run would have nothing to compile from, and a stale record would
@@ -179,7 +179,7 @@ compile a stale plan.
 
 The composite figure case is the real exception, and it is worth serving.
 The panels a diagram embeds are readable _from the diagram_ before running,
-from the `src` attributes Figmint writes on each shape.
+from the `src` attributes `fromwhere` writes on each shape.
 That is a query on a file, not a record of the past, so it belongs in a plan.
 
 Without it, a stage has to list the panels by hand:
@@ -193,23 +193,23 @@ embed-figure:
 ```
 
 Add a panel, forget to update this, and DVC will not rerun.
-A stage kind that asks Figmint what the diagram embeds cannot drift, and it is
+A stage kind that asks `fromwhere` what the diagram embeds cannot drift, and it is
 the one part of the graph Calkit cannot work out for itself.
 
-## `figmint rebuild` and `calkit run`
+## `fromwhere rebuild` and `calkit run`
 
 These are the one genuine conflict: two components that each claim to know how
 to rebuild the project, from different graphs.
 They will drift.
 
-In a Calkit project, `figmint rebuild` should defer.
-`figmint status` still reports, but the repair it suggests becomes
+In a Calkit project, `fromwhere rebuild` should defer.
+`fromwhere status` still reports, but the repair it suggests becomes
 `calkit run`.
 
 ## Overlap that is fine
 
 Both record the environment lock file.
-Figmint records its hash; Calkit records it as a DVC dependency.
+`fromwhere` records its hash; Calkit records it as a DVC dependency.
 Same file, different questions—"was this the environment?" versus "should I
 rerun?"—and neither writes the other's copy, so there is nothing to drift.
 
@@ -218,8 +218,8 @@ That is the price of keeping an evidence hash separate from a cache key.
 
 ## Packaging
 
-Figmint stays a standalone package.
-Calkit may depend on Figmint; Figmint must not depend on Calkit.
+`fromwhere` stays a standalone package.
+Calkit may depend on `fromwhere`; `fromwhere` must not depend on Calkit.
 Today it shells out to `calkit describe env` when a command starts with a
 Calkit prefix, and degrades when Calkit is absent, which is the right
 direction for that dependency.

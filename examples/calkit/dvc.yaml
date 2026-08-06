@@ -1,6 +1,6 @@
 stages:
   plot-cp:
-    cmd: calkit xenv -n main --no-check -- figmint run --no-sign -i
+    cmd: calkit xenv -n main --no-check -- fromwhere run --no-sign -i
       data/performance.csv -o figures/cp_curve.svg -- calkit xenv -n
       main -- python scripts/plot_cp.py
     deps:
@@ -14,7 +14,7 @@ stages:
     desc: Automatically generated from the 'plot-cp' stage in
       calkit.yaml. Changes made here will be overwritten.
   plot-ct:
-    cmd: calkit xenv -n main --no-check -- figmint run --no-sign -i
+    cmd: calkit xenv -n main --no-check -- fromwhere run --no-sign -i
       data/performance.csv -o figures/ct_curve.svg -- calkit xenv -n
       main -- python scripts/plot_ct.py
     deps:
@@ -28,7 +28,7 @@ stages:
     desc: Automatically generated from the 'plot-ct' stage in
       calkit.yaml. Changes made here will be overwritten.
   stack-panels:
-    cmd: calkit xenv -n main --no-check -- figmint run -i
+    cmd: calkit xenv -n main --no-check -- fromwhere run -i
       figures/cp_curve.svg -i figures/ct_curve.svg -o
       figures/performance.svg -- calkit xenv -n main -- python
       scripts/stack.py

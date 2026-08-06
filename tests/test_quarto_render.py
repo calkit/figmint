@@ -24,10 +24,10 @@ from pathlib import Path
 
 import pytest
 
-from figmint.declare import declare
-from figmint.origins import Author, attested
-from figmint.quarto import install_extension
-from figmint.store import Artifact, Input, Store, hash_file
+from fromwhere.declare import declare
+from fromwhere.origins import Author, attested
+from fromwhere.quarto import install_extension
+from fromwhere.store import Artifact, Input, Store, hash_file
 
 quarto = pytest.mark.skipif(
     shutil.which("quarto") is None, reason="quarto is not installed"
@@ -38,17 +38,17 @@ DOCUMENT = """\
 title: A document with provenance
 ---
 
-::: {.figmint src="plot.png" #fig-cp width="60%"}
+::: {.fromwhere src="plot.png" #fig-cp width="60%"}
 The caption, with a [link](https://example.com).
 :::
 
 Referenced as [@fig-cp].
 
-::: {.figmint src="data.csv" #tbl-cp}
+::: {.fromwhere src="data.csv" #tbl-cp}
 The measurements.
 :::
 
-::: {.figmint artifact="_site/doc.html"}
+::: {.fromwhere artifact="_site/doc.html"}
 :::
 """
 
@@ -58,7 +58,7 @@ project:
   output-dir: _site
 filters:
   - at: pre-ast
-    path: figmint
+    path: fromwhere
 format:
   html:
     theme: cosmo
@@ -66,9 +66,9 @@ format:
 
 
 def executable() -> Path | None:
-    """The `figmint-quarto` console script beside the interpreter running us."""
+    """The `fromwhere-quarto` console script beside the interpreter running us."""
     scripts = Path(sys.executable).parent
-    for name in ("figmint-quarto", "figmint-quarto.exe"):
+    for name in ("fromwhere-quarto", "fromwhere-quarto.exe"):
         if (scripts / name).is_file():
             return scripts / name
     return None
@@ -114,12 +114,12 @@ def render(project: Path) -> str:
     """Render the project and hand back the page, or fail saying why."""
     program = executable()
     if program is None:
-        pytest.skip("figmint-quarto is not installed in this environment")
+        pytest.skip("fromwhere-quarto is not installed in this environment")
 
     environment = dict(os.environ)
     # Named outright rather than left to the filter's search: the test
     # environment is not on PATH and has no .venv beside the document.
-    environment["FIGMINT_QUARTO"] = str(program)
+    environment["FROMWHERE_QUARTO"] = str(program)
     result = subprocess.run(
         ["quarto", "render"],
         cwd=project,
@@ -186,7 +186,7 @@ class TestRendering:
         assert 'title="🌿 Figure is up to date"' not in page
         # And the document panel agrees, from one level up.
         assert "Document is out of date" in page
-        assert "do not edit figmint.toml" in page
+        assert "do not edit provenance.toml" in page
 
     def test_changing_the_data_names_the_data(self, document: Path):
         """The other input, so the panel is not just reporting the last thing
@@ -201,7 +201,7 @@ class TestRendering:
         vanishes, and nothing is wrong enough to report. Silence is the one
         failure this tool cannot have, so the block says so in the page."""
         (document / "doc.qmd").write_text(
-            DOCUMENT + "\n::: {.figmint-provenance}\n:::\n"
+            DOCUMENT + "\n::: {.fromwhere-provenance}\n:::\n"
         )
         page = render(document)
         assert "was replaced by" in page
@@ -220,7 +220,7 @@ class TestRendering:
         (document / "chart.html").write_text("<html><body>hi</body></html>")
         (document / "doc.qmd").write_text(
             DOCUMENT
-            + '\n::: {.figmint src="chart.html" #fig-live height="400px"}\n'
+            + '\n::: {.fromwhere src="chart.html" #fig-live height="400px"}\n'
             + "An interactive chart.\n:::\n"
         )
         page = render(document)
@@ -248,7 +248,7 @@ class TestRendering:
         assert 'class="callout callout-style-default callout-warning' in page
         assert "Figure has incomplete provenance" in page
         assert "nothing accounts for plot.py" in page
-        assert "figmint declare plot.py --mine" in page
+        assert "fromwhere declare plot.py --mine" in page
         # And the document panel agrees rather than reporting all clear over
         # the top of it.
         assert "Document has incomplete provenance" in page
@@ -259,7 +259,7 @@ class TestRendering:
         that rather than rendering an empty box that reads as approval."""
         (document / "loose.png").write_bytes(b"\x89PNG\r\n\x1a\nloose")
         (document / "doc.qmd").write_text(
-            DOCUMENT + '\n::: {.figmint src="loose.png"}\n:::\n'
+            DOCUMENT + '\n::: {.fromwhere src="loose.png"}\n:::\n'
         )
         page = render(document)
         assert "Figure is not tracked" in page

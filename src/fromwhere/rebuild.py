@@ -1,6 +1,6 @@
-"""`figmint rebuild` — put the project back in order, from the record.
+"""`fromwhere rebuild` — put the project back in order, from the record.
 
-`figmint status` can already work out what is wrong and what would fix it: every
+`fromwhere status` can already work out what is wrong and what would fix it: every
 artifact carries the command that made it and the inputs it was made from, so
 the repair sequence is a property of the record rather than something a person
 has to reconstruct. Printing that sequence and asking someone to retype it was
@@ -69,7 +69,7 @@ def _targets(
         key = store.relative(given if given.is_absolute() else root / given)
         if key not in store.artifacts:
             raise RebuildError(
-                f"nothing recorded for {key}; produce it with `figmint run` "
+                f"nothing recorded for {key}; produce it with `fromwhere run` "
                 f"first, so there is a command to repeat"
             )
         wanted.add(key)
@@ -95,14 +95,14 @@ def _rebuild_one(
 ) -> None:
     """Repeat the command that produced one artifact.
 
-    Dispatched in-process rather than by shelling out to `figmint`: the record
-    holds a command, not a shell line, and re-parsing it through a shell would
-    reintroduce every quoting question the record exists to avoid.
+    Dispatched in-process rather than by shelling out to `fromwhere`: the
+    record holds a command, not a shell line, and re-parsing it through a shell
+    would reintroduce every quoting question the record exists to avoid.
     """
     command = artifact.command or ""
     parts = shlex.split(command)
 
-    if parts[:1] == ["figmint"]:
+    if parts[:1] == ["fromwhere"]:
         if parts[1:3] == ["drawio", "export"] and len(parts) >= 5:
             from .drawio import export
 

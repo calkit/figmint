@@ -1,4 +1,4 @@
-"""`figmint drawio import`.
+"""`fromwhere drawio import`.
 
 The reason this command exists: draw.io's own Insert > Image resizes anything
 over 1200 px through a canvas before embedding it, which re-encodes the bytes
@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from figmint.drawio import Diagram, DrawioError, export, import_image
-from figmint.status import State, check_path
-from figmint.store import Store, hash_file
+from fromwhere.drawio import Diagram, DrawioError, export, import_image
+from fromwhere.status import State, check_path
+from fromwhere.store import Store, hash_file
 
 
 def _png(path: Path, size: tuple[int, int] = (400, 200)) -> Path:
@@ -162,7 +162,7 @@ class TestRefusals:
             import_image(project / "figures/gone.png", project / "c.drawio")
 
     def test_importing_into_a_rendered_svg_is_refused(self, project: Path):
-        """figmint can update the embedded diagram but not the picture drawn
+        """fromwhere can update the embedded diagram but not the picture drawn
         around it, and a file whose image and metadata disagree is worse than
         one that refuses to be written."""
         (project / "c.drawio.svg").write_text(
@@ -193,7 +193,7 @@ class TestReading:
 
 
 class TestExport:
-    """`figmint drawio export` — the step that makes a diagram publishable."""
+    """`fromwhere drawio export` — the step that publishes a diagram."""
 
     def fake_drawio(
         self, tmp_path: Path, monkeypatch, writes: bytes = b"<svg/>"
@@ -209,9 +209,9 @@ class TestExport:
             return sp.CompletedProcess(command, 0, stdout="", stderr="")
 
         monkeypatch.setattr(
-            "figmint.drawio.shutil.which", lambda name: "/fake/drawio"
+            "fromwhere.drawio.shutil.which", lambda name: "/fake/drawio"
         )
-        monkeypatch.setattr("figmint.drawio.subprocess.run", fake_run)
+        monkeypatch.setattr("fromwhere.drawio.subprocess.run", fake_run)
         return seen
 
     def test_svg_is_exported_with_the_diagram_embedded(
@@ -293,10 +293,10 @@ class TestExport:
         import subprocess as sp
 
         monkeypatch.setattr(
-            "figmint.drawio.shutil.which", lambda n: "/fake/drawio"
+            "fromwhere.drawio.shutil.which", lambda n: "/fake/drawio"
         )
         monkeypatch.setattr(
-            "figmint.drawio.subprocess.run",
+            "fromwhere.drawio.subprocess.run",
             lambda c, **k: sp.CompletedProcess(c, 0, stdout="", stderr="nope"),
         )
         import_image(project / "figures/plot.png", project / "c.drawio")
@@ -306,7 +306,7 @@ class TestExport:
     def test_a_missing_drawio_says_how_to_get_it(
         self, project: Path, monkeypatch
     ):
-        monkeypatch.setattr("figmint.drawio.shutil.which", lambda name: None)
+        monkeypatch.setattr("fromwhere.drawio.shutil.which", lambda name: None)
         import_image(project / "figures/plot.png", project / "c.drawio")
         with pytest.raises(DrawioError, match="not on PATH"):
             export(project / "c.drawio", project / "c.svg")
@@ -322,7 +322,7 @@ class TestExport:
 
         assert (
             Store.load(project).get("c.svg").command
-            == "figmint drawio export c.drawio c.svg"
+            == "fromwhere drawio export c.drawio c.svg"
         )
 
 
@@ -453,7 +453,7 @@ class TestHandAddedPanels:
         self, project: Path, monkeypatch
     ):
         """So the diagram is checkable by anything that reads it without also
-        reading figmint.toml — and so the gap closes itself."""
+        reading provenance.toml — and so the gap closes itself."""
         import_image(project / "figures/plot.png", project / "c.drawio")
         self.strip_hash(project / "c.drawio")
 
@@ -505,11 +505,11 @@ class TestAutomaticRefresh:
             return sp.CompletedProcess(command, 0, stdout="", stderr="")
 
         monkeypatch.setattr(
-            "figmint.drawio.shutil.which", lambda name: "/fake/drawio"
+            "fromwhere.drawio.shutil.which", lambda name: "/fake/drawio"
         )
         import_image(project / "figures/plot.png", project / "c.drawio")
         _png(project / "figures" / "plot.png", size=(500, 250))
-        monkeypatch.setattr("figmint.drawio.subprocess.run", fake_run)
+        monkeypatch.setattr("fromwhere.drawio.subprocess.run", fake_run)
 
         export(project / "c.drawio", project / "c.svg", sign=False)
         assert (
@@ -552,8 +552,8 @@ class TestAutomaticRefresh:
     def test_a_missing_panel_does_not_block_the_export(
         self, project: Path, monkeypatch
     ):
-        """`figmint status` reports the missing input; failing here would block
-        the one command that could still produce something useful."""
+        """`fromwhere status` reports the missing input; failing here would
+        block the one command that could still produce something useful."""
         TestExport().fake_drawio(project, monkeypatch)
         import_image(project / "figures/plot.png", project / "c.drawio")
         (project / "figures/plot.png").unlink()

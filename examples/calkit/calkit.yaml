@@ -1,8 +1,8 @@
-name: figmint-calkit-example
-title: figmint inside a Calkit pipeline
+name: fromwhere-calkit-example
+title: fromwhere inside a Calkit pipeline
 description: >-
-  Calkit owns execution and the graph; figmint owns the evidence. Each stage
-  command is wrapped by figmint, so DVC sees a stage that produces a signed,
+  Calkit owns execution and the graph; fromwhere owns the evidence. Each stage
+  command is wrapped by fromwhere, so DVC sees a stage that produces a signed,
   recorded artifact rather than a raw one it would immediately consider
   modified.
 
@@ -16,12 +16,12 @@ pipeline:
   stages:
     # `kind: command` rather than `python-script`, because a `python-script`
     # stage runs the script and nothing else — there is nowhere to put the
-    # figmint wrapper. Writing the command out is what buys the wrapper, and
-    # figmint has to be around the *whole* of it: it hashes the inputs, runs
+    # fromwhere wrapper. Writing the command out is what buys the wrapper, and
+    # fromwhere has to be around the *whole* of it: it hashes the inputs, runs
     # everything below, then hashes and signs what came out.
     #
     # The inner `calkit xenv -n main` is not redundant with the outer one
-    # Calkit adds. figmint refuses a bare command on purpose — the environment
+    # Calkit adds. fromwhere refuses a bare command on purpose — the environment
     # is an input, and the prefix is how it knows which lock pins it, which it
     # then resolves by asking `calkit describe env`. Calkit fronts Docker,
     # Conda, Julia and renv, each locking somewhere different, and guessing
@@ -37,7 +37,7 @@ pipeline:
       kind: command
       environment: main
       command: >-
-        figmint run --no-sign
+        fromwhere run --no-sign
         -i data/performance.csv
         -o figures/cp_curve.svg
         -- calkit xenv -n main -- python scripts/plot_cp.py
@@ -52,7 +52,7 @@ pipeline:
       kind: command
       environment: main
       command: >-
-        figmint run --no-sign
+        fromwhere run --no-sign
         -i data/performance.csv
         -o figures/ct_curve.svg
         -- calkit xenv -n main -- python scripts/plot_ct.py
@@ -71,7 +71,7 @@ pipeline:
       kind: command
       environment: main
       command: >-
-        figmint run
+        fromwhere run
         -i figures/cp_curve.svg
         -i figures/ct_curve.svg
         -o figures/performance.svg

@@ -1,15 +1,15 @@
 ---
-title: Figmint tracks artifact provenance
+title: "`fromwhere` tracks artifact provenance"
 author: Example Author
 ---
 
 A small document whose figures carry their own provenance. They were produced by
-scripts figmint knows nothing about; what figmint knows is what each script was
+scripts fromwhere knows nothing about; what fromwhere knows is what each script was
 given, what environment it ran in, and what came out.
 
 ## The figure
 
-::: {.figmint src="figures/composite.svg" #fig-performance width="95%"}
+::: {.fromwhere src="figures/composite.svg" #fig-performance width="95%"}
 **(a)** Power coefficient and **(b)** torque coefficient against tip speed
 ratio, measured in a towing tank—synthetic values for this example.
 :::
@@ -17,7 +17,7 @@ ratio, measured in a towing tank—synthetic values for this example.
 Expand the panel under [@fig-performance] and you get what a reader would
 otherwise have to take on trust: what this picture was made from, whether it is
 still current, and—where the record says so—which parts were made with a
-generative tool. All of it is read from `figmint.toml` and the files' own
+generative tool. All of it is read from `provenance.toml` and the files' own
 Content Credentials when the document builds. Nothing on this page is typed by
 hand.
 
@@ -31,7 +31,7 @@ A figure need not be a picture. Point the block at an HTML file and it is
 embedded in a frame, numbered and cross-referenced like any other—hover for the
 numbers, drag to zoom, double-click to reset:
 
-::: {.figmint src="figures/cp_curve_interactive.html" #fig-cp height="400px"}
+::: {.fromwhere src="figures/cp_curve_interactive.html" #fig-cp height="400px"}
 Power coefficient against tip speed ratio, drawn by Plotly as a web page rather
 than an image—the same measurements as panel (a) of [@fig-performance].
 :::
@@ -41,14 +41,14 @@ nothing is stale, nothing was tampered with, every automated check passes — an
 the script that drew it is a file nobody has claimed. That is the gap this tool
 exists to make visible, and it is the easiest one in the world to miss, because
 nothing is *failing*. Left as a green tick with the finding folded away inside
-the panel, figmint would be the one doing the hiding.
+the panel, fromwhere would be the one doing the hiding.
 
 It is a warning rather than an error because nothing is broken and no output
 needs regenerating. What is missing is a person's statement, and only a person
 can supply it:
 
 ```sh
-figmint declare scripts/plot_cp_interactive.py --mine --with-ai 'Claude Opus 5'
+fromwhere declare scripts/plot_cp_interactive.py --mine --with-ai 'Claude Opus 5'
 ```
 
 Run that and the panel goes green. It is left undone here on purpose, so the
@@ -58,13 +58,13 @@ This is also where the record earns the most. [@fig-cp] **cannot carry Content
 Credentials at all**: c2pa does not recognize HTML in either direction, so
 there is nowhere in the file for a manifest to live. The panel underneath it is
 the only provenance this figure has, which is exactly why the warning at the
-top of `figmint.toml` is not decoration.
+top of `provenance.toml` is not decoration.
 
 The file is self-contained—Plotly's library is inlined rather than fetched from
 a CDN—and that is a provenance decision rather than a convenience one. An
 artifact that downloads half of itself at read time is not an artifact anybody
 can hash: what a reader sees would depend on what that URL served them, and
-figmint would be recording the wrapper rather than the figure. It costs a few
+fromwhere would be recording the wrapper rather than the figure. It costs a few
 megabytes, which is the honest price.
 
 The static panels are a different trade. `figures/cp_curve.svg` is an SVG,
@@ -75,14 +75,14 @@ re-encode.
 ## How it got there
 
 ```sh
-figmint run -i data/performance.csv -o figures/cp_curve.svg \
+fromwhere run -i data/performance.csv -o figures/cp_curve.svg \
     -- pixi run python scripts/plot_cp.py
 ```
 
-figmint hashed the inputs, ran the command, hashed the output, and recorded all
+fromwhere hashed the inputs, ran the command, hashed the output, and recorded all
 of it. It did not read the script, and it does not need to.
 
-figmint also recorded `scripts/plot_cp.py`, which was never passed with `-i`.
+fromwhere also recorded `scripts/plot_cp.py`, which was never passed with `-i`.
 Any file the command names is hashed too—forgetting the script is the easiest
 mistake to make and among the worst to live with, since it is the input most
 likely to change and its omission would leave the figure looking current after
@@ -96,7 +96,7 @@ bookkeeping. The same script under a different Plotly draws a different figure,
 and a record naming only the data would call that unchanged.
 
 pixi rather than uv, and for a reason this document is the proof of: **Quarto
-is in that lock too**. Rendering this page is a recorded step, so figmint
+is in that lock too**. Rendering this page is a recorded step, so fromwhere
 records `pixi.lock` as its environment—and if Quarto came from a system install
 the lock would be asserting an environment it does not actually pin. The record
 would be claiming more than it knows, which is the one thing it must never do.
@@ -107,7 +107,7 @@ a different figure.
 
 ```sh
 make break     # edits the data
-figmint status # the figure is now out of date
+fromwhere status # the figure is now out of date
 ```
 
 The check compares the hash of every recorded input against the file on disk.
@@ -115,8 +115,8 @@ There is no cache to invalidate and no timestamp to be confused by; either the
 bytes match what was recorded or they do not.
 
 ::: {.callout-warning}
-`figmint status` reporting a figure as stale means the figure is stale. The fix
-is to regenerate it—never to edit the hashes in `figmint.toml`. That file is
+`fromwhere status` reporting a figure as stale means the figure is stale. The fix
+is to regenerate it—never to edit the hashes in `provenance.toml`. That file is
 evidence, and a record edited to match files it does not describe is
 indistinguishable from a forged one.
 :::
@@ -127,10 +127,10 @@ A figure made of several panels is an artifact whose inputs happen to be other
 artifacts:
 
 ```sh
-figmint drawio import figures/cp_curve.svg figures/composite.drawio
-figmint drawio import figures/ct_curve.svg figures/composite.drawio
+fromwhere drawio import figures/cp_curve.svg figures/composite.drawio
+fromwhere drawio import figures/ct_curve.svg figures/composite.drawio
 # ...arrange it in draw.io...
-figmint drawio export figures/composite.drawio figures/composite.svg
+fromwhere drawio export figures/composite.drawio figures/composite.svg
 ```
 
 Each panel goes in byte-for-byte, carrying `src` and `hash` on its shape, and
@@ -138,7 +138,7 @@ the diagram is recorded with the panels as inputs. Regenerating a panel makes
 the composite stale—which nothing inside draw.io could ever notice, since it
 holds a *copy* with no link back.
 
-Use the figmint command rather than draw.io's own **Insert → Image**. draw.io
+Use the fromwhere command rather than draw.io's own **Insert → Image**. draw.io
 re-encodes anything over 1200 px through a canvas before embedding it, which
 destroys whatever Content Credentials the image carried.
 
@@ -152,14 +152,14 @@ everything else under `figures/` is generated: the *arrangement* is the work.
 ### Why export is a separate step
 
 A `.drawio` is a source; it is not a picture anything but draw.io can display.
-`figmint drawio export` renders one, and does three things while it is there:
+`fromwhere drawio export` renders one, and does three things while it is there:
 
 - exports with `--embed-diagram`, so the shapes' `src` and `hash` survive into
   the SVG and the published file can still be checked;
 - **re-records the diagram**, because editing it in draw.io is the entire point
   of keeping one and every edit changes its bytes. Without this the composite
   would sit permanently `modified`, and that signal—*somebody wrote this file
-  behind figmint's back*—would be worth nothing;
+  behind fromwhere's back*—would be worth nothing;
 - signs the result, naming both the diagram and its panels as ingredients.
 
 ## The data behind it
@@ -168,10 +168,10 @@ The block is not only for figures. Point it at a CSV and it renders the numbers
 as a table, numbered and cross-referenceable like any other, with the same
 provenance panel underneath—and this is where the record earns the most,
 because a CSV cannot carry Content Credentials at all. For
-`data/performance.csv` the line in `figmint.toml` is the *only* provenance
+`data/performance.csv` the line in `provenance.toml` is the *only* provenance
 there is.
 
-::: {.figmint src="data/performance.csv" #tbl-performance}
+::: {.fromwhere src="data/performance.csv" #tbl-performance}
 The measurements underlying [@fig-performance].
 :::
 
@@ -180,10 +180,10 @@ The eleven points in [@tbl-performance] are the whole dataset.
 ## The whole document
 
 A document is a composite too—of every artifact it embeds. The graph is the
-record itself, drawn: `figmint.toml` is already a DAG, so nothing here can
+record itself, drawn: `provenance.toml` is already a DAG, so nothing here can
 disagree with the freshness reported beside it.
 
-::: {.figmint artifact="_site/index.html" table="true" graph="true"}
+::: {.fromwhere artifact="_site/index.html" table="true" graph="true"}
 :::
 
 Read it left to right and you have the answer to "where did this figure come
@@ -194,13 +194,13 @@ rather than beside it, because that is what happened—a figure is not the sum o
 a dataset, a lock and some code stirred together. Rounded nodes are raw inputs;
 nothing in the project produced them.
 
-figmint never reads the script, so that edge is inferred from the data and the
+fromwhere never reads the script, so that edge is inferred from the data and the
 code having been inputs to the same command. It is the claim the record was
 already making, drawn the way a reader traces it.
 
-Two kinds of circularity had to be kept out of the way. `figmint.toml` is
+Two kinds of circularity had to be kept out of the way. `provenance.toml` is
 deliberately *not* an input of the document, even though this filter reads it
-to draw the panels above—recording the file that `figmint run` itself writes
+to draw the panels above—recording the file that `fromwhere run` itself writes
 would make the document stale the instant it finished building.
 
 The subtler one is that a document cannot honestly report on its *own*
@@ -209,13 +209,13 @@ record still describes the previous build, so the panel above would call itself
 out of date on every render—permanently, and in the one place nobody can act
 on it. That is what the `artifact=` option is for: it names this document's
 output so the panel can show how to rebuild it and leave it out of its own
-tally. `figmint status` checks it from outside, where the answer has settled.
+tally. `fromwhere status` checks it from outside, where the answer has settled.
 
 ## Where the chain ends
 
-Follow any figure back far enough and you reach a file figmint did not make.
+Follow any figure back far enough and you reach a file fromwhere did not make.
 Here that is `data/performance.csv`—measurements—and the two plotting scripts.
-`figmint run` cannot record where those came from, because figmint was not
+`fromwhere run` cannot record where those came from, because fromwhere was not
 there.
 
 Left alone they are the hole in the middle of an otherwise checkable record: a
@@ -224,17 +224,17 @@ check above them passes, which is what makes the gap easy to miss. So a primary
 artifact is *declared*, and the declaration says which kind of claim it is:
 
 ```sh
-figmint declare data/performance.csv --mine
-figmint declare scripts/plot_cp.py --mine --with-ai 'Claude Opus 5'
-figmint declare scripts/plot_ct.py --mine --with-ai 'Claude Opus 5'
-figmint declare figures/composite.drawio --mine
+fromwhere declare data/performance.csv --mine
+fromwhere declare scripts/plot_cp.py --mine --with-ai 'Claude Opus 5'
+fromwhere declare scripts/plot_ct.py --mine --with-ai 'Claude Opus 5'
+fromwhere declare figures/composite.drawio --mine
 ```
 
 The `.drawio` is in that list because it is assembled from recorded panels but
 *arranged* by hand. It has a derivation chain and an author list at the same
 time, and declaring the authors leaves its inputs untouched.
 
-`--mine` is an attestation—nothing verifies it, and figmint says so wherever it
+`--mine` is an attestation—nothing verifies it, and fromwhere says so wherever it
 is displayed. A DOI resolves to something a reader can fetch; `--git` and
 `--calkit` name a location pinned to a revision.
 
@@ -251,7 +251,7 @@ record*.
 invisible to it, so the panels above would keep showing the state from the last
 render even though the figure had gone stale.
 
-`make preview` closes that gap by watching everything figmint records as an
+`make preview` closes that gap by watching everything fromwhere records as an
 input and touching this file when any of it moves, which is the one thing
 Quarto does notice. Edit the plotting script with the preview open and the
 panels go red on their own.
@@ -263,11 +263,11 @@ and at no other time. Under that preview nothing on disk can make the panels
 update, including the touch above. Run `make preview` in a terminal, or save
 this file after editing a script.
 
-When they do, `figmint rebuild` puts it right: the record knows the command
+When they do, `fromwhere rebuild` puts it right: the record knows the command
 behind every artifact and the order they depend on each other in, so it runs
 the repair sequence rather than printing it for you to retype.
 
 The HTML is recorded but **not signed**: c2pa does not recognize the type at
 all, so the page you are reading cannot carry a manifest under any tool. For
-those outputs `figmint.toml` is the only provenance there is, which is exactly
+those outputs `provenance.toml` is the only provenance there is, which is exactly
 why the warning at the top of it is not decoration.

@@ -1,9 +1,9 @@
-"""figmint command line.
+"""fromwhere command line.
 
-    figmint run -i data/raw.csv -o figures/plot.png -- uv run plot.py
-    figmint status figures/plot.png
-    figmint drawio import figures/plot.png composite.drawio
-    figmint gimp export source.xcf figures/panel.png
+    fromwhere run -i data/raw.csv -o figures/plot.png -- uv run plot.py
+    fromwhere status figures/plot.png
+    fromwhere drawio import figures/plot.png composite.drawio
+    fromwhere gimp export source.xcf figures/panel.png
 
 `status` exits 1 when anything is stale and 2 on error, so it drops straight
 into a pipeline.
@@ -54,7 +54,8 @@ def _signing_note(artifact: Artifact, args: argparse.Namespace) -> str:
     if suffix not in SIGNABLE_SUFFIXES:
         return (
             f" (not signed: {suffix or 'this format'} cannot carry Content "
-            f"Credentials; the record in figmint.toml is its only provenance)"
+            f"Credentials; the record in provenance.toml is its only "
+            f"provenance)"
         )
     return " (not signed)"
 
@@ -93,8 +94,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     for path in result.refreshed:
         # Never silent. Rewriting a recorded hash is the one operation the
-        # header in figmint.toml warns against, and the fact that figmint is
-        # doing it legitimately here is exactly why it has to be said out loud.
+        # header in provenance.toml warns against, and the fact that fromwhere
+        # is doing it legitimately here is exactly why it has to be said out
+        # loud.
         print(f"   refreshed hash for {path} (declared; authorship unchanged)")
     return EXIT_OK
 
@@ -107,7 +109,7 @@ def _print_plan(
     Printing the individual commands and asking someone to retype them was a
     half-measure: a copied command is a command that can be mistyped, and one
     wrong `-i` produces a record that is confidently false. The record already
-    knows the sequence, so `figmint rebuild` runs it.
+    knows the sequence, so `fromwhere rebuild` runs it.
     """
     from .status import project_store
     from .store import StoreError
@@ -126,7 +128,7 @@ def _print_plan(
     ):
         return
     print("\nto bring it up to date, run:", file=sys.stderr)
-    print("   figmint rebuild", file=sys.stderr)
+    print("   fromwhere rebuild", file=sys.stderr)
     print(
         "   (`--dry-run` first, if you want to see what it would do)",
         file=sys.stderr,
@@ -147,7 +149,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         return EXIT_ERROR
 
     if not reports:
-        print("nothing recorded yet; produce an artifact with `figmint run`")
+        print("nothing recorded yet; produce an artifact with `fromwhere run`")
         return EXIT_OK
 
     exit_code = EXIT_OK
@@ -202,14 +204,14 @@ def cmd_status(args: argparse.Namespace) -> int:
         for path in dict.fromkeys(unaccounted):
             print(f"warning: nothing accounts for {path}", file=sys.stderr)
         print(
-            "         declare it: `figmint declare <path> --mine "
+            "         declare it: `fromwhere declare <path> --mine "
             "[--with-ai ...]`, `--doi ...`, `--url ...`, or `--git ...@rev`",
             file=sys.stderr,
         )
 
     if exit_code == EXIT_STALE:
         print(
-            "\nregenerate the stale artifacts; do not edit figmint.toml to "
+            "\nregenerate the stale artifacts; do not edit provenance.toml to "
             "make this pass",
             file=sys.stderr,
         )
@@ -293,7 +295,7 @@ def cmd_drawio_export(args: argparse.Namespace) -> int:
         return EXIT_ERROR
 
     for path in result.refreshed:
-        # Said out loud: the diagram is a file the author owns, and figmint
+        # Said out loud: the diagram is a file the author owns, and fromwhere
         # just rewrote part of it.
         print(f"   re-embedded {path} (it had been redrawn)")
     signed = " (signed)" if result.signed else ""
@@ -386,12 +388,12 @@ class _VersionAction(argparse.Action):
 
         # Printed rather than handed to `parser.exit`, which writes to stderr;
         # a version belongs on stdout, where the stock action puts it.
-        print(f"figmint {__version__}")
+        print(f"fromwhere {__version__}")
         parser.exit()
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="figmint", description=__doc__)
+    parser = argparse.ArgumentParser(prog="fromwhere", description=__doc__)
     parser.add_argument("--version", action=_VersionAction, nargs=0)
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -400,7 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="run a command and record what its outputs came from",
         description=(
             "Hash the inputs, run the command, hash the outputs, and write all "
-            "of it to figmint.toml. The command must go through an environment "
+            "of it to provenance.toml. The command must go through an environment "
             "manager that writes a lock file — `uv run`, `calkit xenv`, "
             "`ck xenv`, or `julia --project=<path>` — because the environment "
             "is an input too."
@@ -485,7 +487,7 @@ def build_parser() -> argparse.ArgumentParser:
         "declare",
         help="record where a primary artifact came from",
         description=(
-            "For files figmint did not make: measurements, downloaded data, an "
+            "For files fromwhere did not make: measurements, downloaded data, an "
             "image you were sent. Without a declaration these sit at the bottom "
             "of the chain unexplained while every check above them passes."
         ),
@@ -535,7 +537,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--url",
         metavar="URL",
         help=(
-            "download it from here and record that it happened. figmint "
+            "download it from here and record that it happened. fromwhere "
             "fetches the address and, if the file already exists, refuses "
             "unless the bytes match — so the record says this URL served "
             "exactly these bytes at this time"
@@ -552,7 +554,7 @@ def build_parser() -> argparse.ArgumentParser:
             "The alternative to draw.io's Insert > Image, which discards the "
             "source and re-encodes anything over 1200px — destroying Content "
             "Credentials in the process. This embeds the original bytes and "
-            "records the diagram's provenance in figmint.toml."
+            "records the diagram's provenance in provenance.toml."
         ),
     )
     drawio_import.add_argument("image", type=Path)
@@ -592,9 +594,9 @@ def build_parser() -> argparse.ArgumentParser:
         "install",
         help="install the Quarto extension into a project",
         description=(
-            "Copy the figmint filter into <project>/_extensions/figmint. It "
-            "comes from this package rather than from `quarto add` because "
-            "the filter and `figmint-quarto` speak a private protocol and "
+            "Copy the fromwhere filter into <project>/_extensions/fromwhere. "
+            "It comes from this package rather than from `quarto add` because "
+            "the filter and `fromwhere-quarto` speak a private protocol and "
             "have to be the same version."
         ),
     )

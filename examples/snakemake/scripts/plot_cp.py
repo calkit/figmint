@@ -1,7 +1,7 @@
 """Plot the power coefficient curve.
 
 Deliberately an ordinary plotting script: it reads a CSV and writes an SVG.
-Nothing here knows about figmint, and nothing needs to — provenance is recorded
+Nothing here knows about fromwhere, and nothing needs to — provenance is recorded
 by the command that runs it, not by the script itself.
 
 SVG rather than PNG because an SVG can carry Content Credentials, so this panel

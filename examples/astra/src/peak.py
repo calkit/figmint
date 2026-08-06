@@ -7,7 +7,7 @@ arguments.
 
 The pair of numbers this writes is what a reader quotes from the paper, so it
 is the output most worth being able to trace back to the options that produced
-it — and the command figmint records does exactly that.
+it — and the command fromwhere records does exactly that.
 """
 
 import argparse
@@ -51,7 +51,7 @@ def main() -> None:
     result = {
         "peak_power_coefficient": round(peak_power, 4),
         "peak_tip_speed_ratio": round(peak_speed, 4),
-        # Written into the output as well as into the command figmint records.
+        # Written into the output as well as into the command fromwhere records.
         # A number in a results file that cannot say which options produced it
         # is a number somebody will later guess about.
         "curve_fit": arguments.fit,

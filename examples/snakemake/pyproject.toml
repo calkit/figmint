@@ -1,13 +1,13 @@
 [project]
-# A real project environment, so `uv run` has a lock file for figmint to record
+# A real project environment, so `uv run` has a lock file for fromwhere to record
 # as an input. That is not incidental: the same script under a different Plotly
 # draws a different figure, and the lock is what makes that visible.
 #
-# Snakemake itself is not in here, and neither is figmint. Both wrap the work
-# from the outside — Snakemake decides what runs, figmint records it — so both
+# Snakemake itself is not in here, and neither is fromwhere. Both wrap the work
+# from the outside — Snakemake decides what runs, fromwhere records it — so both
 # belong on your PATH as tools rather than in the environment the science runs
 # in.
-name = "figmint-snakemake-example"
+name = "fromwhere-snakemake-example"
 version = "0.1.0"
 description = "Snakemake workflow whose figures carry their provenance"
 requires-python = ">=3.12"

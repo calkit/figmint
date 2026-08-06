@@ -5,31 +5,31 @@ This is the MyST plugin's twin, and deliberately so. Quarto embeds a figure
 perfectly well on its own; what it cannot do is answer the questions a reader
 of a research document actually has — what was this made from, is any of it
 machine-generated, and is it still consistent with the files behind it. The
-answers live in `figmint.toml` and in the artifact's own Content Credentials,
-and without something like this they stop at the command line where only the
-author ever saw them.
+answers live in `provenance.toml` and in the artifact's own Content
+Credentials, and without something like this they stop at the command line
+where only the author ever saw them.
 
 A fenced div does the work of MyST's directive, because it is the one Quarto
 construct that takes an argument, options, and a *parsed* caption:
 
-    ::: {.figmint src="figures/composite.svg" #fig-performance width="95%"}
+    ::: {.fromwhere src="figures/composite.svg" #fig-performance width="95%"}
     Power coefficient against tip speed ratio.
     :::
 
 Name no `src` and it describes the document instead — the same question at a
 wider scope, not a second feature:
 
-    ::: {.figmint artifact="_site/index.html"}
+    ::: {.fromwhere artifact="_site/index.html"}
     :::
 
-The split between this module and `figmint.lua` is not arbitrary. Everything
+The split between this module and `fromwhere.lua` is not arbitrary. Everything
 that decides *what to say* — the freshness chain, the AI disclosure, the
 headline — is Python, shared with the MyST plugin down to the node builders, so
-the two documents cannot drift apart or from `figmint status`. The Lua half
+the two documents cannot drift apart or from `fromwhere status`. The Lua half
 only translates those nodes into Pandoc's AST and hands them to Quarto, which
 is the one thing Python cannot do from outside the render.
 
-The protocol matches `figmint-myst`: called with no arguments it prints its
+The protocol matches `fromwhere-myst`: called with no arguments it prints its
 specification, and called with `--directive <name>` it reads a JSON payload on
 stdin and writes JSON on stdout.
 """
@@ -64,12 +64,12 @@ from .status import check_path
 #: `src` attribute: name a file and the panel is about that file, name none and
 #: it is about the document.
 SPEC: dict[str, Any] = {
-    "name": "figmint",
-    "author": "figmint",
+    "name": "fromwhere",
+    "author": "fromwhere",
     "license": "MIT",
     "directives": [
         {
-            "name": "figmint",
+            "name": "fromwhere",
             "doc": (
                 "Show what an artifact was made from and whether it is still "
                 "current. With no `src`, the document itself."
@@ -143,10 +143,10 @@ SPEC: dict[str, Any] = {
 
 
 #: Where a Quarto project keeps its extensions. Quarto looks nowhere else.
-EXTENSION_DIR = Path("_extensions") / "figmint"
+EXTENSION_DIR = Path("_extensions") / "fromwhere"
 
 #: The files that make up the extension, shipped inside the package.
-EXTENSION_FILES = ("_extension.yml", "figmint.lua")
+EXTENSION_FILES = ("_extension.yml", "fromwhere.lua")
 
 #: What a project has to add to `_quarto.yml` for the filter to run, and where
 #: in the pipeline it has to run. Printed by the installer rather than left in
@@ -154,7 +154,7 @@ EXTENSION_FILES = ("_extension.yml", "figmint.lua")
 FILTER_CONFIG = """\
 filters:
   - at: pre-ast
-    path: figmint\
+    path: fromwhere\
 """
 
 
@@ -162,8 +162,8 @@ def install_extension(destination: Path) -> Path:
     """Copy the Quarto extension into a project.
 
     `quarto add` would fetch the extension from a repository, at whatever
-    version happens to be tagged there. The Lua filter and `figmint-quarto`
-    speak a protocol private to figmint, so the pair has to move together —
+    version happens to be tagged there. The Lua filter and `fromwhere-quarto`
+    speak a protocol private to fromwhere, so the pair has to move together —
     installing from the package that provides the executable is what makes
     that true by construction rather than by asking anyone to keep two
     versions in step.
@@ -182,10 +182,10 @@ def _relocate(data: dict[str, Any]) -> None:
     """Work from the document's directory, as the paths in it are written.
 
     Quarto resolves a relative path against the file it appears in, and so must
-    figmint, or a document in a subdirectory would look up an artifact that is
-    not there. The MyST plugin gets this from mystmd's own working directory;
-    here the Lua half sends it, and moving into it means every path in the
-    shared rendering code means the same thing under both.
+    fromwhere, or a document in a subdirectory would look up an artifact that
+    is not there. The MyST plugin gets this from mystmd's own working
+    directory; here the Lua half sends it, and moving into it means every path
+    in the shared rendering code means the same thing under both.
     """
     base = data.get("base")
     if base and Path(base).is_dir():
@@ -274,15 +274,15 @@ def main(argv: list[str] | None = None) -> int:
     kind, name = (argv + ["", ""])[:2]
     payload = json.load(sys.stdin)
 
-    if kind == "--directive" and name == "figmint":
+    if kind == "--directive" and name == "fromwhere":
         json.dump(run_directive(payload), sys.stdout)
         return 0
 
-    # Anything else is a figmint/extension version mismatch rather than a user
-    # error, so say so on stderr where `quarto render --log-level info` shows
-    # it.
+    # Anything else is a fromwhere/extension version mismatch rather than a
+    # user error, so say so on stderr where `quarto render --log-level info`
+    # shows it.
     print(
-        f"figmint-quarto: unsupported request {kind} {name}", file=sys.stderr
+        f"fromwhere-quarto: unsupported request {kind} {name}", file=sys.stderr
     )
     return 1
 

@@ -1,13 +1,13 @@
-"""`figmint status` — the check the record exists to support.
+"""`fromwhere status` — the check the record exists to support.
 
 Three failures are kept apart deliberately, because they have different fixes
 and only one of them is ordinary:
 
   * an input changed — regenerate the artifact;
-  * the artifact changed — something wrote it without going through figmint;
+  * the artifact changed — something wrote it without going through fromwhere;
   * nothing is recorded at all.
 
-None of them is repaired by editing `figmint.toml`, which is the one thing a
+None of them is repaired by editing `provenance.toml`, which is the one thing a
 reader in a hurry might try.
 """
 
@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from figmint.status import State, check_all, check_path
-from figmint.store import Artifact, Input, Store, hash_file
+from fromwhere.status import State, check_all, check_path
+from fromwhere.store import Artifact, Input, Store, hash_file
 
 
 @pytest.fixture
@@ -82,11 +82,11 @@ class TestFreshness:
     ):
         """Different failure, different fix: nothing upstream moved, so
         regenerating is not the answer — something wrote the file behind
-        figmint's back."""
+        fromwhere's back."""
         (project / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\ntampered")
         report = check_path(project / "plot.png")
         assert report.state is State.MODIFIED
-        assert "without going through figmint" in report.detail
+        assert "without going through fromwhere" in report.detail
 
     def test_stale_wins_over_modified(self, project: Path):
         """An artifact regenerated from changed inputs is stale, not modified.
@@ -102,7 +102,7 @@ class TestFreshness:
         (project / "other.png").write_bytes(b"x")
         report = check_path(project / "other.png")
         assert report.state is State.UNTRACKED
-        assert "figmint run" in report.detail
+        assert "fromwhere run" in report.detail
 
 
 class TestWholeProject:
@@ -148,14 +148,14 @@ class TestUnaccountedInputs:
         assert report.state is State.OK
 
     def test_declaring_it_clears_the_flag(self, project: Path):
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "data.csv", attested(Author("A Researcher")))
         assert check_path(project / "plot.png").unaccounted_inputs == []
 
     def test_a_recorded_input_needs_no_declaration(self, project: Path):
-        """Something figmint watched being made is already accounted for."""
+        """Something fromwhere watched being made is already accounted for."""
         store = Store.load(project)
         store.record(
             Artifact(path="data.csv", hash=hash_file(project / "data.csv"))
@@ -188,8 +188,8 @@ class TestUnaccountedInputs:
         ]
 
     def test_declaring_a_script_clears_it(self, project: Path):
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         store = Store.load(project)
         (project / "plot.py").write_text("x")
@@ -275,7 +275,7 @@ class TestRebuildPlan:
     """
 
     def chain(self, project: Path) -> None:
-        from figmint.store import Store
+        from fromwhere.store import Store
 
         store = Store.load(project)
         (project / "composite.svg").write_text("<svg/>")
@@ -283,27 +283,27 @@ class TestRebuildPlan:
             Artifact(
                 path="composite.svg",
                 hash=hash_file(project / "composite.svg"),
-                command="figmint drawio export c.drawio composite.svg",
+                command="fromwhere drawio export c.drawio composite.svg",
                 inputs=[Input("plot.png", hash_file(project / "plot.png"))],
             )
         )
         store.save()
 
     def plan(self, project: Path) -> list[str]:
-        from figmint.status import project_store, rebuild_plan
+        from fromwhere.status import project_store, rebuild_plan
 
         return rebuild_plan(project_store(project), check_all(project))
 
     def test_a_clean_project_needs_nothing(self, project: Path):
         assert self.plan(project) == []
 
-    def test_it_reconstructs_a_full_figmint_invocation(self, project: Path):
+    def test_it_reconstructs_a_full_fromwhere_invocation(self, project: Path):
         """Not the bare recorded command: re-running that directly would
-        produce the file *outside* figmint, and the record would then call it
+        produce the file *outside* fromwhere, and the record would then call it
         modified — turning "stale" into "tampered with"."""
         (project / "data.csv").write_text("x,y\n9,9\n")
         assert self.plan(project) == [
-            "figmint run -i data.csv -o plot.png -- uv run plot.py"
+            "fromwhere run -i data.csv -o plot.png -- uv run plot.py"
         ]
 
     def test_the_lock_is_not_repeated_as_an_input(self, project: Path):
@@ -319,15 +319,15 @@ class TestRebuildPlan:
 
         plan = self.plan(project)
         assert plan.index(
-            "figmint run -i data.csv -o plot.png -- uv run plot.py"
-        ) < plan.index("figmint drawio export c.drawio composite.svg")
+            "fromwhere run -i data.csv -o plot.png -- uv run plot.py"
+        ) < plan.index("fromwhere drawio export c.drawio composite.svg")
 
-    def test_an_existing_figmint_command_is_passed_through(
+    def test_an_existing_fromwhere_command_is_passed_through(
         self, project: Path
     ):
         self.chain(project)
         (project / "data.csv").write_text("x,y\n9,9\n")
-        assert "figmint drawio export c.drawio composite.svg" in self.plan(
+        assert "fromwhere drawio export c.drawio composite.svg" in self.plan(
             project
         )
 
@@ -337,7 +337,7 @@ class TestRebuildPlan:
         """Exporting re-embeds any panel that has been redrawn, so the export
         already in the plan covers it. Naming an import here would be busywork
         the tool has stopped needing."""
-        from figmint.store import Store
+        from fromwhere.store import Store
 
         store = Store.load(project)
         (project / "c.drawio").write_text("<mxfile/>")
@@ -356,8 +356,8 @@ class TestRebuildPlan:
 
     def test_nothing_is_suggested_for_a_declared_file(self, project: Path):
         """Nobody can regenerate raw data; the remedy is elsewhere."""
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "data.csv", attested(Author("A Researcher")))
         (project / "data.csv").write_text("x,y\n9,9\n")
@@ -374,8 +374,8 @@ class TestDeclaredArtifacts:
     """
 
     def declare_data(self, project: Path) -> None:
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "data.csv", attested(Author("A Researcher")))
 
@@ -405,4 +405,4 @@ class TestDeclaredArtifacts:
         (project / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\ntampered")
         report = check_path(project / "plot.png")
         assert report.state is State.MODIFIED
-        assert "without going through figmint" in report.detail
+        assert "without going through fromwhere" in report.detail

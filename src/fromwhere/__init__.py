@@ -1,4 +1,4 @@
-"""Figmint: artifact provenance tracking."""
+"""fromwhere: artifact provenance tracking."""
 
 
 def __getattr__(name: str) -> str:
@@ -13,5 +13,5 @@ def __getattr__(name: str) -> str:
     if name == "__version__":
         from importlib.metadata import version
 
-        return version("figmint-fresh")
+        return version("fromwhere")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

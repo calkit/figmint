@@ -2,12 +2,12 @@ project:
   type: default
   output-dir: _site
 
-# Renders `::: {.figmint}` blocks. `at: pre-ast` is not optional: callouts,
+# Renders `::: {.fromwhere}` blocks. `at: pre-ast` is not optional: callouts,
 # figure numbering and cross-references are built by Quarto's own filters, so a
 # panel emitted after them is a grey box under an unnumbered picture.
 filters:
   - at: pre-ast
-    path: figmint
+    path: fromwhere
 
 format:
   html:

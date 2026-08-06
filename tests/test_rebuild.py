@@ -1,4 +1,4 @@
-"""`figmint rebuild` — run the repair sequence instead of printing it.
+"""`fromwhere rebuild` — run the repair sequence instead of printing it.
 
 The record already holds the command that made each artifact and the inputs it
 was made from, so the sequence is a property of the record. Printing it and
@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from figmint.rebuild import RebuildError, rebuild
-from figmint.run import run
-from figmint.status import State, check_all, check_path
-from figmint.store import Artifact, Input, Store, hash_file
+from fromwhere.rebuild import RebuildError, rebuild
+from fromwhere.run import run
+from fromwhere.status import State, check_all, check_path
+from fromwhere.store import Artifact, Input, Store, hash_file
 
 
 @pytest.fixture
@@ -112,8 +112,8 @@ class TestRebuild:
 
     def test_a_declared_file_is_skipped_with_a_reason(self, project: Path):
         """Nobody can regenerate raw data, so saying so beats a bare failure."""
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         (project / "notes.csv").write_text("collected by hand\n")
         declare(project / "notes.csv", attested(Author("A Researcher")))

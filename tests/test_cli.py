@@ -1,6 +1,6 @@
 import pytest
 
-from figmint.cli import build_parser
+from fromwhere.cli import build_parser
 
 
 class TestParser:
@@ -13,8 +13,8 @@ class TestParser:
             parser.parse_args(["--version"])
         assert exc.value.code == 0
         out = capsys.readouterr().out.strip()
-        assert out.startswith("figmint ")
-        assert out.removeprefix("figmint ")[0].isdigit()
+        assert out.startswith("fromwhere ")
+        assert out.removeprefix("fromwhere ")[0].isdigit()
         # Nothing else changed about the parser: a bare invocation is an error.
         with pytest.raises(SystemExit) as exc:
             parser.parse_args([])

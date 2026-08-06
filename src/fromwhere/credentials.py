@@ -3,8 +3,9 @@
 When a component is produced by a tool that signs its output — a plotting
 script, a generative model, an image tool — the artifact carries a
 cryptographically signed manifest describing what made it. That is a far better
-provenance source than anything figmint could infer or record itself, so it is
-read wherever it is present and reported alongside the `figmint.toml` record.
+provenance source than anything fromwhere could infer or record itself, so it
+is read wherever it is present and reported alongside the `provenance.toml`
+record.
 
 Two questions this answers that a content hash cannot:
 
@@ -55,7 +56,7 @@ CREDENTIALED_SUFFIXES = {
 #: PDF is the absence that matters most. A built paper is exactly the artifact
 #: you would want to hand someone with its credentials attached, and it cannot
 #: carry them — so for `calkit latex build`, and for a MyST PDF, the provenance
-#: lives in `figmint.toml` and nowhere else. The same goes for the HTML a
+#: lives in `provenance.toml` and nowhere else. The same goes for the HTML a
 #: notebook renders to. Recording the gap here rather than discovering it at
 #: signing time is the difference between a skipped step and a failed build.
 SIGNABLE_SUFFIXES = {
@@ -126,7 +127,7 @@ class ContentCredentials:
     signedBy: str | None = None  # noqa: N815
     issuer: str | None = None
     signedAt: str | None = None  # noqa: N815
-    #: Tool that wrote the claim, e.g. "figmint 0.1.0".
+    #: Tool that wrote the claim, e.g. "fromwhere 0.1.0".
     claimGenerator: str | None = None  # noqa: N815
     #: Tool named in the creation action, e.g. "matplotlib 3.9.0".
     softwareAgent: str | None = None  # noqa: N815

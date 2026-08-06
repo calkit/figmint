@@ -2,7 +2,7 @@
 
 An ordinary plotting script that happens to take its one methodological choice
 from the command line rather than from a constant near the top. Nothing here
-knows about figmint or ASTRA, and nothing needs to: the decision arrives as an
+knows about fromwhere or ASTRA, and nothing needs to: the decision arrives as an
 argument, and provenance is recorded by the command that runs it.
 """
 

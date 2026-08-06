@@ -3,11 +3,11 @@
 MyST embeds a figure perfectly well on its own. What it cannot do is answer the
 questions a reader of a research document actually has: what was this made from,
 is any of it machine-generated, and is it still consistent with the files behind
-it. That information exists — in `figmint.toml` and in the artifact's own
+it. That information exists — in `provenance.toml` and in the artifact's own
 Content Credentials — but nothing carried it into the rendered document, so it
 stopped at the command line where only the author ever saw it.
 
-`:::{figmint}` emits the same figure node MyST would have produced, so numbering
+`:::{fromwhere}` emits the same figure node MyST would have produced, so numbering
 and `[](#fig-...)` cross-references behave normally, and attaches the provenance
 underneath it. Given no argument it describes the document as a whole, which is
 a composite artifact in its own right — the same question at a wider scope, not
@@ -18,15 +18,15 @@ by spawning a program and speaking JSON to it: called with no arguments it
 prints its specification, and called with `--directive <name>` it reads the
 directive payload on stdin and writes AST nodes to stdout. That matters here
 because it means the document is rendered by the same code that answers
-`figmint status` — a JavaScript plugin would have had to reimplement the store
-reader and the C2PA reader, and would have drifted from them.
+`fromwhere status` — a JavaScript plugin would have had to reimplement the
+store reader and the C2PA reader, and would have drifted from them.
 
 Wire it up in `myst.yml`:
 
     project:
       plugins:
         - type: executable
-          path: ./.venv/bin/figmint-myst
+          path: ./.venv/bin/fromwhere-myst
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ STATE_WORD: dict[State, str] = {
     State.OK: "unchanged",
     State.STALE: "changed since",
     State.MISSING: "missing",
-    State.MODIFIED: "changed outside figmint",
+    State.MODIFIED: "changed outside fromwhere",
     State.UNTRACKED: "not recorded",
 }
 
@@ -235,7 +235,7 @@ def provenance_cell(item: ChainItem, store: Store) -> dict[str, Any]:
         # other check in this panel passes and this is the one that does not.
         return cell(emphasis("⚠ undeclared"))
     if artifact.command:
-        return cell(text("derived by figmint"))
+        return cell(text("derived by fromwhere"))
 
     origin = artifact.origin_description()
     if not origin:
@@ -250,7 +250,7 @@ def provenance_cell(item: ChainItem, store: Store) -> dict[str, Any]:
     if artifact.origin_kind == "url":
         # The date is not trimmed off to save room. An address alone reads as a
         # citation, and this one is not: it names whatever is served today, so
-        # when figmint looked is the part that still means something later.
+        # when fromwhere looked is the part that still means something later.
         return cell(link(artifact.origin or "", origin))
 
     if artifact.kind == "authored":
@@ -277,7 +277,7 @@ def ai_disclosure(artifact: Artifact, source: Path) -> str:
       and `turbine.png` really does carry Google's own "Created by Google
       Generative AI". But it is also *fragile*: any tool that re-encodes the
       bytes silently discards it, which is the entire reason
-      `figmint drawio import` exists.
+      `fromwhere drawio import` exists.
     * The record is durable and survives re-encoding, but it is only a claim.
 
     So a disagreement is reported rather than resolved. If the record says a
@@ -316,9 +316,9 @@ class ChainItem:
     #: True when the artifact names it directly, rather than inheriting it from
     #: something further back.
     direct: bool
-    #: True when figmint produced this file. A derived file that is out of date
-    #: needs *regenerating*; a source that is out of date has been *changed*,
-    #: and confusing the two points a reader at the wrong file.
+    #: True when fromwhere produced this file. A derived file that is out of
+    #: date needs *regenerating*; a source that is out of date has been
+    #: *changed*, and confusing the two points a reader at the wrong file.
     derived: bool = False
 
 
@@ -433,11 +433,11 @@ def origin_paragraph(report: ArtifactStatus) -> dict[str, Any] | None:
         children.append(emphasis(" — a declaration; nothing can verify it"))
     if artifact.origin_kind == "url":
         # Said every time it is displayed, for the same reason an attestation
-        # says nothing verifies it. figmint really did fetch this and really did
+        # says nothing verifies it. fromwhere really did fetch this and really did
         # check the bytes — but that was then, and an address is not a deposit.
         children.append(
             emphasis(
-                " — figmint fetched this and the bytes matched; a URL can "
+                " — fromwhere fetched this and the bytes matched; a URL can "
                 "serve something else later"
             )
         )
@@ -469,7 +469,7 @@ def declare_hint(paths: list[str]) -> dict[str, Any]:
     """
     return paragraph(
         strong("To fix: "),
-        code(f"figmint declare {paths[0]} --mine [--with-ai <tool>]"),
+        code(f"fromwhere declare {paths[0]} --mine [--with-ai <tool>]"),
         text(" — or "),
         code("--doi"),
         text("/"),
@@ -501,7 +501,7 @@ def headline(
     if report.state is State.MODIFIED:
         return (
             "danger",
-            f"{noun} was edited outside figmint — the record no longer "
+            f"{noun} was edited outside fromwhere — the record no longer "
             f"describes this file",
         )
     if report.state is State.STALE:
@@ -674,7 +674,7 @@ def render(
         children.append(
             paragraph(
                 text("Regenerate it; "),
-                emphasis("do not edit figmint.toml to make this pass"),
+                emphasis("do not edit provenance.toml to make this pass"),
                 text("."),
             )
         )
@@ -699,12 +699,12 @@ def render(
 #: list, so `:rows:` has to be *known* even in a document panel that ignores it;
 #: the alternative is a directive that rejects the option a reader just moved.
 SPEC: dict[str, Any] = {
-    "name": "figmint",
-    "author": "figmint",
+    "name": "fromwhere",
+    "author": "fromwhere",
     "license": "MIT",
     "directives": [
         {
-            "name": "figmint",
+            "name": "fromwhere",
             "doc": (
                 "Show what an artifact was made from and whether it is still "
                 "current. With no argument, the document itself."
@@ -789,7 +789,7 @@ RENDERABLE = (".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf")
 #:
 #: These are the artifacts where the record earns the most. HTML cannot carry
 #: Content Credentials in either direction — c2pa does not recognise the type —
-#: so for an interactive figure the line in `figmint.toml` is the only
+#: so for an interactive figure the line in `provenance.toml` is the only
 #: provenance there is.
 EMBEDDABLE = (".html", ".htm")
 
@@ -1031,7 +1031,7 @@ def rebuild_block(paths: list[str], store: Store) -> list[dict[str, Any]]:
                     strong("This document: "),
                     code(path),
                     text(" — not recorded. Build it with "),
-                    code("figmint run"),
+                    code("fromwhere run"),
                     text(" so it can be checked like everything else."),
                 )
             )
@@ -1055,7 +1055,7 @@ def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
         return [
             admonition(
                 "warning",
-                "Nothing recorded — no artifacts have been produced with `figmint run`",
+                "Nothing recorded — no artifacts have been produced with `fromwhere run`",
             )
         ]
 
@@ -1063,7 +1063,7 @@ def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
     # itself: while this page is being written its recorded hash necessarily
     # describes the *previous* build, so it would show as out of date every
     # time, and the panel would cry wolf permanently. Its own outputs are
-    # therefore left out of the tally and `figmint status` is named as the
+    # therefore left out of the tally and `fromwhere status` is named as the
     # thing that does check them — from outside, where the answer is settled.
     store = Store.load(root)
     mine = excluded_paths(own_outputs(options), store)
@@ -1092,7 +1092,7 @@ def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
                     "This document's own output is excluded above — you are "
                     "looking at it. Check it with "
                 ),
-                code("figmint status"),
+                code("fromwhere status"),
                 emphasis("."),
             )
         )
@@ -1140,7 +1140,7 @@ def graph_block(
 ) -> dict[str, Any]:
     """The derivation DAG, or a line saying why there is not one.
 
-    Built from `figmint.toml`, which is already a DAG, so the diagram cannot
+    Built from `provenance.toml`, which is already a DAG, so the diagram cannot
     disagree with the freshness reported beside it.
     """
     from .graph import build, to_mermaid
@@ -1181,7 +1181,7 @@ def document_state(report: ArtifactStatus) -> str:
     if report.state is State.MISSING:
         return "⛔ missing"
     if report.state is State.MODIFIED:
-        return "⚠️ changed outside figmint"
+        return "⚠️ changed outside fromwhere"
     if report.state is State.STALE:
         changed = ", ".join(i.path for i in report.changed_inputs)
         return f"⚠️ {changed} changed"
@@ -1226,24 +1226,26 @@ def main(argv: list[str] | None = None) -> int:
     kind, name = (argv + ["", ""])[:2]
     payload = json.load(sys.stdin)
 
-    if kind == "--directive" and name == "figmint":
+    if kind == "--directive" and name == "fromwhere":
         json.dump(run_directive(payload), sys.stdout)
         return 0
-    if kind == "--directive" and name == "figmint-provenance":
-        # Folded into `figmint` with no argument. mystmd will not route this —
-        # the spec no longer declares it — so reaching here means a stale
-        # plugin registration, and saying which replaced it beats a bare
-        # "unsupported".
+    if kind == "--directive" and name in ("figmint", "figmint-provenance"):
+        # Both spellings this tool used before it was renamed. mystmd will not
+        # route either — the spec no longer declares them — so reaching here
+        # means a stale plugin registration, and naming the replacement beats a
+        # bare "unsupported".
         print(
-            "figmint-myst: `figmint-provenance` was replaced by `figmint` "
-            "with no argument",
+            f"fromwhere-myst: `{name}` was replaced by `fromwhere` with no "
+            "argument",
             file=sys.stderr,
         )
         return 1
 
-    # Anything else is a mystmd/figmint version mismatch rather than a user
+    # Anything else is a mystmd/fromwhere version mismatch rather than a user
     # error, so say so on stderr where `myst build --debug` will show it.
-    print(f"figmint-myst: unsupported request {kind} {name}", file=sys.stderr)
+    print(
+        f"fromwhere-myst: unsupported request {kind} {name}", file=sys.stderr
+    )
     return 1
 
 

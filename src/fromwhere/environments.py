@@ -1,10 +1,11 @@
 """Which environment a command runs in, and the lock file that pins it.
 
-figmint refuses to record an output produced by a bare command, and the refusal
-is the point. "This figure came from `plot.py` and `data.csv`" is a claim about
-two files; the same script under a different NumPy produces a different picture,
-and nothing in that claim would notice. The environment is an input. Treating it
-as one is the difference between a provenance record and a filename.
+fromwhere refuses to record an output produced by a bare command, and the
+refusal is the point. "This figure came from `plot.py` and `data.csv`" is a
+claim about two files; the same script under a different NumPy produces a
+different picture, and nothing in that claim would notice. The environment is
+an input. Treating it as one is the difference between a provenance record and
+a filename.
 
 So a command has to arrive through a manager that writes a *deterministic* lock
 file, and that lock is hashed alongside everything else. A manager that only
@@ -13,7 +14,7 @@ actually ran, which is worse than no hash: it looks like evidence.
 
 This module only *reads* the command. It does not run anything, does not create
 or validate environments, and does not check that the manager is installed —
-those are the manager's job, and duplicating them would mean figmint holding
+those are the manager's job, and duplicating them would mean fromwhere holding
 opinions about environments it has no business holding.
 
 Calkit is the exception to "only reads", and deliberately so. It fronts several
@@ -116,7 +117,7 @@ def _calkit_lock(command: list[str], cwd: Path) -> Path:
     name = _environment_name(command)
     if not name:
         raise EnvironmentError_(
-            "a Calkit command needs `-n <environment>` so figmint can ask "
+            "a Calkit command needs `-n <environment>` so fromwhere can ask "
             "Calkit which lock file pins it"
         )
 
@@ -124,7 +125,8 @@ def _calkit_lock(command: list[str], cwd: Path) -> Path:
         completed = subprocess.run(
             # `--json` is not optional politeness: without it Calkit prints
             # YAML, which parses as neither JSON nor an error and would leave
-            # figmint reporting that it could not read the answer it asked for.
+            # fromwhere reporting that it could not read the answer it asked
+            # for.
             ["calkit", "describe", "env", "-n", name, "--json"],
             cwd=cwd,
             capture_output=True,
@@ -173,8 +175,9 @@ def describe(command: list[str], cwd: Path) -> Environment:
 
     Raises when the command is not run through a recognized manager. A hard
     failure rather than a warning: recording an artifact whose environment is
-    unknown would put a claim in `figmint.toml` that the file cannot support,
-    and the whole value of the record is that everything in it is checkable.
+    unknown would put a claim in `provenance.toml` that the file cannot
+    support, and the whole value of the record is that everything in it is
+    checkable.
     """
     if not command:
         raise EnvironmentError_("no command given")

@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from figmint.declare import resolve_origin
-from figmint.origins import (
+from fromwhere.declare import resolve_origin
+from fromwhere.origins import (
     Author,
     OriginError,
     attested,
@@ -228,7 +228,7 @@ class TestResolution:
 
 
 class TestUrls:
-    """The one origin figmint checks while making it.
+    """The one origin fromwhere checks while making it.
 
     Being told "this came from that URL" is an attestation; going and looking
     is evidence, and the whole value of the flag is the difference. What it
@@ -246,7 +246,7 @@ class TestUrls:
             Path(destination).write_bytes(payload)
             return "2026-01-01T00:00:00+00:00"
 
-        monkeypatch.setattr("figmint.declare.fetch", fake_fetch)
+        monkeypatch.setattr("fromwhere.declare.fetch", fake_fetch)
 
     def test_a_missing_file_is_downloaded_and_dated(
         self, tmp_path: Path, monkeypatch
@@ -302,7 +302,7 @@ class TestUrls:
         assert [p.name for p in tmp_path.iterdir()] == ["raw.csv"]
 
     def test_only_http_addresses_are_a_download(self, tmp_path: Path):
-        """`--url` records something figmint did. Copying a local file is not
+        """`--url` records something fromwhere did. Copying a local file is not
         that, and `--mine` is the claim for it."""
         for address in ("file:///etc/hosts", "/data/raw.csv", "ftp://h/x"):
             with pytest.raises(OriginError, match="not an http"):
@@ -329,10 +329,10 @@ class TestUrls:
     def test_the_record_keeps_the_url_and_the_date(
         self, tmp_path: Path, monkeypatch
     ):
-        """Round-tripped through figmint.toml, because a timestamp that does not
+        """Round-tripped through provenance.toml, because a timestamp that does not
         survive being written down is not a record of anything."""
-        from figmint.declare import declare
-        from figmint.store import Store
+        from fromwhere.declare import declare
+        from fromwhere.store import Store
 
         (tmp_path / ".git").mkdir()
         self.served(monkeypatch, b"x,y\n1,2\n")
@@ -381,7 +381,7 @@ class TestFetching:
         return server, f"http://127.0.0.1:{server.server_port}/x.csv"
 
     def test_it_downloads_and_stamps(self, tmp_path: Path):
-        from figmint.origins import fetch
+        from fromwhere.origins import fetch
 
         server, url = self.serve(tmp_path, b"x,y\n1,2\n")
         try:
@@ -396,7 +396,7 @@ class TestFetching:
         assert [p.name for p in target.parent.iterdir()] == ["raw.csv"]
 
     def test_an_http_error_says_which(self, tmp_path: Path):
-        from figmint.origins import fetch
+        from fromwhere.origins import fetch
 
         server, url = self.serve(tmp_path, b"", status=404)
         try:

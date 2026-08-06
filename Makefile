@@ -51,15 +51,15 @@ clean-example-quarto: ## Remove the Quarto example's build output.
 .PHONY: example-calkit
 example-calkit: ## Run the Calkit example's pipeline.
 	@echo "🚀 Running the Calkit example"
-	@cd examples/calkit && calkit run && figmint status
+	@cd examples/calkit && calkit run && fromwhere status
 
 .PHONY: example-snakemake
 example-snakemake: ## Run the Snakemake example's workflow.
 	@echo "🚀 Running the Snakemake example"
-	@cd examples/snakemake && uv lock && snakemake --cores 1 && figmint status
+	@cd examples/snakemake && uv lock && snakemake --cores 1 && fromwhere status
 
 .PHONY: example-astra
 example-astra: ## Run the ASTRA example's baseline universe.
 	@echo "🚀 Running the ASTRA example"
 	@cd examples/astra && uv lock && astra validate astra.yaml \
-		&& uv run python src/run.py && figmint status
+		&& uv run python src/run.py && fromwhere status

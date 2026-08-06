@@ -1,6 +1,6 @@
-# 🌿 Figmint: Create fresh figures
+# `fromwhere`
 
-Figmint provides artifact provenance tracking, including support for
+`fromwhere` provides artifact provenance tracking, including support for
 composite artifacts like figure PNGs, publication PDFs,
 static notebook and website HTML, machine learning models, and more,
 which can be traced all
@@ -9,27 +9,27 @@ with AI tools.
 This helps authors and readers know exactly how an output was created,
 so they can assess if it's trustworthy.
 
-Figmint outputs are signed and contain Content Credentials metadata.
+`fromwhere` outputs are signed and contain Content Credentials metadata.
 All of a project's artifact provenance information lives inside a
-`figmint.toml` file, which includes a comment at the top to prevent AI agents
+`provenance.toml` file, which includes a comment at the top to prevent AI agents
 from tampering with the provenance information, which may indicate
 falsified evidence in scientific projects.
 
 ## Installation
 
 ```sh
-uv tool install figmint-fresh
+uv tool install fromwhere
 ```
 
-The distribution is `figmint-fresh`, after the tagline—`figmint` on PyPI is
-an unrelated project—but the command it installs is `figmint`.
+The distribution, the import name, and the command it installs are all
+`fromwhere`.
 
 ## Usage
 
-If you have a script that generates a figure, run it through the Figmint CLI:
+If you have a script that generates a figure, run it through the `fromwhere` CLI:
 
 ```sh
-figmint run -i data/raw.csv -o figures/plot.png -- uv run plot.py
+fromwhere run -i data/raw.csv -o figures/plot.png -- uv run plot.py
 ```
 
 The command (what comes after `--`) must be run with an environment manager
@@ -49,15 +49,15 @@ Practically this means that the command must start with one of the following:
 ### Declaring primary artifacts
 
 Every chain ends somewhere. Follow a figure back far enough and you reach a
-file figmint did not make: measurements typed into a CSV, a dataset someone
+file `fromwhere` did not make: measurements typed into a CSV, a dataset someone
 downloaded, a plotting script. Left alone those sit at the bottom of the chain
-unexplained, and `figmint status` warns about them, because every automated
+unexplained, and `fromwhere status` warns about them, because every automated
 check above them passes — which is exactly what makes the gap easy to miss.
 
 Declare them with:
 
 ```sh
-figmint declare <path> --mine
+fromwhere declare <path> --mine
 ```
 
 This records your "attestation". AI agents should similarly declare
@@ -67,8 +67,8 @@ answering for the file, so the tool is disclosed _beside_ a person rather
 than in place of one:
 
 ```sh
-figmint declare <path> --mine --with-ai 'Claude Opus 5'
-figmint declare <path> --author 'A Researcher' --with-ai 'Claude Opus 5'
+fromwhere declare <path> --mine --with-ai 'Claude Opus 5'
+fromwhere declare <path> --author 'A Researcher' --with-ai 'Claude Opus 5'
 ```
 
 Using `--with-ai` without naming a person is refused.
@@ -78,7 +78,7 @@ almost never does — a script grows through several hands and, increasingly,
 several models:
 
 ```sh
-figmint declare <path> --author 'A Researcher' --author 'A Colleague' \
+fromwhere declare <path> --author 'A Researcher' --author 'A Colleague' \
     --with-ai 'Claude Opus 5' --with-ai 'GitHub Copilot'
 ```
 
@@ -87,11 +87,11 @@ Every commit touching the file names an author, and `Co-authored-by:` trailers
 name everyone else — which is exactly where an agent's own signature lands:
 
 ```sh
-figmint declare <path> --from-git-history
+fromwhere declare <path> --from-git-history
 ```
 
 Whether an author is a person or a tool is a guess when it comes from git, so
-`figmint declare` prints what it decided and `--author`/`--with-ai` override it.
+`fromwhere declare` prints what it decided and `--author`/`--with-ai` override it.
 
 Hand-authored artifacts have authors too. A `.drawio` canvas is assembled from
 recorded panels but arranged by people and agents, so it carries a derivation
@@ -99,13 +99,13 @@ chain _and_ an author list; declaring it adds the authors without disturbing
 its inputs.
 
 An attestation is the weakest thing in the record: nothing verifies it, and
-figmint says so wherever it is displayed. When the file came from somewhere a
+fromwhere says so wherever it is displayed. When the file came from somewhere a
 reader could actually fetch, say that instead:
 
 ```sh
-figmint declare <path> --doi 10.5281/zenodo.1234567
-figmint declare <path> --git github.com/myuser/myproject/path/to/data.csv@{git_rev}
-figmint declare <path> --calkit calkit.io/myuser/myproject/path/to/data.csv@{git_rev}
+fromwhere declare <path> --doi 10.5281/zenodo.1234567
+fromwhere declare <path> --git github.com/myuser/myproject/path/to/data.csv@{git_rev}
+fromwhere declare <path> --calkit calkit.io/myuser/myproject/path/to/data.csv@{git_rev}
 ```
 
 The revision is required. `github.com/myuser/myproject/data.csv` names whatever
@@ -118,8 +118,8 @@ unplaceable as one resting on data nobody collected, and a script a model wrote
 is exactly what a reader needs told.
 
 A declaration is about _people_, not bytes, so editing a declared file does not
-invalidate it and never needs redoing. `figmint declare` records a hash too,
-but only as a note of what was seen — nothing checks it. `figmint run` keeps it
+invalidate it and never needs redoing. `fromwhere declare` records a hash too,
+but only as a note of what was seen — nothing checks it. `fromwhere run` keeps it
 current whenever it uses the file, so the record does not drift, and says so
 rather than doing it quietly:
 
@@ -130,22 +130,22 @@ recorded figures/cp_curve.png (signed)
    refreshed hash for scripts/plot_cp.py (declared; authorship unchanged)
 ```
 
-Only declarations are eligible. A hash figmint wrote itself is evidence, and
+Only declarations are eligible. A hash fromwhere wrote itself is evidence, and
 rewriting that is the tampering the record exists to catch — so an artifact
 with a command keeps reporting `modified` no matter how many later runs
 consume it.
 
 ### Downloads
 
-Some data just lives at a URL, and `--url` is the one origin figmint **checks
+Some data just lives at a URL, and `--url` is the one origin fromwhere **checks
 while making it**:
 
 ```sh
-figmint declare data/raw.csv --url https://example.org/datasets/raw.csv
+fromwhere declare data/raw.csv --url https://example.org/datasets/raw.csv
 ```
 
-figmint fetches the address. If the file is not there yet it is downloaded; if
-it is, figmint downloads it anyway and compares — and refuses if the bytes
+fromwhere fetches the address. If the file is not there yet it is downloaded; if
+it is, fromwhere downloads it anyway and compares — and refuses if the bytes
 differ, naming both hashes, because either the file was edited after it was
 downloaded or the address has moved on and both are things you want told:
 
@@ -181,27 +181,27 @@ claim it records.
 A file that carries Content Credentials already says whether it is
 machine-generated, signed by whoever made it — the example's AI-generated
 figure really does carry Google's own "Created by Google Generative AI". There
-is no need to restate that in `figmint.toml`, and figmint reads it from the
+is no need to restate that in `provenance.toml`, and fromwhere reads it from the
 file instead.
 
 But a manifest is fragile: any tool that re-encodes the bytes silently discards
-it, which is the whole reason `figmint drawio import` exists. And most formats
+it, which is the whole reason `fromwhere drawio import` exists. And most formats
 cannot carry one at all — a `.py`, a `.csv`, a PDF, or a notebook's HTML have
 nowhere to put it. So the record holds the disclosure whenever the file cannot,
-and where both exist figmint compares them and **reports the disagreement**
+and where both exist fromwhere compares them and **reports the disagreement**
 rather than quietly picking a winner. A disclosure that evaporates the first
 time somebody opens the image in an editor is exactly the failure worth seeing.
 
 ### What can be signed
 
 Reading credentials and writing them are different questions, and the second
-set is smaller. Verified against c2pa-python 0.37.4 (c2pa-rs 0.90.4), figmint
+set is smaller. Verified against c2pa-python 0.37.4 (c2pa-rs 0.90.4), fromwhere
 can **embed** a manifest in PNG, JPEG, GIF, SVG, TIFF, WebP and WAV.
 
 **PDF is the case worth knowing about.** The C2PA specification covers PDF, and
 other tools do sign them — but c2pa-rs cannot yet write one, though it reads
 them perfectly well. So a PDF signed elsewhere will have its credentials read
-and displayed by figmint; a PDF figmint produces is recorded but unsigned. That
+and displayed by fromwhere; a PDF fromwhere produces is recorded but unsigned. That
 is a limitation of the library, not of the format, and it should lift on its
 own.
 
@@ -210,17 +210,17 @@ direction. There is nowhere in an HTML page for a manifest to live.
 
 This matters for whole-document outputs — a built paper is exactly the artifact
 you would want to hand someone with its provenance attached. So for a MyST PDF,
-for `calkit latex build`, and for the HTML a notebook renders to, figmint
-records the artifact in `figmint.toml`, skips signing rather than failing the
+for `calkit latex build`, and for the HTML a notebook renders to, fromwhere
+records the artifact in `provenance.toml`, skips signing rather than failing the
 build, and says which it did:
 
 ```
 recorded paper.pdf (not signed: .pdf cannot carry Content Credentials;
-                    the record in figmint.toml is its only provenance)
+                    the record in provenance.toml is its only provenance)
 ```
 
 For those outputs the record is the only provenance there is, which is why the
-warning at the top of `figmint.toml` is not decoration.
+warning at the top of `provenance.toml` is not decoration.
 
 ### Freshness checking
 
@@ -228,13 +228,13 @@ To see if a given output's inputs (including environment lock files) have
 changed, rendering it stale, use the `status` command.
 
 ```sh
-figmint status <path>
+fromwhere status <path>
 ```
 
 The states are kept apart, because they have different fixes:
 
 - **stale** — an input changed; regenerate it.
-- **modified** — a _produced_ output changed without going through figmint, so
+- **modified** — a _produced_ output changed without going through fromwhere, so
   the record no longer describes the file it names. This is how tampering with
   an output after generation is caught.
 - **upstream** — sound in every direct link, but resting on one that is not.
@@ -246,7 +246,7 @@ rule worth stating plainly, because everything else follows from it:
 > some particular afternoon. What matters about an edit is whether it reached
 > an output — and that is already recorded, because every output carries the
 > hash of each input as it was when the output was made, recomputed whenever
-> `figmint run` regenerates it.
+> `fromwhere run` regenerates it.
 
 So editing a script, a dataset, or a document source is not a finding and never
 requires re-declaring anything. The consequence shows up where it can be acted
@@ -259,7 +259,7 @@ swapped, nothing notices.
   `.drawio` is untouched passes every direct check even when the data three
   steps back was edited, because nothing regenerated the panel in between.
 
-None of them is repaired by editing `figmint.toml`, which is the one thing a
+None of them is repaired by editing `provenance.toml`, which is the one thing a
 reader in a hurry might try.
 
 ### Rebuilding
@@ -269,9 +269,9 @@ from, so the repair sequence is a property of the record rather than something
 you have to reconstruct:
 
 ```sh
-figmint rebuild             # everything that is out of date
-figmint rebuild <path>      # that artifact, and everything behind it
-figmint rebuild --dry-run   # say what would happen, in order
+fromwhere rebuild             # everything that is out of date
+fromwhere rebuild <path>      # that artifact, and everything behind it
+fromwhere rebuild --dry-run   # say what would happen, in order
 ```
 
 Dependencies first, because rebuilding a document before the figure it embeds
@@ -286,20 +286,20 @@ and a hand-arranged diagram is refreshed by the export that consumes it.
 
 ### Signing certificates
 
-The `figmint run` command includes the `--cert` option to provide a signing
+The `fromwhere run` command includes the `--cert` option to provide a signing
 certificate for the Content Credentials metadata.
 
 ### draw.io
 
-Figmint enables composite figure provenance while retaining interactive
+`fromwhere` enables composite figure provenance while retaining interactive
 editing with draw.io.
 To import a PNG into a draw.io diagram, run:
 
 ```sh
-figmint drawio import my-figure.png my-composite-figure.drawio
+fromwhere drawio import my-figure.png my-composite-figure.drawio
 ```
 
-It's important to use the Figmint CLI since this will embed metadata into
+It's important to use the `fromwhere` CLI since this will embed metadata into
 the `.drawio` file.
 
 `import` is an _authoring_ step: it puts a new panel on the canvas. You should
@@ -312,7 +312,7 @@ present is still safe: it replaces rather than adding a second copy.
 To export an SVG containing the provenance information, run:
 
 ```sh
-figmint drawio export my-diagram.drawio my-diagram.svg
+fromwhere drawio export my-diagram.drawio my-diagram.svg
 ```
 
 Export is the build step. It refreshes stale panels first — draw.io renders the
@@ -323,8 +323,8 @@ and re-records the diagram itself.
 #### A panel that went in through the GUI
 
 Sometimes a figure is already on the canvas: dragged in, pasted, or inserted
-with draw.io's own **Insert → Image** before anybody had heard of figmint.
-figmint cannot tell where such a shape came from, so the diagram is recorded
+with draw.io's own **Insert → Image** before anybody had heard of fromwhere.
+fromwhere cannot tell where such a shape came from, so the diagram is recorded
 without it and the composite rests on a picture nothing accounts for.
 
 You can say where it came from by hand. In draw.io, select the shape and use
@@ -338,19 +338,19 @@ Then use **Extras → Edit Diagram…** and add one attribute to that `<object>`
 ```
 
 That is the whole of it. `src` is a path relative to the project root, and it
-is the only thing figmint needs:
+is the only thing fromwhere needs:
 
-- **The hash is optional.** figmint computes one from the bytes already
+- **The hash is optional.** fromwhere computes one from the bytes already
   embedded in the shape, so a person who can type a path but cannot work out a
   SHA256 is not stuck. Requiring both would silently drop the panel from the
   record — the diagram would look complete while resting on a figure nothing
   accounted for, which is the exact failure the record exists to make visible.
-- **The next export fills it in.** `figmint drawio export` writes the hash onto
+- **The next export fills it in.** `fromwhere drawio export` writes the hash onto
   the shape once it has verified it, so the gap closes itself and the diagram
   becomes checkable by anything that reads it without also reading
-  `figmint.toml`.
+  `provenance.toml`.
 
-One caveat that is the reason `figmint drawio import` exists at all: draw.io
+One caveat that is the reason `fromwhere drawio import` exists at all: draw.io
 re-encodes anything over 1200 px through a canvas when _it_ embeds an image,
 which destroys any Content Credentials the file carried, including an
 AI-generation disclosure. Adding `src` afterwards restores the _link_, not the
@@ -361,12 +361,12 @@ manifest. For a panel that carries credentials worth keeping, re-import it.
 To export a PNG from GIMP with provenance tracking, run:
 
 ```sh
-figmint gimp export my-input.xcf my-output.png
+fromwhere gimp export my-input.xcf my-output.png
 ```
 
 ### MyST
 
-Figmint includes a MyST plugin for inspecting and checking embedded figure
+`fromwhere` includes a MyST plugin for inspecting and checking embedded figure
 provenance and freshness.
 It also enables inspecting document-level provenance, since that's a
 composite artifact itself.
@@ -376,7 +376,7 @@ this, what was it made from, and is it still true. The scope is the argument.
 Name a file and the panel is about that file:
 
 ```
-:::{figmint} figures/composite.svg
+:::{fromwhere} figures/composite.svg
 :name: fig-performance
 The composite figure.
 :::
@@ -387,7 +387,7 @@ renders the numbers as a table — numbered and cross-referenceable like any
 other, with the same provenance panel underneath:
 
 ```
-:::{figmint} data/performance.csv
+:::{fromwhere} data/performance.csv
 :name: tbl-performance
 :rows: 25
 The measurements underlying [](#fig-performance).
@@ -395,7 +395,7 @@ The measurements underlying [](#fig-performance).
 ```
 
 That is where the record earns the most, because a CSV cannot carry Content
-Credentials at all: the line in `figmint.toml` is its only provenance. Long
+Credentials at all: the line in `provenance.toml` is its only provenance. Long
 tables are truncated at `:rows:` (25 by default) with a note saying so — a
 table is for reading, and a thousand rows of it is a scroll bar.
 
@@ -404,7 +404,7 @@ notebook — and it is embedded in a frame, numbered and cross-referenced like
 any other figure:
 
 ```
-:::{figmint} figures/cp_curve_interactive.html
+:::{fromwhere} figures/cp_curve_interactive.html
 :name: fig-cp
 :height: 400px
 Hover for the numbers; drag to zoom.
@@ -413,7 +413,7 @@ Hover for the numbers; drag to zoom.
 
 That is the case where the record earns the most of all. **HTML cannot carry
 Content Credentials in either direction** — c2pa does not recognize the type —
-so for an interactive figure the line in `figmint.toml` is the only provenance
+so for an interactive figure the line in `provenance.toml` is the only provenance
 there is. It also has to be self-contained: an artifact that fetches half of
 itself from a CDN at read time is not an artifact anyone can hash, because what
 a reader sees depends on what that URL served them.
@@ -424,7 +424,7 @@ was tampered with — and something in the chain is a file nobody has claimed:
 
 ```
 ⚠️ Figure has incomplete provenance — nothing accounts for scripts/plot_cp.py
-   To fix: figmint declare scripts/plot_cp.py --mine [--with-ai <tool>]
+   To fix: fromwhere declare scripts/plot_cp.py --mine [--with-ai <tool>]
 ```
 
 A warning rather than an error, because nothing is broken and no output needs
@@ -445,7 +445,7 @@ composite artifact in its own right, and the same question one scope wider.
 `:artifact:` names the document's own output(s):
 
 ```
-:::{figmint}
+:::{fromwhere}
 :artifact: _build/html/index.html, _build/exports/paper.pdf
 :table: true
 :graph: true
@@ -461,7 +461,7 @@ And it leaves those outputs out of the panel's own freshness tally — a documen
 cannot honestly report on itself from the inside, because while the page is
 being written its recorded hash still describes the previous build. Without
 this the panel reads "out of date" on every single build and stops meaning
-anything. `figmint status` checks them from outside, where the answer is
+anything. `fromwhere status` checks them from outside, where the answer is
 settled.
 
 The table lists **outputs** — anything the project made, including
@@ -481,7 +481,7 @@ One caveat about live preview. `myst start` re-renders when one of _its own_
 sources changes: markdown, `myst.yml`, a linked image. Editing a script or a
 dataset is invisible to it, so the panels keep showing the previous render and
 a stale figure looks current for as long as the tab is open. The example's
-`make serve` works around this by watching everything figmint records as an
+`make serve` works around this by watching everything fromwhere records as an
 input and touching the document when any of it moves.
 
 ### Quarto
@@ -490,18 +490,18 @@ The same panels, in Quarto. Install the extension into a project and wire it
 into `_quarto.yml`:
 
 ```sh
-figmint quarto install
+fromwhere quarto install
 ```
 
 ```yaml
 filters:
   - at: pre-ast
-    path: figmint
+    path: fromwhere
 ```
 
 It comes from the package rather than from `quarto add` because the Lua filter
-and the `figmint-quarto` executable it spawns speak a protocol private to
-figmint, and installing them together is what keeps the two the same version.
+and the `fromwhere-quarto` executable it spawns speak a protocol private to
+fromwhere, and installing them together is what keeps the two the same version.
 
 `at: pre-ast` is not decoration. Quarto builds callouts, figure numbers, and
 cross-references in its own filters, so a panel emitted after them is a grey
@@ -513,7 +513,7 @@ construct that takes a path, options, and a caption that is _parsed_ — so
 citations and cross-references inside a caption keep working:
 
 ```
-::: {.figmint src="figures/composite.svg" #fig-performance width="95%"}
+::: {.fromwhere src="figures/composite.svg" #fig-performance width="95%"}
 Power coefficient against tip speed ratio.
 :::
 ```
@@ -524,7 +524,7 @@ panel label. Pandoc's `fancy_lists` treats `(a)`, `(1)` and `a.` at the start of
 a block as list markers, and the result is a caption turned into an `<ol>` with
 Quarto's own "Figure 1:" prefix chopped into list items. Nothing warns you. Bold
 the label — `**(a)** Power coefficient…` — or escape it as `\(a\)`. This is
-plain Quarto behavior rather than anything figmint does, and it applies to every
+plain Quarto behavior rather than anything fromwhere does, and it applies to every
 caption in the document.
 
 Point it at a `.csv` or `.tsv` and it renders the numbers as a table, numbered
@@ -533,7 +533,7 @@ underneath. Anything that is neither a picture nor a table renders as its
 filename with the panel attached:
 
 ```
-::: {.figmint src="data/performance.csv" #tbl-performance rows="25"}
+::: {.fromwhere src="data/performance.csv" #tbl-performance rows="25"}
 The measurements underlying [@fig-performance].
 :::
 ```
@@ -543,16 +543,16 @@ the same `artifact` option, naming the document's own output(s) so it can show
 the rebuild command and leave them out of its own freshness tally:
 
 ```
-::: {.figmint artifact="_site/index.html" table="true" graph="true"}
+::: {.fromwhere artifact="_site/index.html" table="true" graph="true"}
 :::
 ```
 
-A `.figmint-provenance` div is no longer a thing, and rather than rendering as
+A `.fromwhere-provenance` div is no longer a thing, and rather than rendering as
 an anonymous grey box it says what replaced it — an unknown class is silence,
 and silence is the failure this panel exists to prevent.
 
 Everything that decides _what to say_ — the chain, the AI disclosure, the
-headline, the truncation note — is the same Python that answers `figmint
+headline, the truncation note — is the same Python that answers `fromwhere
 status` and renders the MyST panels. The Lua half only turns those nodes into
 Pandoc's AST, so a document built either way says the same thing.
 
@@ -568,7 +568,7 @@ hit it. `quarto preview`, like `myst start`, re-renders only when one of _its
 own_ sources changes: the `.qmd`, `_quarto.yml`, a linked image. Editing a
 plotting script is invisible to it, so the panels keep showing the previous
 render and a stale figure looks current for as long as the tab is open. The
-example's `make preview` closes that by watching everything figmint records as
+example's `make preview` closes that by watching everything fromwhere records as
 an input and touching the document when any of it moves.
 
 **That workaround does not work under VS Code's Quarto extension**, which
@@ -585,21 +585,21 @@ Five worked projects, each runnable, in [`examples/`](examples):
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`myst`](examples/myst)           | The MyST plugin, a draw.io composite, and an AI-generated panel whose disclosure travels in its own Content Credentials                                 |
 | [`quarto`](examples/quarto)       | The Quarto extension: Plotly panels, an interactive figure, a composite, a CSV as a cross-referenceable table — under pixi, so the lock pins Quarto too |
-| [`calkit`](examples/calkit)       | figmint wrapping a Calkit stage command, with `figmint.toml` beside a `dvc.lock` — and why signing belongs at the boundary                              |
+| [`calkit`](examples/calkit)       | fromwhere wrapping a Calkit stage command, with `provenance.toml` beside a `dvc.lock` — and why signing belongs at the boundary                         |
 | [`snakemake`](examples/snakemake) | The same arrangement under Snakemake, and what a build cache is for versus what a record is for                                                         |
-| [`astra`](examples/astra)         | ASTRA declaring the decision space while figmint records which options actually produced the bytes                                                      |
+| [`astra`](examples/astra)         | ASTRA declaring the decision space while fromwhere records which options actually produced the bytes                                                    |
 
-The last three share a shape worth naming. figmint wraps the **stage command**,
-never the workflow manager: wrapping the manager would make figmint the
+The last three share a shape worth naming. fromwhere wraps the **stage command**,
+never the workflow manager: wrapping the manager would make fromwhere the
 entrypoint, record one enormous artifact, and lose the per-figure chain that is
 the whole point. And in each of them the repair for a stale artifact is the
-manager's own command, not `figmint rebuild` — two components that each claim to
+manager's own command, not `fromwhere rebuild` — two components that each claim to
 know how to rebuild a project, from different graphs, will drift.
 
 ### What the lock file does not cover
 
-figmint records the lock of the environment the **command** ran in. Anything
-that wraps that command from the outside is not in it — figmint itself, the
+fromwhere records the lock of the environment the **command** ran in. Anything
+that wraps that command from the outside is not in it — fromwhere itself, the
 workflow manager, and any tool they shell out to. That is a real limit on what
 the record means, and it is worth knowing where it bites:
 

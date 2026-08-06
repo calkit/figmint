@@ -1,10 +1,10 @@
-# `figmint.toml` is NOT here, and that is the point. It is the record — the
+# `provenance.toml` is NOT here, and that is the point. It is the record — the
 # evidence this whole project is about — so it is committed like any other
 # source of truth, alongside the artifacts it describes and the lock file it
-# names. A figmint project that ignores its own record is one where nobody can
+# names. A fromwhere project that ignores its own record is one where nobody can
 # check anything without rebuilding first.
 #
-# `pixi.lock` is committed for the same reason: figmint records it as the
+# `pixi.lock` is committed for the same reason: fromwhere records it as the
 # environment behind every artifact here, so a reader needs it to check the
 # claim.
 

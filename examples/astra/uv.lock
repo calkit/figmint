@@ -17,7 +17,7 @@ wheels = [
 ]
 
 [[package]]
-name = "figmint-astra-example"
+name = "fromwhere-astra-example"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

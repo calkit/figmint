@@ -11,10 +11,10 @@ it, which re-encodes the bytes — so any Content Credentials the image carried 
 gone, including an AI-generation disclosure. Verified directly: a 1408 px
 generated PNG went in signed and came out with nothing.
 
-`figmint drawio import` writes the original bytes verbatim and attaches `src`
-and `hash` to the shape, then records the diagram in `figmint.toml` with each
-embedded image as an input. So the diagram stays editable in draw.io, the
-credentials survive into the export, and `figmint status` can tell you when a
+`fromwhere drawio import` writes the original bytes verbatim and attaches `src`
+and `hash` to the shape, then records the diagram in `provenance.toml` with
+each embedded image as an input. So the diagram stays editable in draw.io, the
+credentials survive into the export, and `fromwhere status` can tell you when a
 panel has been regenerated since it was embedded.
 
 Units: draw.io measures in hundredths of an inch, so a coordinate times 0.72 is
@@ -47,10 +47,10 @@ UNITS_TO_POINTS = 72.0 / 100.0
 
 #: Provenance keys, written as plain shape attributes.
 #:
-#: Deliberately unprefixed. A `figmint.`-style prefix would namespace these away
-#: from a user's own data, but draw.io strips the dotted prefix when it re-saves
-#: a file — observed directly: `figmint.path` came back as `path`. So a prefix
-#: buys nothing and silently changes the keys under us.
+#: Deliberately unprefixed. A `fromwhere.`-style prefix would namespace these
+#: away from a user's own data, but draw.io strips the dotted prefix when it
+#: re-saves a file — observed directly: `fromwhere.path` came back as `path`.
+#: So a prefix buys nothing and silently changes the keys under us.
 ATTR_SRC = "src"
 ATTR_HASH = "hash"
 
@@ -69,19 +69,21 @@ RESERVED_ATTRS = frozenset(
     }
 )
 
-#: Provenance keys figmint understands. Anything else on the shape is left
+#: Provenance keys fromwhere understands. Anything else on the shape is left
 #: alone, so a user's own annotations survive a round-trip.
 PROVENANCE_ATTRS = frozenset(
     {ATTR_SRC, ATTR_HASH, "doi", "url", "citation", "license", "note"}
 )
 
-#: Legacy dotted form, still read so older files keep working.
+#: Legacy dotted form, still read so older files keep working. Spelled with the
+#: old name on purpose: the diagrams this exists for were written before the
+#: rename, so `fromwhere.` is a prefix no file has ever carried.
 LEGACY_PREFIX = "figmint."
 
 _DATA_URI = re.compile(r'image=(data:[^;,]+(?:;base64)?,[^;"]*)')
 
 EMPTY = (
-    '<mxfile host="figmint"><diagram id="{id}" name="{page}">'
+    '<mxfile host="fromwhere"><diagram id="{id}" name="{page}">'
     '<mxGraphModel dx="800" dy="600" grid="0" gridSize="10" guides="1" '
     'tooltips="1" connect="1" arrows="1" fold="0" page="0" pageScale="1" '
     'pageWidth="850" pageHeight="1100" math="1" shadow="0">'
@@ -259,9 +261,9 @@ class Diagram:
     tree: ET.ElementTree[ET.Element[str]]
     model: ET.Element[str]
     #: True for a `.drawio.svg`, which carries the diagram inside a rendered
-    #: picture. figmint will not write one back: it can update the embedded XML
-    #: but not the rendering around it, and a file whose picture and metadata
-    #: disagree is worse than one that refuses to be written.
+    #: picture. fromwhere will not write one back: it can update the embedded
+    #: XML but not the rendering around it, and a file whose picture and
+    #: metadata disagree is worse than one that refuses to be written.
     rendered: bool = False
     #: Set whenever something in the tree has been changed in memory. Export
     #: needs this because not every change is a re-embedded panel: filling in a
@@ -556,9 +558,9 @@ class Diagram:
                 continue
             source = Path(root_dir) / item.src
             if not source.is_file():
-                # Nothing to refresh from. `figmint status` reports the missing
-                # input; failing the export here would only block the one
-                # command that could still produce something useful.
+                # Nothing to refresh from. `fromwhere status` reports the
+                # missing input; failing the export here would only block the
+                # one command that could still produce something useful.
                 continue
             current = hash_file(source)
             # `embedded_hash` is the fallback for a shape somebody added
@@ -568,7 +570,7 @@ class Diagram:
                 if not item.hash:
                     # Up to date, and now it says so. Filling this in is what
                     # makes a hand-added panel checkable by anything that reads
-                    # the diagram without also reading `figmint.toml`.
+                    # the diagram without also reading `provenance.toml`.
                     self.set_hash(item.shape_id, current)
                 continue
             self.place(source, relative=item.src)
@@ -586,7 +588,7 @@ class Diagram:
     def save(self) -> None:
         if self.rendered:
             raise DrawioError(
-                f"{self.path} is a rendered .drawio.svg. figmint can update the "
+                f"{self.path} is a rendered .drawio.svg. fromwhere can update the "
                 f"diagram but not the picture drawn around it; write to a "
                 f".drawio and re-export from draw.io."
             )
@@ -742,7 +744,7 @@ def export(
     metadata, leaving a figure that looks identical and can no longer be
     checked.
 
-    figmint does not render the picture itself — draw.io does. The diagram is
+    fromwhere does not render the picture itself — draw.io does. The diagram is
     recorded as the output's input, so the chain runs
     `data -> panel -> diagram -> picture` with every link hashed.
 
@@ -750,8 +752,8 @@ def export(
     Editing a diagram in draw.io is the whole reason for keeping one, and every
     such edit changes its bytes — so without this the composite would sit
     permanently `modified`, and the one signal that actually means *somebody
-    wrote this file behind figmint's back* would be worthless. Exporting is the
-    deliberate act that says "this arrangement is the one I meant".
+    wrote this file behind fromwhere's back* would be worthless. Exporting is
+    the deliberate act that says "this arrangement is the one I meant".
 
     The panels are named as ingredients of the picture as well as of the
     diagram. Otherwise an AI-generated panel's disclosure stops at the `.drawio`
@@ -825,7 +827,7 @@ def export(
     # The command as a reader could run it, not the internal subcommand string.
     # A record that names something unrunnable is worse than one that names
     # nothing: it looks like a reproduction recipe and is not one.
-    recorded_command = f"figmint drawio export {store.relative(diagram)} {store.relative(output)}"
+    recorded_command = f"fromwhere drawio export {store.relative(diagram)} {store.relative(output)}"
 
     signed = False
     if sign:

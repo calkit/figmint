@@ -1,6 +1,6 @@
 """Signing an artifact with C2PA Content Credentials.
 
-`figmint.toml` records what an artifact came from; a signature says the same
+`provenance.toml` records what an artifact came from; a signature says the same
 thing in a form that travels with the file. Once a figure leaves the repository
 — pasted into a manuscript, mailed to a co-author — the record is behind and the
 manifest is all that is left.
@@ -18,8 +18,9 @@ when any input declares generative-AI origin. That makes "does this figure
 contain AI-generated material?" a question answered by the signature rather than
 by a convention someone has to remember to follow.
 
-Alongside those, figmint writes its own assertion holding the input digests, so
-a verifier can recompute what `figmint status` checks without the repository.
+Alongside those, fromwhere writes its own assertion holding the input digests,
+so a verifier can recompute what `fromwhere status` checks without the
+repository.
 
 Identity
 --------
@@ -49,10 +50,10 @@ logger = logging.getLogger(__name__)
 
 IPTC = "http://cv.iptc.org/newscodes/digitalsourcetype"
 
-#: Assertion label for figmint's own record of what went in.
-COMPOSITION_ASSERTION = "org.figmint.composition"
+#: Assertion label for fromwhere's own record of what went in.
+COMPOSITION_ASSERTION = "org.fromwhere.composition"
 
-#: Media types figmint needs to name. Not exhaustive — anything unlisted is
+#: Media types fromwhere needs to name. Not exhaustive — anything unlisted is
 #: signed as a byte stream, which c2pa handles.
 MEDIA_TYPES = {
     ".png": "image/png",
@@ -88,16 +89,16 @@ def _default_config_dir() -> Path:
     account between machines.
     """
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "io.figmint"
+        return Path.home() / "Library" / "Application Support" / "io.fromwhere"
     if sys.platform == "win32":
         local = os.environ.get("LOCALAPPDATA")
-        return (Path(local) if local else Path.home()) / "figmint"
-    return Path.home() / ".config" / "figmint"
+        return (Path(local) if local else Path.home()) / "fromwhere"
+    return Path.home() / ".config" / "fromwhere"
 
 
 #: Where a generated local identity lives.
 CONFIG_DIR = Path(
-    os.environ.get("FIGMINT_CONFIG_DIR") or _default_config_dir()
+    os.environ.get("FROMWHERE_CONFIG_DIR") or _default_config_dir()
 )
 
 
@@ -118,7 +119,7 @@ class SigningError(RuntimeError):
 
 @dataclass
 class Identity:
-    """A certificate chain and key figmint can sign with."""
+    """A certificate chain and key fromwhere can sign with."""
 
     cert_chain: str
     private_key_pem: bytes
@@ -160,8 +161,8 @@ def create_local_identity(directory: Path | None = None) -> Identity:
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     ca_name = x509.Name(
         [
-            x509.NameAttribute(NameOID.COMMON_NAME, "figmint local CA"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "figmint"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "fromwhere local CA"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "fromwhere"),
         ]
     )
     ca_cert = (
@@ -207,9 +208,9 @@ def create_local_identity(directory: Path | None = None) -> Identity:
             x509.Name(
                 [
                     x509.NameAttribute(
-                        NameOID.COMMON_NAME, "figmint local signing identity"
+                        NameOID.COMMON_NAME, "fromwhere local signing identity"
                     ),
-                    x509.NameAttribute(NameOID.ORGANIZATION_NAME, "figmint"),
+                    x509.NameAttribute(NameOID.ORGANIZATION_NAME, "fromwhere"),
                 ]
             )
         )
@@ -271,7 +272,7 @@ def create_local_identity(directory: Path | None = None) -> Identity:
     return Identity(
         cert_chain=chain,
         private_key_pem=key_pem,
-        source=f"figmint local identity ({directory})",
+        source=f"fromwhere local identity ({directory})",
     )
 
 
@@ -288,7 +289,7 @@ def resolve_identity(
     last: flags, then environment, then a previously-generated
     local identity, then a fresh one.
     """
-    tsa = tsa_url or os.environ.get("FIGMINT_TSA_URL") or None
+    tsa = tsa_url or os.environ.get("FROMWHERE_TSA_URL") or None
 
     if cert or key:
         if not (cert and key):
@@ -300,13 +301,13 @@ def resolve_identity(
             tsa_url=tsa,
         )
 
-    env_cert = os.environ.get("FIGMINT_SIGNING_CERT")
-    env_key = os.environ.get("FIGMINT_SIGNING_KEY")
+    env_cert = os.environ.get("FROMWHERE_SIGNING_CERT")
+    env_key = os.environ.get("FROMWHERE_SIGNING_KEY")
     if env_cert and env_key:
         return Identity(
             cert_chain=Path(env_cert).read_text(),
             private_key_pem=Path(env_key).read_bytes(),
-            source="FIGMINT_SIGNING_CERT",
+            source="FROMWHERE_SIGNING_CERT",
             tsa_url=tsa,
         )
 
@@ -317,7 +318,7 @@ def resolve_identity(
         return Identity(
             cert_chain=local_cert.read_text(),
             private_key_pem=local_key.read_bytes(),
-            source=f"figmint local identity ({local_dir})",
+            source=f"fromwhere local identity ({local_dir})",
             tsa_url=tsa,
         )
 
@@ -350,7 +351,7 @@ def collect_ingredients(inputs: list[Input], root: Path) -> list[Ingredient]:
     """Resolve recorded inputs against the filesystem, skipping what is gone.
 
     A missing input is dropped rather than raising: the artifact still exists
-    and describing most of its origin beats describing none of it. `figmint
+    and describing most of its origin beats describing none of it. `fromwhere
     status` is the check that complains about a missing input, and it is a
     freshness question rather than a signing one.
     """
@@ -397,7 +398,7 @@ def build_manifest(
 ) -> dict[str, Any]:
     """The manifest JSON describing this artifact."""
     return {
-        "claim_generator_info": [{"name": "figmint", "version": version}],
+        "claim_generator_info": [{"name": "fromwhere", "version": version}],
         "title": output.name,
         "format": media_type(output),
         "assertions": [
@@ -408,7 +409,7 @@ def build_manifest(
                         {
                             "action": "c2pa.created",
                             "softwareAgent": {
-                                "name": "figmint",
+                                "name": "fromwhere",
                                 "version": version,
                             },
                             "digitalSourceType": digital_source_type(
@@ -420,7 +421,7 @@ def build_manifest(
                 },
             },
             {
-                # figmint's own record: enough to check the artifact against its
+                # fromwhere's own record: enough to check the artifact against its
                 # inputs without the repository the record lives in.
                 "label": COMPOSITION_ASSERTION,
                 "data": {

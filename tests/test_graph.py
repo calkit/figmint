@@ -1,8 +1,8 @@
 """The record, drawn.
 
-`figmint.toml` is already a DAG, so the graph needs no second source of truth —
-which is the property worth protecting. A diagram that could disagree with the
-freshness reported beside it would be worse than no diagram.
+`provenance.toml` is already a DAG, so the graph needs no second source of
+truth — which is the property worth protecting. A diagram that could disagree
+with the freshness reported beside it would be worse than no diagram.
 """
 
 from __future__ import annotations
@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from figmint.graph import build, project_mermaid, to_mermaid
-from figmint.status import State
-from figmint.store import Artifact, Input, Store, hash_file
+from fromwhere.graph import build, project_mermaid, to_mermaid
+from fromwhere.status import State
+from fromwhere.store import Artifact, Input, Store, hash_file
 
 
 @pytest.fixture
@@ -166,8 +166,8 @@ class TestBuilding:
     ):
         """`plot.png` is seen as an input before it is seen as an output.
 
-        The artifact reading is the stronger one: it means figmint watched the
-        file being made rather than merely being used.
+        The artifact reading is the stronger one: it means fromwhere watched
+        the file being made rather than merely being used.
         """
         kinds = {n.id: n.kind for n in build(project).nodes}
         assert kinds["plot.png"] == "artifact"

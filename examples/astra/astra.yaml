@@ -1,14 +1,14 @@
-# ASTRA declares the decision space; figmint records what actually ran.
+# ASTRA declares the decision space; fromwhere records what actually ran.
 #
 # The two answer adjacent questions and neither answers the other's. ASTRA says
 # what could defensibly have been chosen and which option this universe picked.
-# figmint says what was on disk when the command ran, byte for byte, who is
+# fromwhere says what was on disk when the command ran, byte for byte, who is
 # answerable for the primary files, and whether the published figure still
 # matches them.
 #
 # The join between them is the command. Every recipe below is wrapped in
-# `figmint run`, and every decision that changes a number reaches the command
-# line — so the command figmint records in `figmint.toml` names the options that
+# `fromwhere run`, and every decision that changes a number reaches the command
+# line — so the command fromwhere records in `provenance.toml` names the options that
 # produced the artifact sitting next to it. "Which universe is this figure
 # from?" becomes a question about the record rather than about somebody's
 # memory.
@@ -35,7 +35,7 @@ inputs:
     source: data/performance.csv
     description: |
       Eleven tip speed ratios with a measured power coefficient at each.
-      figmint declares this separately: nothing produced it, so the record
+      fromwhere declares this separately: nothing produced it, so the record
       would otherwise have a hole at the bottom that every check above it
       passes straight over.
 
@@ -52,7 +52,7 @@ outputs:
       # intermediate turns every no-op edit into a rebuild of everything
       # downstream. See the README.
       command: >-
-        figmint run --no-sign
+        fromwhere run --no-sign
         -i {inputs.measurements} -i src/curves.py
         -o figures/cp_curve.svg
         -- uv run python src/plot_cp.py --fit {decisions.curve_fit}
@@ -65,7 +65,7 @@ outputs:
     decisions: [curve_fit]
     recipe:
       command: >-
-        figmint run --no-sign
+        fromwhere run --no-sign
         -i {inputs.measurements} -i src/curves.py
         -o figures/ct_curve.svg
         -- uv run python src/plot_ct.py --fit {decisions.curve_fit}
@@ -80,7 +80,7 @@ outputs:
     inputs: [cp_curve, ct_curve]
     recipe:
       command: >-
-        figmint run
+        fromwhere run
         -i figures/cp_curve.svg -i figures/ct_curve.svg
         -o figures/performance.svg
         -- uv run python src/stack.py
@@ -95,7 +95,7 @@ outputs:
     decisions: [curve_fit, peak_estimator]
     recipe:
       command: >-
-        figmint run
+        fromwhere run
         -i {inputs.measurements} -i src/curves.py
         -o results/peak.json
         -- uv run python src/peak.py

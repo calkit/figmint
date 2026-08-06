@@ -1,4 +1,4 @@
-# figmint + Quarto
+# fromwhere + Quarto
 
 A small document whose figure carries its own provenance.
 
@@ -17,17 +17,17 @@ make site        # build the document, recording it too
 Python, Quarto, Plotly and kaleido all come from `pixi.toml`, so
 [pixi](https://pixi.sh) is the only thing you need beforehand.
 
-**`figmint.toml` is committed**, along with every figure it describes and the
+**`provenance.toml` is committed**, along with every figure it describes and the
 lock file it names. That is not incidental to the example: the record is the
 evidence, and a project that ignores its own record is one where nobody can
-check anything without rebuilding first. Clone this and `figmint status` has an
+check anything without rebuilding first. Clone this and `fromwhere status` has an
 answer immediately.
 
 `figures/composite.drawio` is committed for a different reason — a diagram is a
 source, the arrangement of the panels is the work, and nothing regenerates it.
 
 The rendered site is the one thing left out, as in the MyST example. So on a
-fresh clone `figmint status` reports `_site/index.html` as **missing** until you
+fresh clone `fromwhere status` reports `_site/index.html` as **missing** until you
 run `make all`, which is the record correctly noticing an artifact that is not
 there rather than a flaw in the example.
 
@@ -39,9 +39,9 @@ application with no conda or PyPI package, so no lock file can pin it — which
 means `figures/composite.svg` rests on a tool version the record cannot name.
 That is a real gap, stated rather than glossed.
 
-**figmint itself** is in the lock here, via `[pypi-dependencies]`, which is
+**fromwhere itself** is in the lock here, via `[pypi-dependencies]`, which is
 unusual: in the other examples it is a tool on `PATH`, because it wraps the
-command from the outside. It works here because `pixi run figmint run ... --
+command from the outside. It works here because `pixi run fromwhere run ... --
 pixi run python ...` re-enters the same environment either way.
 
 Everything else — Python, Quarto, Plotly, kaleido — is pinned across
@@ -50,11 +50,11 @@ and therefore does _not_ pin the Node runtime MyST needs.
 
 ## What to look at
 
-`figmint.toml` — the record. One artifact per section, each with the SHA256 of
+`provenance.toml` — the record. One artifact per section, each with the SHA256 of
 its bytes, the hashes of everything it was derived from, and the command that
 produced it. Read the header before touching it.
 
-`index.qmd` — the document. The `::: {.figmint}` blocks render the record into
+`index.qmd` — the document. The `::: {.fromwhere}` blocks render the record into
 the page, so a reader gets the provenance without leaving the figure. There is
 one block for a composite figure, one for a single panel, one for the CSV
 behind them, and one with no `src` at all, which describes the document.
@@ -96,7 +96,7 @@ an input alongside the CSV. A record naming only the data would call the figure
 unchanged after a dependency upgrade that visibly redrew it.
 
 **pixi rather than uv, and Quarto is the reason.** Rendering the document is a
-recorded step too, so figmint records the lock as _its_ environment — and a
+recorded step too, so fromwhere records the lock as _its_ environment — and a
 lock that does not pin the renderer would be asserting an environment it does
 not actually control. `pixi.toml` puts Quarto, Python, Plotly and kaleido in one
 lock file, across three platforms, so the claim the record makes is one the lock

@@ -3,7 +3,7 @@
 The composite step, without a desktop application in the way. Each panel is
 nested as an `<svg>` element inside a wrapper, which is plain SVG and keeps the
 panels as vectors — the point being that this artifact is *derived from other
-artifacts*, so its provenance chain is two levels deep and figmint has
+artifacts*, so its provenance chain is two levels deep and fromwhere has
 something to check that no single command produced.
 
 The real reason it exists in this example is what happens either side of it:
