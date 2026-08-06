@@ -610,6 +610,16 @@ def render(
 # The directives
 # --------------------------------------------------------------------------
 
+#: One directive, because there was only ever one idea. A figure, a table and a
+#: whole document are the same question — what is this, what was it made from,
+#: is it still true — asked at different scopes, and two directives made that
+#: look like two features with two vocabularies to learn. The scope is the
+#: argument: name a file and the panel is about that file, name nothing and it
+#: is about the document you are reading.
+#:
+#: Options for both scopes are declared together. mystmd validates against this
+#: list, so `:rows:` has to be *known* even in a document panel that ignores it;
+#: the alternative is a directive that rejects the option a reader just moved.
 SPEC: dict[str, Any] = {
     "name": "figmint",
     "author": "figmint",
@@ -618,15 +628,26 @@ SPEC: dict[str, Any] = {
         {
             "name": "figmint",
             "doc": (
-                "Embed an artifact together with what it was made from and "
-                "whether it is still current."
+                "Show what an artifact was made from and whether it is still "
+                "current. With no argument, the document itself."
             ),
             "arg": {
                 "type": "string",
-                "doc": "Path to the artifact, relative to the MyST project.",
-                "required": True,
+                "doc": (
+                    "Path to the artifact, relative to the MyST project. Omit "
+                    "it for a panel about the whole document."
+                ),
+                "required": False,
             },
             "options": {
+                "kind": {
+                    "type": "string",
+                    "doc": (
+                        "document, figure, table, or artifact. Defaults to "
+                        "document when no path is given, and otherwise to "
+                        "whatever the file extension says."
+                    ),
+                },
                 "name": {
                     "type": "string",
                     "doc": "Label for cross-referencing.",
@@ -648,23 +669,16 @@ SPEC: dict[str, Any] = {
                     "type": "boolean",
                     "doc": "Show the provenance panel. Defaults to true.",
                 },
-            },
-            "body": {"type": "parsed", "doc": "The caption."},
-        },
-        {
-            "name": "figmint-provenance",
-            "doc": (
-                "Summarise the whole document's provenance: every recorded "
-                "artifact and whether it is current."
-            ),
-            "options": {
                 "table": {
                     "type": "boolean",
-                    "doc": "Show the artifact table.",
+                    "doc": "Document panel: show the artifact table.",
                 },
                 "graph": {
                     "type": "boolean",
-                    "doc": "Draw the derivation DAG. Defaults to true.",
+                    "doc": (
+                        "Document panel: draw the derivation DAG. Defaults to "
+                        "true."
+                    ),
                 },
                 "direction": {
                     "type": "string",
@@ -673,30 +687,51 @@ SPEC: dict[str, Any] = {
                 "artifact": {
                     "type": "string",
                     "doc": (
-                        "This document's own output(s), comma separated. Named "
-                        "so the panel can show how to rebuild them and leave "
-                        "them out of its own freshness tally."
+                        "Document panel: this document's own output(s), comma "
+                        "separated. Named so the panel can show how to rebuild "
+                        "them and leave them out of its own freshness tally."
                     ),
                 },
             },
-            "body": {"type": "parsed", "doc": "Optional lead-in text."},
+            "body": {
+                "type": "parsed",
+                "doc": "The caption, or a lead-in for a document panel.",
+            },
         },
     ],
 }
 
-#: What MyST can put in an `image` node. A tracked artifact need not be one — a
-#: dataset has provenance worth showing and nothing to display.
-_RENDERABLE = (".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf")
+#: What a document can put in an `image` node. A tracked artifact need not be
+#: one — a dataset has provenance worth showing and nothing to display.
+RENDERABLE = (".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf")
 
 #: Delimited data, rendered as a table. Somebody who puts a CSV in a document
 #: wants to *see* the numbers — showing them a filename and a provenance panel
 #: answers a question nobody asked.
-_TABULAR = {".csv": ",", ".tsv": "\t"}
+TABULAR = {".csv": ",", ".tsv": "\t"}
 
 #: Rows shown before truncating. A table is for reading; a thousand rows of it
 #: is a scroll bar, and the file itself is right there for anyone who wants all
 #: of it.
 TABLE_ROW_LIMIT = 25
+
+#: What the panel calls the thing it is describing. Calling a table a figure is
+#: a small lie in the one place the panel is meant to be exact.
+NOUN = {"figure": "Figure", "table": "Table", "artifact": "Artifact"}
+
+
+def display_kind(target: str) -> str:
+    """How this artifact should be shown: a picture, a table, or a name.
+
+    Shared with the Quarto extension, which draws the same three cases with a
+    different vocabulary. Deciding it in one place is what keeps a `.tsv` from
+    being a table in one document and a bare filename in the other.
+    """
+    if target.lower().endswith(RENDERABLE):
+        return "figure"
+    if Path(target).suffix.lower() in TABULAR:
+        return "table"
+    return "artifact"
 
 
 def read_table(
@@ -760,9 +795,10 @@ def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
 
     out: list[dict[str, Any]] = []
     caption = caption_children(node)
-    delimiter = _TABULAR.get(Path(target).suffix.lower())
+    kind = display_kind(target)
+    delimiter = TABULAR.get(Path(target).suffix.lower())
 
-    if target.lower().endswith(_RENDERABLE):
+    if kind == "figure":
         image: dict[str, Any] = {"type": "image", "url": target}
         for key in ("width", "align", "alt"):
             if options.get(key):
@@ -779,7 +815,7 @@ def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
         if caption:
             figure["children"].append({"type": "caption", "children": caption})
         out.append(figure)
-    elif delimiter is not None:
+    elif kind == "table" and delimiter is not None:
         # Delimited data: show the numbers. Wrapped in a table container so it
         # is numbered and cross-referenceable exactly as a figure is — a table
         # in a paper is an artifact with provenance like any other.
@@ -810,15 +846,7 @@ def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
         out.append(paragraph(*lead))
 
     if as_bool(options.get("provenance")):
-        # Named in the reader's terms. Calling a table a figure is a small lie
-        # in the one place the panel is meant to be exact.
-        if target.lower().endswith(_RENDERABLE):
-            noun = "Figure"
-        elif delimiter is not None:
-            noun = "Table"
-        else:
-            noun = "Artifact"
-        out.append(render(check_path(source), source, noun))
+        out.append(render(check_path(source), source, NOUN[kind]))
     return out
 
 

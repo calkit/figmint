@@ -8,5 +8,10 @@ _build
 **/_build
 site
 
+# Quarto's build output, and the extension copy it renders from.
+_site
+**/_site
+**/_extensions
+
 # Signed artifacts — figmint has recorded their hashes.
 examples/myst/figures

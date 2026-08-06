@@ -93,13 +93,28 @@ def build(root: Path, reports: list[ArtifactStatus] | None = None) -> Graph:
 
     for path, artifact in sorted(store.artifacts.items()):
         node(path, "artifact")
+        # The script is what *does* the work, not a third ingredient stirred in
+        # beside the data. Drawn flat, a figure appears to be the sum of a CSV,
+        # a lock file and some code, which is not how anybody thinks about it —
+        # the data was read by the script, and the script ran under the
+        # environment. Routing the other inputs through the script says that,
+        # and turns a fan-in into the chain a reader is actually tracing.
+        #
+        # figmint never reads the script, so this is inferred from "they were
+        # inputs to the same command" rather than observed. That is the same
+        # claim the record already makes, drawn more usefully.
+        code = [i.path for i in artifact.inputs if i.kind == "code"]
+        # Only with exactly one. Two scripts and there is no saying which read
+        # the data, and a guess in a provenance diagram is worse than a fan-in.
+        hub = code[0] if len(code) == 1 else None
         for item in artifact.inputs:
             if item.kind in ("environment", "code"):
                 kind = item.kind
             else:
                 kind = "artifact" if item.path in store.artifacts else "source"
             node(item.path, kind)
-            graph.edges.append(Edge(item.path, path))
+            target = hub if hub and item.path != hub else path
+            graph.edges.append(Edge(item.path, target))
 
     graph.edges.sort(key=lambda e: (e.source, e.target))
     return graph

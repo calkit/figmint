@@ -1,0 +1,166 @@
+---
+title: Figmint tracks artifact provenance
+author: Example Author
+---
+
+A small document whose figure carries its own provenance. The panel below was
+produced by a script figmint knows nothing about; what figmint knows is what the
+script was given, what environment it ran in, and what came out.
+
+## The figure
+
+::: {.figmint src="figures/cp_curve.png" #fig-performance width="70%"}
+Power coefficient against tip speed ratio, measured in a towing tank—synthetic
+values for this example.
+:::
+
+Expand the panel under [@fig-performance] and you get what a reader would
+otherwise have to take on trust: what this picture was made from, whether it is
+still current, and—where the record says so—that part of it was made with a
+generative tool. All of it is read from `figmint.toml` and the file's own
+Content Credentials when the document builds. Nothing on this page is typed by
+hand.
+
+## How it got there
+
+```sh
+figmint run -i data/performance.csv -o figures/cp_curve.png \
+    -- uv run python scripts/plot_cp.py
+```
+
+figmint hashed the inputs, ran the command, hashed the output, and recorded all
+of it. It did not read the script, and it does not need to.
+
+figmint also recorded `scripts/plot_cp.py`, which was never passed with `-i`.
+Any file the command names is hashed too—forgetting the script is the easiest
+mistake to make and among the worst to live with, since it is the input most
+likely to change and its omission would leave the figure looking current after
+the code that drew it was rewritten.
+
+### The environment is an input
+
+The command has to go through a manager with a deterministic lock file—here
+`uv run`, so `uv.lock` is recorded alongside the CSV. That is not bookkeeping.
+The same script under a different matplotlib draws a different figure, and a
+record naming only the data would call that unchanged.
+
+### Going stale
+
+```sh
+make break     # edits the data
+figmint status # the figure is now out of date
+```
+
+The check compares the hash of every recorded input against the file on disk.
+There is no cache to invalidate and no timestamp to be confused by; either the
+bytes match what was recorded or they do not.
+
+::: {.callout-warning}
+`figmint status` reporting a figure as stale means the figure is stale. The fix
+is to regenerate it—never to edit the hashes in `figmint.toml`. That file is
+evidence, and a record edited to match files it does not describe is
+indistinguishable from a forged one.
+:::
+
+## The data behind it
+
+The block is not only for figures. Point it at a CSV and it renders the numbers
+as a table, numbered and cross-referenceable like any other, with the same
+provenance panel underneath—and this is where the record earns the most,
+because a CSV cannot carry Content Credentials at all. For
+`data/performance.csv` the line in `figmint.toml` is the *only* provenance
+there is.
+
+::: {.figmint src="data/performance.csv" #tbl-performance}
+The measurements underlying [@fig-performance].
+:::
+
+The eleven points in [@tbl-performance] are the whole dataset.
+
+## The whole document
+
+A document is a composite too—of every artifact it embeds. The graph is the
+record itself, drawn: `figmint.toml` is already a DAG, so nothing here can
+disagree with the freshness reported beside it.
+
+::: {.figmint-provenance artifact="_site/index.html" table="true" graph="true"}
+:::
+
+Read it left to right and you have the answer to "where did this figure come
+from": a CSV is read by a script, running under the environment the lock file
+pins, to make the plot; the plot makes the page. The script sits *in* the
+chain rather than beside it, because that is what happened—a figure is not the
+sum of a dataset, a lock and some code stirred together. Rounded nodes are raw
+inputs; nothing in the project produced them.
+
+figmint never reads the script, so that edge is inferred from the data and the
+code having been inputs to the same command. It is the claim the record was
+already making, drawn the way a reader traces it.
+
+Two kinds of circularity had to be kept out of the way. `figmint.toml` is
+deliberately *not* an input of the document, even though this filter reads it
+to draw the panels above—recording the file that `figmint run` itself writes
+would make the document stale the instant it finished building.
+
+The subtler one is that a document cannot honestly report on its *own*
+freshness from inside itself. While this page is being written the hash in the
+record still describes the previous build, so the panel above would call itself
+out of date on every render—permanently, and in the one place nobody can act
+on it. That is what the `artifact=` option is for: it names this document's
+output so the panel can show how to rebuild it and leave it out of its own
+tally. `figmint status` checks it from outside, where the answer has settled.
+
+## Where the chain ends
+
+Follow any figure back far enough and you reach a file figmint did not make.
+Here that is `data/performance.csv`—measurements—and `scripts/plot_cp.py`, the
+code that drew the plot. `figmint run` cannot record where those came from,
+because figmint was not there.
+
+Left alone they are the hole in the middle of an otherwise checkable record: a
+figure that is current in every link, resting on data nobody can place. Every
+check above them passes, which is what makes the gap easy to miss. So a primary
+artifact is *declared*, and the declaration says which kind of claim it is:
+
+```sh
+figmint declare data/performance.csv --mine
+figmint declare scripts/plot_cp.py --mine --with-ai 'Claude Opus 5'
+```
+
+`--mine` is an attestation—nothing verifies it, and figmint says so wherever it
+is displayed. A DOI resolves to something a reader can fetch; `--git` and
+`--calkit` name a location pinned to a revision.
+
+Scripts count too, and so does generative AI. A model can produce a file but it
+cannot answer for one, so a tool is named *alongside* an accountable person
+rather than instead of one. A `.py` file has nowhere to put a manifest, so the
+record is the only place that disclosure can live, and the panel says *per the
+record*.
+
+## Live preview
+
+`quarto preview` re-renders when *its own* sources change—this file,
+`_quarto.yml`, the images it links. A change to `scripts/plot_cp.py` is
+invisible to it, so the panels above would keep showing the state from the last
+render even though the figure had gone stale.
+
+`make preview` closes that gap by watching everything figmint records as an
+input and touching this file when any of it moves, which is the one thing
+Quarto does notice. Edit the plotting script with the preview open and the
+panels go red on their own.
+
+One caveat, and it is the one people hit first. VS Code's Quarto extension
+starts its preview with `--no-watch-inputs`, which turns off re-rendering on
+file changes entirely—the extension re-renders when you *save this document*
+and at no other time. Under that preview nothing on disk can make the panels
+update, including the touch above. Run `make preview` in a terminal, or save
+this file after editing a script.
+
+When they do, `figmint rebuild` puts it right: the record knows the command
+behind every artifact and the order they depend on each other in, so it runs
+the repair sequence rather than printing it for you to retype.
+
+The HTML is recorded but **not signed**: c2pa does not recognize the type at
+all, so the page you are reading cannot carry a manifest under any tool. For
+those outputs `figmint.toml` is the only provenance there is, which is exactly
+why the warning at the top of it is not decoration.

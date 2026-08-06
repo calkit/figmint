@@ -354,3 +354,83 @@ dataset is invisible to it, so the panels keep showing the previous render and
 a stale figure looks current for as long as the tab is open. The example's
 `make serve` works around this by watching everything figmint records as an
 input and touching the document when any of it moves.
+
+### Quarto
+
+The same panels, in Quarto. Install the extension into a project and wire it
+into `_quarto.yml`:
+
+```sh
+figmint quarto install
+```
+
+```yaml
+filters:
+  - at: pre-ast
+    path: figmint
+```
+
+It comes from the package rather than from `quarto add` because the Lua filter
+and the `figmint-quarto` executable it spawns speak a protocol private to
+figmint, and installing them together is what keeps the two the same version.
+
+`at: pre-ast` is not decoration. Quarto builds callouts, figure numbers, and
+cross-references in its own filters, so a panel emitted after them is a grey
+box sitting under an unnumbered picture — it renders, and everything about it
+is subtly wrong.
+
+A fenced div does what MyST's directive does, because it is the one Quarto
+construct that takes a path, options, and a caption that is _parsed_ — so
+citations and cross-references inside a caption keep working:
+
+```
+::: {.figmint src="figures/composite.svg" #fig-performance width="95%"}
+Power coefficient against tip speed ratio.
+:::
+```
+
+Point it at a `.csv` or `.tsv` and it renders the numbers as a table, numbered
+and cross-referenceable like any other, with the same provenance panel
+underneath. Anything that is neither a picture nor a table renders as its
+filename with the panel attached:
+
+```
+::: {.figmint src="data/performance.csv" #tbl-performance rows="25"}
+The measurements underlying [@fig-performance].
+:::
+```
+
+The document-level panel takes the same `artifact` option, naming the
+document's own output(s) so it can show the rebuild command and leave them out
+of its own freshness tally:
+
+```
+::: {.figmint-provenance artifact="_site/index.html" table="true" graph="true"}
+:::
+```
+
+Everything that decides _what to say_ — the chain, the AI disclosure, the
+headline, the truncation note — is the same Python that answers `figmint
+status` and renders the MyST panels. The Lua half only turns those nodes into
+Pandoc's AST, so a document built either way says the same thing.
+
+Two things are Quarto-specific and worth knowing. The derivation graph is drawn
+with Quarto's own bundled Mermaid, asked for as an HTML dependency: Quarto
+renders Mermaid in its _engine_, before pandoc runs, so a filter cannot produce
+a diagram the ordinary way. That works in HTML; in a format with no Mermaid
+runtime — PDF, docx — the graph falls back to its source rather than
+disappearing.
+
+The second is live preview, and it has a sharp edge worth knowing before you
+hit it. `quarto preview`, like `myst start`, re-renders only when one of _its
+own_ sources changes: the `.qmd`, `_quarto.yml`, a linked image. Editing a
+plotting script is invisible to it, so the panels keep showing the previous
+render and a stale figure looks current for as long as the tab is open. The
+example's `make preview` closes that by watching everything figmint records as
+an input and touching the document when any of it moves.
+
+**That workaround does not work under VS Code's Quarto extension**, which
+launches `quarto preview --no-watch-inputs` and re-renders only when you save
+the document it is previewing. With input watching off, nothing on the
+filesystem can trigger a render — not the script, and not a touched `.qmd`. Use
+`make preview` in a terminal, or save the `.qmd` after editing a script.

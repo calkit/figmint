@@ -127,11 +127,18 @@ disagree with the freshness reported beside it.
 :graph: true
 :::
 
-Read it right to left and you have the answer to "where did this figure come
-from": a CSV and a lock file make the plot, the plot and an imported schematic
-make the diagram, the diagram makes the published picture. Rounded nodes are raw
-inputs — nothing in the project produced them, which for `turbine.png` is
-exactly the fact its credentials disclose.
+Read it left to right and you have the answer to "where did this figure come
+from": a CSV is read by a script, running under the environment the lock file
+pins, to make the plot; the plot and an imported schematic make the diagram;
+the diagram makes the published picture. The script sits _in_ the chain rather
+than beside it, because that is what happened — a figure is not the sum of a
+dataset, a lock and some code stirred together. Rounded nodes are raw inputs —
+nothing in the project produced them, which for `turbine.png` is exactly the
+fact its credentials disclose.
+
+figmint never reads the script, so that edge is inferred from the data and the
+code having been inputs to the same command. It is the claim the record was
+already making, drawn the way a reader traces it.
 
 ## The data behind it
 

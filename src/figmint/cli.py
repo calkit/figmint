@@ -315,6 +315,26 @@ def cmd_gimp_export(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_quarto_install(args: argparse.Namespace) -> int:
+    from .quarto import FILTER_CONFIG, install_extension
+
+    try:
+        target = install_extension(args.directory)
+    except OSError as exc:
+        print(f"{exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    print(f"installed {target}")
+    # The filter has to run before Quarto's own, and nothing in the extension
+    # can say so: `_extension.yml` has no place to put a position. Printing the
+    # block is the difference between a working panel and a grey box with no
+    # figure number under it.
+    print("\nadd this to _quarto.yml (or the document's front matter):\n")
+    for line in FILTER_CONFIG.splitlines():
+        print(f"   {line}")
+    return EXIT_OK
+
+
 def cmd_rebuild(args: argparse.Namespace) -> int:
     from .drawio import DrawioError
     from .rebuild import RebuildError, rebuild
@@ -554,6 +574,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--drawio", default=None, help="path to the draw.io app"
     )
     drawio_export.set_defaults(func=cmd_drawio_export)
+
+    quarto = sub.add_parser("quarto", help="Quarto documents")
+    quarto_sub = quarto.add_subparsers(dest="quarto_command", required=True)
+    quarto_install = quarto_sub.add_parser(
+        "install",
+        help="install the Quarto extension into a project",
+        description=(
+            "Copy the figmint filter into <project>/_extensions/figmint. It "
+            "comes from this package rather than from `quarto add` because "
+            "the filter and `figmint-quarto` speak a private protocol and "
+            "have to be the same version."
+        ),
+    )
+    quarto_install.add_argument(
+        "directory",
+        nargs="?",
+        default=Path("."),
+        type=Path,
+        help="the Quarto project (default: the current directory)",
+    )
+    quarto_install.set_defaults(func=cmd_quarto_install)
 
     gimp = sub.add_parser("gimp", help="GIMP documents")
     gimp_sub = gimp.add_subparsers(dest="gimp_command", required=True)

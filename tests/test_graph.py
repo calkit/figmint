@@ -7,6 +7,7 @@ freshness reported beside it would be worse than no diagram.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ def project(tmp_path: Path) -> Path:
     for name in (
         "data.csv",
         "uv.lock",
+        "plot.py",
         "plot.png",
         "turbine.png",
         "c.drawio",
@@ -41,6 +43,7 @@ def project(tmp_path: Path) -> Path:
                     hash_file(tmp_path / "uv.lock"),
                     kind="environment",
                 ),
+                Input("plot.py", hash_file(tmp_path / "plot.py"), kind="code"),
             ],
         )
     )
@@ -72,6 +75,7 @@ class TestBuilding:
         assert {n.id for n in graph.nodes} == {
             "data.csv",
             "uv.lock",
+            "plot.py",
             "plot.png",
             "turbine.png",
             "c.drawio",
@@ -86,6 +90,76 @@ class TestBuilding:
         assert ("c.drawio", "c.svg") in {
             (e.source, e.target) for e in graph.edges
         }
+
+    def test_data_and_environment_run_through_the_script(self, project: Path):
+        """The script is what did the work, not a third ingredient beside the
+        data.
+
+        Drawn flat, a figure looks like the sum of a CSV, a lock file and some
+        code — which is not how anyone thinks about it. The data was read by
+        the script, and the script ran under the environment, so the picture
+        is a chain rather than a fan-in.
+        """
+        edges = {(e.source, e.target) for e in build(project).edges}
+        assert ("data.csv", "plot.py") in edges
+        assert ("uv.lock", "plot.py") in edges
+        assert ("plot.py", "plot.png") in edges
+        # And nothing takes the short way round it.
+        assert ("data.csv", "plot.png") not in edges
+        assert ("uv.lock", "plot.png") not in edges
+
+    def test_two_scripts_stay_a_fan_in(self, tmp_path: Path):
+        """With one script the routing is a reading of the record; with two
+        there is no saying which read the data, and a guess in a provenance
+        diagram is worse than a fan-in."""
+        (tmp_path / ".git").mkdir()
+        for name in ("data.csv", "a.py", "b.py", "out.png"):
+            (tmp_path / name).write_text(name)
+        store = Store.load(tmp_path)
+        store.record(
+            Artifact(
+                path="out.png",
+                hash=hash_file(tmp_path / "out.png"),
+                inputs=[
+                    Input("data.csv", hash_file(tmp_path / "data.csv")),
+                    Input("a.py", hash_file(tmp_path / "a.py"), kind="code"),
+                    Input("b.py", hash_file(tmp_path / "b.py"), kind="code"),
+                ],
+            )
+        )
+        store.save()
+        edges = {(e.source, e.target) for e in build(tmp_path).edges}
+        assert ("data.csv", "out.png") in edges
+        assert ("a.py", "out.png") in edges
+        assert ("b.py", "out.png") in edges
+
+    def test_a_document_with_no_script_keeps_its_lock_edge(
+        self, tmp_path: Path
+    ):
+        """Nothing to route through: a page built by `quarto render` has no
+        script, so the lock still points straight at the output."""
+        (tmp_path / ".git").mkdir()
+        for name in ("index.qmd", "uv.lock", "index.html"):
+            (tmp_path / name).write_text(name)
+        store = Store.load(tmp_path)
+        store.record(
+            Artifact(
+                path="index.html",
+                hash=hash_file(tmp_path / "index.html"),
+                inputs=[
+                    Input("index.qmd", hash_file(tmp_path / "index.qmd")),
+                    Input(
+                        "uv.lock",
+                        hash_file(tmp_path / "uv.lock"),
+                        kind="environment",
+                    ),
+                ],
+            )
+        )
+        store.save()
+        edges = {(e.source, e.target) for e in build(tmp_path).edges}
+        assert ("uv.lock", "index.html") in edges
+        assert ("index.qmd", "index.html") in edges
 
     def test_a_recorded_file_is_an_artifact_even_when_used_as_an_input(
         self, project: Path
@@ -159,7 +233,10 @@ class TestMermaid:
                 ("classDef", "class ")
             ):
                 continue
-            identifier = line.strip().split("[")[0].split("(")[0]
+            # Every shape opener, `>` included: a script node is `id>"label"]`
+            # and splitting only on brackets would read the label as part of
+            # the identifier and pass whatever it found there.
+            identifier = re.split(r"[\[(>]", line.strip())[0]
             assert "." not in identifier and "/" not in identifier
 
     def test_distinct_paths_do_not_collide(self, tmp_path: Path):

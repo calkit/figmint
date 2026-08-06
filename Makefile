@@ -38,3 +38,12 @@ example: ## Build the MyST example end to end.
 .PHONY: clean-example
 clean-example: ## Remove the MyST example's build output.
 	@$(MAKE) -C examples/myst clean
+
+.PHONY: example-quarto
+example-quarto: ## Build the Quarto example end to end.
+	@echo "🚀 Building the Quarto example"
+	@$(MAKE) -C examples/quarto extension declare all
+
+.PHONY: clean-example-quarto
+clean-example-quarto: ## Remove the Quarto example's build output.
+	@$(MAKE) -C examples/quarto clean

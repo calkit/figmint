@@ -1,0 +1,15 @@
+[project]
+# A real project environment, so `uv run` has a lock file for figmint to record
+# as an input. That is not incidental: the same script under a different
+# matplotlib draws a different figure, and the lock is what makes that visible.
+name = "figmint-quarto-example"
+version = "0.1.0"
+description = "Quarto document whose figures carry their provenance"
+requires-python = ">=3.12"
+dependencies = [
+    "figmint-fresh",
+    "matplotlib>=3.8",
+]
+
+[tool.uv.sources]
+figmint-fresh = { path = "../..", editable = true }

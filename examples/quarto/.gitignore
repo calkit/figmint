@@ -1,0 +1,11 @@
+# Everything here is produced by `make all`, including the record itself: the
+# hashes in figmint.toml describe files built on the machine that ran it, so
+# committing them would ship a record that describes somebody else's bytes.
+/_extensions/
+/_site/
+/.quarto/
+/figures/
+/figmint.toml
+/uv.lock
+
+**/*.quarto_ipynb

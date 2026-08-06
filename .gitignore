@@ -215,3 +215,7 @@ _build/
 
 # macOS Finder metadata
 .DS_Store
+
+/.luarc.json
+
+TODO.md

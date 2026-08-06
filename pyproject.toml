@@ -19,6 +19,9 @@ figmint = "figmint.cli:main"
 # The MyST executable-plugin entry point. mystmd spawns this by path, so it has
 # to exist as a real executable file rather than a `figmint myst` subcommand.
 figmint-myst = "figmint.myst:main"
+# The same, for Quarto: the Lua filter spawns this by name to get the nodes it
+# turns into Pandoc's AST.
+figmint-quarto = "figmint.quarto:main"
 
 [build-system]
 requires = ["hatchling>=1.5.0", "hatch-vcs>=0.3.0"]

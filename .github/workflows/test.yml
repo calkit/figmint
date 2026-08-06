@@ -29,5 +29,11 @@ jobs:
           git config --global init.defaultBranch main
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
+      # The Lua half of the Quarto extension can only be exercised by Quarto,
+      # and it fails quietly when it fails: a filter at the wrong position
+      # still renders, it just stops saying anything. Without this the
+      # end-to-end tests skip and nobody notices.
+      - name: Setup Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
       - name: Run tests
         run: uv run pytest --durations=10
