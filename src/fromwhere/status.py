@@ -1,4 +1,4 @@
-"""`figmint status` — is this artifact still an honest picture of its inputs?
+"""`fromwhere status` — is this artifact still an honest picture of its inputs?
 
 A recorded artifact is stale when any input's bytes no longer hash to what the
 record says, or when the artifact itself has changed since it was recorded.
@@ -6,10 +6,10 @@ Those are different failures and are reported separately:
 
   * **An input changed.** The artifact is out of date; regenerate it.
   * **The artifact changed.** Something rewrote the output without going
-    through figmint, so the record no longer describes the file it names.
+    through fromwhere, so the record no longer describes the file it names.
 
-Neither is repaired by editing `figmint.toml`, which is the one thing a reader
-in a hurry might try. `status` says what to do instead.
+Neither is repaired by editing `provenance.toml`, which is the one thing a
+reader in a hurry might try. `status` says what to do instead.
 
 A *declared* artifact is not checked against its own hash. Nothing produced it,
 so its bytes changing means a person edited it, and what matters about that is
@@ -37,7 +37,7 @@ class State(str, Enum):
     STALE = "stale"
     MISSING = "missing"
     #: A *produced* artifact no longer matches the record: something rewrote it
-    #: without going through figmint.
+    #: without going through fromwhere.
     MODIFIED = "modified"
     #: Nothing recorded for this path at all.
     UNTRACKED = "untracked"
@@ -163,13 +163,13 @@ def check_artifact(store: Store, artifact: Artifact) -> ArtifactStatus:
     # Nor is anything lost by not checking. What matters about an edit is
     # whether it reached an output, and that is already recorded — every output
     # carries the hash of each input as it was when the output was made, and
-    # those are recomputed whenever `figmint run` regenerates it. An edit that
-    # affects something shows up there; an edit that affects nothing is not a
-    # finding.
+    # those are recomputed whenever `fromwhere run` regenerates it. An edit
+    # that affects something shows up there; an edit that affects nothing is
+    # not a finding.
     if artifact.command and hash_file(target) != artifact.hash:
         status.state = State.MODIFIED
         status.detail = (
-            "the artifact was changed without going through figmint, so the "
+            "the artifact was changed without going through fromwhere, so the "
             "record no longer describes it"
         )
     return status
@@ -183,18 +183,18 @@ def project_store(path: Path | None = None) -> Store:
 def rebuild_command(artifact: Artifact) -> str | None:
     """The command that would bring this artifact up to date.
 
-    Reconstructed as a full `figmint run` rather than handed back as the bare
+    Reconstructed as a full `fromwhere run` rather than handed back as the bare
     command that was recorded: re-running the inner command directly would
-    produce the file *outside* figmint, and the record would then report it as
-    modified — turning "stale" into "tampered with" and making things worse.
+    produce the file *outside* fromwhere, and the record would then report it
+    as modified — turning "stale" into "tampered with" and making things worse.
     """
     if not artifact.command:
         return None
-    if artifact.command.startswith("figmint "):
-        # Already a figmint invocation: `drawio export`, and friends.
+    if artifact.command.startswith("fromwhere "):
+        # Already a fromwhere invocation: `drawio export`, and friends.
         return artifact.command
 
-    parts = ["figmint", "run"]
+    parts = ["fromwhere", "run"]
     for item in artifact.inputs:
         # The lock file is discovered from the command, not passed in, and the
         # script is inferred — repeating either would be noise the user then has
@@ -323,7 +323,7 @@ def check_path(path: Path) -> ArtifactStatus:
         return ArtifactStatus(
             path=key,
             state=State.UNTRACKED,
-            detail="nothing recorded for this path; produce it with `figmint run`",
+            detail="nothing recorded for this path; produce it with `fromwhere run`",
         )
     report = check_artifact(store, artifact)
     report.upstream = _upstream_trouble(store, key)

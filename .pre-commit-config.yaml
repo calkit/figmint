@@ -4,12 +4,14 @@ repos:
     hooks:
       - id: check-case-conflict
       - id: check-merge-conflict
-      # The example's figures are signed artifacts whose hashes figmint has
+      # The examples' figures are signed artifacts whose hashes `fromwhere` has
       # recorded, so a hook that rewrites their bytes makes the record wrong.
+      # Every example, not just the first one: the same pattern as
+      # `.prettierignore`, which has always covered all of them.
       - id: end-of-file-fixer
-        exclude: ^examples/myst/figures/
+        exclude: ^examples/[^/]+/(figures|results)/
       - id: trailing-whitespace
-        exclude: ^examples/myst/figures/
+        exclude: ^examples/[^/]+/(figures|results)/
       - id: check-yaml
         args: ["--unsafe"]
       - id: check-json

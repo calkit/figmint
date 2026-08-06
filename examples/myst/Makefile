@@ -1,14 +1,14 @@
-# The figmint loop, in a MyST document. Run from examples/myst.
+# The fromwhere loop, in a MyST document. Run from examples/myst.
 #
 # The targets are real files with real prerequisites rather than a list of
 # phony verbs, so `make` works out what needs redoing and in what order. That
-# is not just convenience: figmint's whole model is a derivation graph, and a
+# is not just convenience: fromwhere's whole model is a derivation graph, and a
 # Makefile that did not mirror it would let you rebuild the document from a
-# figure nobody had redrawn — which `figmint status` would then, correctly,
+# figure nobody had redrawn — which `fromwhere status` would then, correctly,
 # complain about.
 
 RUN     := uv run
-FIGMINT := $(RUN) figmint
+FROMWHERE := $(RUN) fromwhere
 
 DATA      := data/performance.csv
 SCRIPT    := scripts/plot_cp.py
@@ -30,10 +30,10 @@ all: $(HTML)  ## Build everything that is out of date, in order
 
 # The environment is an input to every one of these, which is why `uv.lock`
 # appears as a prerequisite: a different matplotlib draws a different figure,
-# and figmint records the lock precisely so that is visible rather than
+# and fromwhere records the lock precisely so that is visible rather than
 # assumed.
 $(FIGURE): $(DATA) $(SCRIPT) uv.lock
-	$(FIGMINT) run -i $(DATA) -o $@ -- uv run python $(SCRIPT)
+	$(FROMWHERE) run -i $(DATA) -o $@ -- uv run python $(SCRIPT)
 
 # `drawio import` is an *authoring* step — it puts a new panel on the canvas —
 # so it is not a build rule. Nothing here re-imports: each shape in the diagram
@@ -44,21 +44,21 @@ $(FIGURE): $(DATA) $(SCRIPT) uv.lock
 # `hash` live on mxCells that do not survive into a rendered SVG, so the SVG is
 # signed with every panel as an ingredient instead.
 $(COMPOSITE): $(DIAGRAM) $(FIGURE) $(SCHEMATIC)
-	$(FIGMINT) drawio export $(DIAGRAM) $@
+	$(FROMWHERE) drawio export $(DIAGRAM) $@
 
 # The document is an artifact too, and the most useful one to check: it is what
 # a reader actually receives. Its inputs are the sources it is built from —
-# `figmint status` reaches everything behind them on its own, so the figure's
+# `fromwhere status` reaches everything behind them on its own, so the figure's
 # data and script do not need repeating here.
 #
-# `figmint.toml` is deliberately *not* an input, even though the plugin reads it
-# to draw the panels. Recording the file that `figmint run` itself writes would
+# `provenance.toml` is deliberately *not* an input, even though the plugin reads it
+# to draw the panels. Recording the file that `fromwhere run` itself writes would
 # make the document stale the instant it finished building.
 #
-# Recorded but not signed: c2pa does not recognise HTML, so `figmint.toml` is
+# Recorded but not signed: c2pa does not recognise HTML, so `provenance.toml` is
 # the only provenance this output has.
 $(HTML): index.md myst.yml $(COMPOSITE) uv.lock
-	$(FIGMINT) run -i index.md -i myst.yml -i $(COMPOSITE) \
+	$(FROMWHERE) run -i index.md -i myst.yml -i $(COMPOSITE) \
 	    -o $@ -- uv run myst build --html
 
 .PHONY: plot
@@ -72,7 +72,7 @@ site: $(HTML)  ## Build the document, recording its provenance
 
 .PHONY: status
 status:  ## Is anything stale?
-	$(FIGMINT) status -v
+	$(FROMWHERE) status -v
 
 .PHONY: break
 break:  ## Change the data so the figure goes stale
@@ -89,12 +89,12 @@ restore:  ## Undo `make break`
 # myst.yml, a linked image. A change to a script or a dataset is invisible to
 # it, so the provenance panels would keep showing the previous render and a
 # stale figure would look current for as long as you left the tab open. This
-# watches everything figmint records as an input and touches index.md when any
+# watches everything fromwhere records as an input and touches index.md when any
 # of it moves, which is the one thing MyST does notice.
 define WATCH_INPUTS
 import pathlib, time, tomllib
 
-record = pathlib.Path("figmint.toml")
+record = pathlib.Path("provenance.toml")
 target = pathlib.Path("index.md")
 
 

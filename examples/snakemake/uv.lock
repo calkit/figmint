@@ -17,7 +17,7 @@ wheels = [
 ]
 
 [[package]]
-name = "figmint-snakemake-example"
+name = "fromwhere-snakemake-example"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

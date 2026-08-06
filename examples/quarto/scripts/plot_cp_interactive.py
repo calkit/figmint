@@ -7,12 +7,12 @@ available from an SVG, and it is the ordinary reason to reach for Plotly.
 `include_plotlyjs=True` inlines the library, so the file is self-contained —
 which is the point for provenance rather than for convenience. An artifact that
 fetches half of itself from a CDN at read time is not an artifact anyone can
-hash: what a reader sees depends on what that URL served them, and figmint
+hash: what a reader sees depends on what that URL served them, and fromwhere
 would be recording the wrapper rather than the figure.
 
 The cost is honest and worth stating: the file is a few megabytes, and it
 cannot carry Content Credentials at all — c2pa does not recognize HTML in
-either direction. For this figure the line in `figmint.toml` is the *only*
+either direction. For this figure the line in `provenance.toml` is the *only*
 provenance there is.
 """
 

@@ -1,14 +1,14 @@
-"""`figmint run` — produce an artifact and record where it came from.
+"""`fromwhere run` — produce an artifact and record where it came from.
 
 The whole design is in the shape of the command:
 
-    figmint run -i data/raw.csv -o figures/plot.png -- uv run plot.py
+    fromwhere run -i data/raw.csv -o figures/plot.png -- uv run plot.py
 
-figmint hashes the inputs, runs the command, hashes what came out, and writes
-all of it to `figmint.toml`. It does not inspect the script, parse the command,
-or infer anything — it observes. That is why the record can be trusted later:
-every hash in it was taken from a file that existed at a known moment, either
-side of a command that actually ran.
+fromwhere hashes the inputs, runs the command, hashes what came out, and writes
+all of it to `provenance.toml`. It does not inspect the script, parse the
+command, or infer anything — it observes. That is why the record can be trusted
+later: every hash in it was taken from a file that existed at a known moment,
+either side of a command that actually ran.
 
 Three things it insists on, each because the alternative produces a record that
 looks complete and is not:
@@ -146,14 +146,14 @@ def run(
         Path(output).resolve().parent.mkdir(parents=True, exist_ok=True)
 
     # Before the command, and written to disk: the command may *read* the
-    # record. A document build renders provenance panels out of `figmint.toml`,
-    # so refreshing afterwards would bake the pre-run state into the very page
-    # this run produces — it would report its own sources as edited, and only a
-    # second build would clear it.
+    # record. A document build renders provenance panels out of
+    # `provenance.toml`, so refreshing afterwards would bake the pre-run state
+    # into the very page this run produces — it would report its own sources as
+    # edited, and only a second build would clear it.
     #
     # Refreshing early is honest on its own terms: it records that these bytes
-    # are what figmint observed, which is true whether or not the command then
-    # succeeds.
+    # are what fromwhere observed, which is true whether or not the command
+    # then succeeds.
     refreshed = _refresh_declared(recorded_inputs, store)
     if refreshed:
         store.save()
@@ -220,15 +220,15 @@ def _refresh_declared(inputs: list[Input], store: Store) -> list[str]:
     A declaration answers "who is responsible for this file", and that does not
     change when somebody edits a line of it. But `declare` also records a hash,
     and without this every edit to a declared script or document left it sitting
-    in `figmint status` as *modified* until it was declared again — a treadmill
-    that taught people to re-run `declare` reflexively, which is the last habit
-    this tool should be building.
+    in `fromwhere status` as *modified* until it was declared again — a
+    treadmill that taught people to re-run `declare` reflexively, which is the
+    last habit this tool should be building.
 
-    So a run refreshes it: figmint has just watched the file being used, which
-    is first-hand observation rather than a re-assertion of somebody's claim.
-    The authorship is untouched.
+    So a run refreshes it: fromwhere has just watched the file being used,
+    which is first-hand observation rather than a re-assertion of somebody's
+    claim. The authorship is untouched.
 
-    Only artifacts with no command are eligible. Anything figmint produced
+    Only artifacts with no command are eligible. Anything fromwhere produced
     itself has a hash that is *evidence*, and quietly rewriting that is exactly
     the tampering the record exists to catch.
     """

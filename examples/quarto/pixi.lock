@@ -1419,7 +1419,7 @@ packages:
   size: 388453
   timestamp: 1764777142545
 - pypi: ../..
-  name: figmint-fresh
+  name: fromwhere
   requires_dist:
   - c2pa-python>=0.37.2
   - cryptography>=49.0.0

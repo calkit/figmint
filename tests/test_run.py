@@ -1,9 +1,9 @@
-"""`figmint run`, and the environment gate in front of it.
+"""`fromwhere run`, and the environment gate in front of it.
 
-The refusal is the interesting part. figmint will not record an artifact whose
-environment it cannot name, because "this came from that script and that CSV" is
-a claim about two files — and the same script under a different NumPy produces a
-different picture without either of them changing.
+The refusal is the interesting part. fromwhere will not record an artifact
+whose environment it cannot name, because "this came from that script and that
+CSV" is a claim about two files — and the same script under a different NumPy
+produces a different picture without either of them changing.
 """
 
 from __future__ import annotations
@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from figmint.environments import EnvironmentError_, describe
-from figmint.run import RunError, run
-from figmint.status import State, check_path
-from figmint.store import Store, hash_file
+from fromwhere.environments import EnvironmentError_, describe
+from fromwhere.run import RunError, run
+from fromwhere.status import State, check_path
+from fromwhere.store import Store, hash_file
 
 
 @pytest.fixture
@@ -43,7 +43,7 @@ class TestEnvironmentGate:
         """The whole value of the record is that everything in it is checkable.
 
         Recording an artifact whose environment is unknown would put a claim in
-        figmint.toml the file cannot support.
+        provenance.toml the file cannot support.
         """
         with pytest.raises(
             EnvironmentError_, match="not run through a recognized"
@@ -95,7 +95,7 @@ class TestEnvironmentGate:
                 stderr="",
             )
 
-        monkeypatch.setattr("figmint.environments.subprocess.run", fake_run)
+        monkeypatch.setattr("fromwhere.environments.subprocess.run", fake_run)
         env = describe(
             ["calkit", "xenv", "-n", "main", "--", "python", "x.py"], project
         )
@@ -131,7 +131,7 @@ class TestEnvironmentGate:
                 stderr="",
             )
 
-        monkeypatch.setattr("figmint.environments.subprocess.run", fake_run)
+        monkeypatch.setattr("fromwhere.environments.subprocess.run", fake_run)
         assert describe(command, project).manager == "calkit"
 
     def test_a_calkit_command_needs_an_environment_name(self, project: Path):
@@ -153,7 +153,7 @@ class TestEnvironmentGate:
                 stderr="",
             )
 
-        monkeypatch.setattr("figmint.environments.subprocess.run", fake_run)
+        monkeypatch.setattr("fromwhere.environments.subprocess.run", fake_run)
         with pytest.raises(EnvironmentError_, match="no lock file"):
             describe(["calkit", "xenv", "-n", "main", "--", "true"], project)
 
@@ -248,7 +248,7 @@ class TestRun:
         )
         assert "not-a-file" not in [i.path for i in result.artifacts[0].inputs]
 
-    def test_the_record_lands_in_figmint_toml(self, project: Path):
+    def test_the_record_lands_in_fromwhere_toml(self, project: Path):
         _script(project, "open('out.txt','w').write('hi')")
         run(
             self.command(),
@@ -332,7 +332,7 @@ class TestDeclaredInputRefresh:
 
     A declaration answers "who is responsible for this file", and that does not
     change when somebody edits a line of it. Before this, every edit left the
-    file sitting in `figmint status` as *modified* until it was declared again —
+    file sitting in `fromwhere status` as *modified* until it was declared again —
     a treadmill that teaches people to re-run `declare` reflexively, which is
     the last habit this tool should build.
     """
@@ -341,8 +341,8 @@ class TestDeclaredInputRefresh:
         return ["uv", "run", "--no-project", sys.executable, "make.py"]
 
     def declared_script(self, project: Path) -> None:
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         _script(project, "open('out.txt','w').write('one')")
         declare(project / "make.py", attested(Author("A Researcher")))
@@ -382,7 +382,7 @@ class TestDeclaredInputRefresh:
     def test_a_produced_artifact_is_never_refreshed(self, project: Path):
         """The line that matters.
 
-        A hash figmint wrote itself is evidence. Quietly rewriting it is exactly
+        A hash fromwhere wrote itself is evidence. Quietly rewriting it is exactly
         the tampering the record exists to catch, so only declarations — which
         nothing produced — are eligible.
         """
@@ -407,7 +407,7 @@ class TestDeclaredInputRefresh:
 class TestRefreshTiming:
     """The refresh has to land before the command, not after.
 
-    A document build renders provenance panels out of `figmint.toml`. If the
+    A document build renders provenance panels out of `provenance.toml`. If the
     refresh happened afterwards, the page produced by that very run would report
     its own sources as edited, and only a *second* build would clear it — which
     is exactly the sort of "run it twice" behavior nobody ever discovers.
@@ -417,8 +417,8 @@ class TestRefreshTiming:
         return ["uv", "run", "--no-project", sys.executable, "make.py"]
 
     def test_the_command_sees_the_refreshed_record(self, project: Path):
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         _script(project, "x = 1")
         declare(project / "make.py", attested(Author("A Researcher")))
@@ -428,7 +428,7 @@ class TestRefreshTiming:
         _script(
             project,
             "import shutil;"
-            "shutil.copy('figmint.toml','seen.toml');"
+            "shutil.copy('provenance.toml','seen.toml');"
             "open('out.txt','w').write('done')",
         )
         run(
@@ -445,8 +445,8 @@ class TestRefreshTiming:
         self, project: Path
     ):
         """The refresh describes the input bytes, which is true either way."""
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         _script(project, "x = 1")
         declare(project / "make.py", attested(Author("A Researcher")))

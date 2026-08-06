@@ -1,14 +1,14 @@
-# The figmint loop, in a Quarto document. Run from examples/quarto.
+# The fromwhere loop, in a Quarto document. Run from examples/quarto.
 #
 # The targets are real files with real prerequisites rather than a list of
 # phony verbs, so `make` works out what needs redoing and in what order. That
-# is not just convenience: figmint's whole model is a derivation graph, and a
+# is not just convenience: fromwhere's whole model is a derivation graph, and a
 # Makefile that did not mirror it would let you rebuild the document from a
-# figure nobody had redrawn — which `figmint status` would then, correctly,
+# figure nobody had redrawn — which `fromwhere status` would then, correctly,
 # complain about.
 
 RUN     := pixi run
-FIGMINT := $(RUN) figmint
+FROMWHERE := $(RUN) fromwhere
 
 DATA      := data/performance.csv
 CP_SCRIPT := scripts/plot_cp.py
@@ -31,39 +31,39 @@ help:  ## Show available targets
 all: $(HTML)  ## Build everything that is out of date, in order
 
 .PHONY: extension
-extension: _extensions/figmint/figmint.lua  ## Install the Quarto filter
+extension: _extensions/fromwhere/fromwhere.lua  ## Install the Quarto filter
 
 # Installed from the package rather than with `quarto add`, because the filter
-# and `figmint-quarto` speak a protocol private to figmint and have to be the
+# and `fromwhere-quarto` speak a protocol private to fromwhere and have to be the
 # same version.
-_extensions/figmint/figmint.lua: pixi.lock
-	$(FIGMINT) quarto install
+_extensions/fromwhere/fromwhere.lua: pixi.lock
+	$(FROMWHERE) quarto install
 
 # The declarations. Nothing produces a dataset or a plotting script, so without
 # these the record has a hole at the bottom that every check above it passes
 # straight over.
 .PHONY: declare
 declare:  ## Say where the primary artifacts came from
-	$(FIGMINT) declare $(DATA) --mine
-	$(FIGMINT) declare $(CP_SCRIPT) --mine --with-ai 'Claude Opus 5'
-	$(FIGMINT) declare $(CT_SCRIPT) --mine --with-ai 'Claude Opus 5'
-	$(FIGMINT) declare $(DIAGRAM) --mine
-	$(FIGMINT) declare index.qmd --mine
-	$(FIGMINT) declare _quarto.yml --mine
+	$(FROMWHERE) declare $(DATA) --mine
+	$(FROMWHERE) declare $(CP_SCRIPT) --mine --with-ai 'Claude Opus 5'
+	$(FROMWHERE) declare $(CT_SCRIPT) --mine --with-ai 'Claude Opus 5'
+	$(FROMWHERE) declare $(DIAGRAM) --mine
+	$(FROMWHERE) declare index.qmd --mine
+	$(FROMWHERE) declare _quarto.yml --mine
 
 # The environment is an input to these, which is why `pixi.lock` is a
-# prerequisite: a different Plotly draws a different figure, and figmint
+# prerequisite: a different Plotly draws a different figure, and fromwhere
 # records the lock precisely so that is visible rather than assumed.
 $(CP): $(DATA) $(CP_SCRIPT) pixi.lock
-	$(FIGMINT) run -i $(DATA) -o $@ -- pixi run python $(CP_SCRIPT)
+	$(FROMWHERE) run -i $(DATA) -o $@ -- pixi run python $(CP_SCRIPT)
 
 $(CT): $(DATA) $(CT_SCRIPT) pixi.lock
-	$(FIGMINT) run -i $(DATA) -o $@ -- pixi run python $(CT_SCRIPT)
+	$(FROMWHERE) run -i $(DATA) -o $@ -- pixi run python $(CT_SCRIPT)
 
 # Recorded but not signed, and not by choice: c2pa does not recognize HTML in
-# either direction, so `figmint.toml` is the only provenance this figure has.
+# either direction, so `provenance.toml` is the only provenance this figure has.
 $(CP_HTML): $(DATA) scripts/plot_cp_interactive.py pixi.lock
-	$(FIGMINT) run -i $(DATA) -o $@ \
+	$(FROMWHERE) run -i $(DATA) -o $@ \
 	    -- pixi run python scripts/plot_cp_interactive.py
 
 # `drawio import` is an *authoring* step — it puts a new panel on the canvas —
@@ -76,27 +76,27 @@ $(CP_HTML): $(DATA) scripts/plot_cp_interactive.py pixi.lock
 # `hash` live on mxCells that do not survive into a rendered SVG, so the SVG is
 # signed with every panel as an ingredient instead.
 $(COMPOSITE): $(DIAGRAM) $(CP) $(CT)
-	$(FIGMINT) drawio export $(DIAGRAM) $@
+	$(FROMWHERE) drawio export $(DIAGRAM) $@
 
 .PHONY: compose
 compose:  ## Author the diagram from scratch (only needed if you delete it)
-	$(FIGMINT) drawio import $(CP) $(DIAGRAM) --width 460 --x 0 --y 0
-	$(FIGMINT) drawio import $(CT) $(DIAGRAM) --width 460 --x 500 --y 0
+	$(FROMWHERE) drawio import $(CP) $(DIAGRAM) --width 460 --x 0 --y 0
+	$(FROMWHERE) drawio import $(CT) $(DIAGRAM) --width 460 --x 500 --y 0
 
 # The document is an artifact too, and the most useful one to check: it is what
 # a reader actually receives. Its inputs are the sources it is built from —
-# `figmint status` reaches everything behind them on its own, so the figure's
+# `fromwhere status` reaches everything behind them on its own, so the figure's
 # data and script do not need repeating here.
 #
-# `figmint.toml` is deliberately *not* an input, even though the filter reads it
-# to draw the panels. Recording the file that `figmint run` itself writes would
+# `provenance.toml` is deliberately *not* an input, even though the filter reads it
+# to draw the panels. Recording the file that `fromwhere run` itself writes would
 # make the document stale the instant it finished building.
 #
-# Recorded but not signed: c2pa does not recognize HTML, so `figmint.toml` is
+# Recorded but not signed: c2pa does not recognize HTML, so `provenance.toml` is
 # the only provenance this output has.
 $(HTML): index.qmd _quarto.yml $(COMPOSITE) $(CP_HTML) pixi.lock \
-		_extensions/figmint/figmint.lua
-	$(FIGMINT) run -i index.qmd -i _quarto.yml -i $(COMPOSITE) -i $(CP_HTML) \
+		_extensions/fromwhere/fromwhere.lua
+	$(FROMWHERE) run -i index.qmd -i _quarto.yml -i $(COMPOSITE) -i $(CP_HTML) \
 	    -o $@ -- pixi run quarto render
 
 pixi.lock: pixi.toml
@@ -113,7 +113,7 @@ site: $(HTML)  ## Build the document, recording its provenance
 
 .PHONY: status
 status:  ## Is anything stale?
-	$(FIGMINT) status -v
+	$(FROMWHERE) status -v
 
 .PHONY: break
 break:  ## Change the data so the figure goes stale
@@ -130,7 +130,7 @@ restore:  ## Undo `make break`
 # _quarto.yml, a linked image. A change to a script or a dataset is invisible
 # to it, so the provenance panels would keep showing the previous render and a
 # stale figure would look current for as long as you left the tab open. This
-# watches everything figmint records as an input and touches index.qmd when any
+# watches everything fromwhere records as an input and touches index.qmd when any
 # of it moves, which is the one thing Quarto does notice.
 #
 # It has to be *this* preview. VS Code's Quarto extension starts its own with
@@ -140,7 +140,7 @@ restore:  ## Undo `make break`
 define WATCH_INPUTS
 import pathlib, time, tomllib
 
-record = pathlib.Path("figmint.toml")
+record = pathlib.Path("provenance.toml")
 target = pathlib.Path("index.qmd")
 
 

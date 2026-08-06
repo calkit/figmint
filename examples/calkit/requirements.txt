@@ -1,11 +1,11 @@
 # The environment Calkit builds and locks. Its lock, under `.calkit/env-locks/`,
-# is what figmint records as the environment input — asked for by name rather
+# is what fromwhere records as the environment input — asked for by name rather
 # than guessed, because Calkit is the thing that knows where its own locks live.
 #
-# figmint is deliberately *not* in here. It wraps the stage command from the
-# outside, so it belongs on PATH as a tool (`uv tool install figmint-fresh`)
+# fromwhere is deliberately *not* in here. It wraps the stage command from the
+# outside, so it belongs on PATH as a tool (`uv tool install fromwhere`)
 # rather than in the environment the science runs in. Calkit may depend on
-# figmint; figmint must not depend on Calkit, and neither belongs inside the
+# fromwhere; fromwhere must not depend on Calkit, and neither belongs inside the
 # other's environment.
 plotly>=5.22
 kaleido>=0.2

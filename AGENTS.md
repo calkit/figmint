@@ -1,4 +1,4 @@
-# Agent instructions for working on Figmint
+# Agent instructions for working on `fromwhere`
 
 See `CONTRIBUTING.md` for tool usage, style guidelines, etc.
 

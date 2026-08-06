@@ -16,21 +16,21 @@ from pathlib import Path
 
 import pytest
 
-from figmint.myst import (
+from fromwhere.myst import (
     SPEC,
     chain_items,
     document_directive,
     main,
     run_directive,
 )
-from figmint.status import State, check_path
-from figmint.store import Artifact, Input, Store, hash_file
+from fromwhere.status import State, check_path
+from fromwhere.store import Artifact, Input, Store, hash_file
 
 
 def payload(target: str, **options) -> dict:
     """The shape mystmd hands a directive, reduced to what the plugin reads."""
     return {
-        "name": "figmint",
+        "name": "fromwhere",
         "arg": target,
         "options": options,
         "body": "A caption.",
@@ -123,8 +123,8 @@ def project(tmp_path: Path, monkeypatch) -> Path:
     # Declared, so the fixture's default state is a clean one. Without this
     # every panel in this file reports incomplete provenance — correctly, and
     # unhelpfully, since almost none of these tests are about that.
-    from figmint.declare import declare
-    from figmint.origins import Author, attested
+    from fromwhere.declare import declare
+    from fromwhere.origins import Author, attested
 
     declare(tmp_path / "data.csv", attested(Author("A Researcher")))
     monkeypatch.chdir(tmp_path)
@@ -155,22 +155,23 @@ class TestProtocol:
         # One directive: a figure, a table and a whole document are the same
         # question at different scopes, and two of them made that look like two
         # features with two vocabularies to learn.
-        assert [d["name"] for d in spec["directives"]] == ["figmint"]
+        assert [d["name"] for d in spec["directives"]] == ["fromwhere"]
         assert spec["directives"][0]["arg"]["required"] is False
         options = spec["directives"][0]["options"]
         assert {"kind", "rows", "artifact", "graph"} <= set(options)
 
-    def test_the_retired_directive_names_its_replacement(
+    def test_the_retired_directives_name_their_replacement(
         self, monkeypatch, capsys
     ):
         """Only reachable from a stale plugin registration, which is exactly
         when "unsupported request" would send somebody looking in the wrong
-        place."""
-        monkeypatch.setattr("sys.stdin", io.StringIO("{}"))
-        assert main(["--directive", "figmint-provenance"]) == 1
-        assert (
-            "replaced by `figmint` with no argument" in capsys.readouterr().err
-        )
+        place. Both spellings predate the rename, so neither is a name this
+        tool has ever answered to under its current one."""
+        for retired in ("figmint", "figmint-provenance"):
+            monkeypatch.setattr("sys.stdin", io.StringIO("{}"))
+            assert main(["--directive", retired]) == 1
+            err = capsys.readouterr().err
+            assert f"`{retired}` was replaced by `fromwhere`" in err
 
     def test_the_spec_is_json_serializable(self):
         # An enum or a Path would sneak past a unit test and fail only when
@@ -180,15 +181,21 @@ class TestProtocol:
     def test_the_real_executable_answers(self, project: Path):
         """Spawned the way mystmd does it, not called in-process."""
         spec = subprocess.run(
-            [sys.executable, "-m", "figmint.myst"],
+            [sys.executable, "-m", "fromwhere.myst"],
             capture_output=True,
             text=True,
             check=True,
         )
-        assert json.loads(spec.stdout)["name"] == "figmint"
+        assert json.loads(spec.stdout)["name"] == "fromwhere"
 
         result = subprocess.run(
-            [sys.executable, "-m", "figmint.myst", "--directive", "figmint"],
+            [
+                sys.executable,
+                "-m",
+                "fromwhere.myst",
+                "--directive",
+                "fromwhere",
+            ],
             input=json.dumps(payload("plot.png")),
             capture_output=True,
             text=True,
@@ -259,8 +266,8 @@ class TestFigureNode:
     def test_the_panel_calls_it_a_table(self, project: Path):
         """Calling a table a figure is a small lie in the one place the panel
         is meant to be exact."""
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "data.csv", attested(Author("A Researcher")))
         panel = find(run_directive(payload("data.csv")), "admonition")
@@ -323,7 +330,7 @@ class TestPanel:
         # The row keeps saying it too — the headline is a summary, not a
         # replacement for the table.
         assert "undeclared" in shown
-        assert "figmint declare raw.csv --mine" in shown
+        assert "fromwhere declare raw.csv --mine" in shown
 
     def test_a_declared_input_shows_its_origin(self, project: Path):
         """The provenance of the components, not just their names.
@@ -331,8 +338,8 @@ class TestPanel:
         A composite figure is only as placeable as the pieces it is built from,
         so the panel says where each one came from.
         """
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "data.csv", attested(Author("A Researcher")))
         text = all_text(find(run_directive(payload("plot.png")), "admonition"))
@@ -344,8 +351,8 @@ class TestPanel:
     ):
         """A model cannot answer for a file, so the disclosure never appears
         without an accountable name attached to it."""
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(
             project / "data.csv",
@@ -366,15 +373,15 @@ class TestPanel:
             )
         )
         store.save()
-        assert "derived by figmint" in all_text(
+        assert "derived by fromwhere" in all_text(
             find(run_directive(payload("plot.png")), "admonition")
         )
 
     def test_a_declared_artifact_shows_its_own_origin(self, project: Path):
         """A primary has no command and no inputs, so without this the panel has
         nothing to say about the very files a declaration exists for."""
-        from figmint.declare import declare
-        from figmint.origins import parse_location
+        from fromwhere.declare import declare
+        from fromwhere.origins import parse_location
 
         declare(
             project / "data.csv",
@@ -384,8 +391,8 @@ class TestPanel:
         assert "git:github.com/u/p/data.csv@a1b2c3d" in text
 
     def test_an_attestation_is_not_dressed_up_as_proof(self, project: Path):
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "data.csv", attested(Author("A Researcher")))
         assert "nothing can verify it" in all_text(
@@ -459,7 +466,7 @@ class TestPanel:
             Artifact(
                 path="out.svg",
                 hash=hash_file(project / "out.svg"),
-                command="figmint drawio export composite.drawio out.svg",
+                command="fromwhere drawio export composite.drawio out.svg",
                 inputs=[
                     Input(
                         "composite.drawio",
@@ -506,7 +513,7 @@ class TestPanel:
         assert panel["kind"] == "danger"
         assert "is out of date" in all_text(panel)
         assert "data.csv" in all_text(panel)
-        assert "do not edit figmint.toml" in all_text(panel)
+        assert "do not edit provenance.toml" in all_text(panel)
 
     def test_ai_is_read_from_the_file_when_it_carries_credentials(
         self, project: Path, monkeypatch
@@ -514,15 +521,15 @@ class TestPanel:
         """No need to restate in the record what the file already asserts.
 
         A manifest is signed by whoever made the file, so it is the stronger
-        evidence; copying it into `figmint.toml` would create a second copy that
+        evidence; copying it into `provenance.toml` would create a second copy that
         can drift.
         """
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "data.csv", attested(Author("A Researcher")))
         monkeypatch.setattr(
-            "figmint.myst.credentials_for", lambda path: _creds(True)
+            "fromwhere.myst.credentials_for", lambda path: _creds(True)
         )
         shown = all_text(
             find(run_directive(payload("plot.png")), "admonition")
@@ -534,8 +541,8 @@ class TestPanel:
     ):
         """A `.py` or `.csv` has nowhere to put a manifest, so the record is the
         only place the disclosure can live."""
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(
             project / "data.csv",
@@ -555,15 +562,15 @@ class TestPanel:
         record deferred to the file, the AI disclosure would evaporate the first
         time someone opened it in an editor.
         """
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(
             project / "data.csv",
             attested(Author("A Researcher"), Author("Claude Opus 5", "ai")),
         )
         monkeypatch.setattr(
-            "figmint.myst.credentials_for", lambda path: _creds(False)
+            "fromwhere.myst.credentials_for", lambda path: _creds(False)
         )
         shown = all_text(
             find(run_directive(payload("plot.png")), "admonition")
@@ -587,13 +594,13 @@ class TestPanel:
         destroys the evidence."""
         (project / "data.csv").write_text("x,y\n9,9\n")
         panel = find(run_directive(payload("plot.png")), "admonition")
-        assert "do not edit figmint.toml" in all_text(panel)
+        assert "do not edit provenance.toml" in all_text(panel)
 
     def test_an_edited_artifact_is_distinguished(self, project: Path):
         (project / "plot.png").write_bytes(b"\x89PNG\r\n\x1a\ntampered")
         panel = find(run_directive(payload("plot.png")), "admonition")
         assert panel["kind"] == "danger"
-        assert "edited outside figmint" in all_text(panel)
+        assert "edited outside fromwhere" in all_text(panel)
 
     def test_an_unrecorded_artifact_says_so(self, project: Path):
         (project / "other.png").write_bytes(b"x")
@@ -755,7 +762,7 @@ class TestDocumentSelfReference:
     def test_it_says_where_its_own_freshness_is_checked(self, project: Path):
         self.record_document(project)
         panel = find(document_directive(self.options()), "admonition")
-        assert "figmint status" in all_text(panel)
+        assert "fromwhere status" in all_text(panel)
 
     def test_an_unrecorded_document_is_nudged(self, project: Path):
         """Naming an output nothing produced should say so, not stay silent."""
@@ -797,14 +804,14 @@ class TestNamingTheCause:
             Artifact(
                 path="composite.svg",
                 hash=hash_file(project / "composite.svg"),
-                command="figmint drawio export c.drawio composite.svg",
+                command="fromwhere drawio export c.drawio composite.svg",
                 inputs=[Input("plot.png", hash_file(project / "plot.png"))],
             )
         )
         store.save()
 
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "plot.py", attested(Author("A Researcher")))
 
@@ -883,8 +890,8 @@ class TestDocumentTableIsAboutOutputs:
         }
 
     def test_a_declared_source_is_not_a_row(self, project: Path):
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "data.csv", attested(Author("A Researcher")))
         assert "data.csv" not in self.summary(project)
@@ -917,7 +924,7 @@ class TestDocumentTableIsAboutOutputs:
             Artifact(
                 path="c.svg",
                 hash=hash_file(project / "c.svg"),
-                command="figmint drawio export c.drawio c.svg",
+                command="fromwhere drawio export c.drawio c.svg",
                 inputs=[Input("plot.png", hash_file(project / "plot.png"))],
             )
         )
@@ -929,8 +936,8 @@ class TestDocumentTableIsAboutOutputs:
         assert summary["c.svg"] == "⚠️ waiting on plot.png"
 
     def test_the_tally_counts_outputs(self, project: Path):
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "data.csv", attested(Author("A Researcher")))
         panel = find(
@@ -945,11 +952,11 @@ class TestFetchedOrigin:
         """The date is not trimmed to save room.
 
         An address alone reads as a citation and this one is not: it names
-        whatever is served today, so when figmint looked is the part that still
-        means something a year later.
+        whatever is served today, so when fromwhere looked is the part that
+        still means something a year later.
         """
-        from figmint.declare import declare
-        from figmint.origins import Origin
+        from fromwhere.declare import declare
+        from fromwhere.origins import Origin
 
         declare(
             project / "data.csv",

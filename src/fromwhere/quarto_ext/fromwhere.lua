@@ -1,8 +1,8 @@
 --[[
-figmint.lua — the Quarto half of figmint's provenance panels.
+fromwhere.lua — the Quarto half of fromwhere's provenance panels.
 
 Everything that decides *what to say* about an artifact lives in Python, in
-`figmint/quarto.py`, shared with the MyST plugin and with `figmint status`.
+`fromwhere/quarto.py`, shared with the MyST plugin and with `fromwhere status`.
 This file does the one thing Python cannot do from outside the render: turn the
 nodes that come back into Pandoc's AST so Quarto can number the figure, collapse
 the callout, and draw the diagram.
@@ -14,11 +14,11 @@ plain div with a colour class and a figure nobody numbered.
 
 local json = pandoc.json
 
---- The `figmint-quarto` executable, resolved once and remembered.
+--- The `fromwhere-quarto` executable, resolved once and remembered.
 --- `false` once every candidate has failed, so a document with twenty figures
 --- does not probe twenty times over.
 local command = nil
---- Set from `figmint: command:` in the document's metadata.
+--- Set from `fromwhere: command:` in the document's metadata.
 local configured = nil
 --- Mermaid support is asked of Quarto at most once per render.
 local diagrams_ready = false
@@ -35,27 +35,27 @@ local CALLOUT = {
 }
 
 local function warn(message)
-  quarto.log.warning("figmint: " .. message)
+  quarto.log.warning("fromwhere: " .. message)
 end
 
 -- --------------------------------------------------------------------------
--- Talking to figmint
+-- Talking to fromwhere
 -- --------------------------------------------------------------------------
 
 local function candidates()
   local list = {}
-  local override = os.getenv("FIGMINT_QUARTO")
+  local override = os.getenv("FROMWHERE_QUARTO")
   if override then
     table.insert(list, override)
   end
   if configured then
     table.insert(list, configured)
   end
-  table.insert(list, "figmint-quarto")
+  table.insert(list, "fromwhere-quarto")
   -- The project's own environment, which is where it is installed in practice:
-  -- figmint is a dependency of the document, not of the machine.
-  table.insert(list, ".venv/bin/figmint-quarto")
-  table.insert(list, ".venv/Scripts/figmint-quarto.exe")
+  -- fromwhere is a dependency of the document, not of the machine.
+  table.insert(list, ".venv/bin/fromwhere-quarto")
+  table.insert(list, ".venv/Scripts/fromwhere-quarto.exe")
   return list
 end
 
@@ -76,9 +76,9 @@ local function resolve()
   end
   command = false
   warn(
-    "could not run `figmint-quarto`. Install figmint in the environment this "
-      .. "document is built with (`uv add figmint-fresh`), or set "
-      .. "FIGMINT_QUARTO to its path."
+    "could not run `fromwhere-quarto`. Install fromwhere in the environment this "
+      .. "document is built with (`uv add fromwhere`), or set "
+      .. "FROMWHERE_QUARTO to its path."
   )
   return command
 end
@@ -107,7 +107,7 @@ local function call(directive, payload)
 end
 
 --- The directory the document lives in.
--- Quarto resolves a relative path against the file it appears in, so figmint
+-- Quarto resolves a relative path against the file it appears in, so fromwhere
 -- has to as well, or a document in a subdirectory would look up an artifact
 -- that is not there.
 local function document_directory()
@@ -121,7 +121,7 @@ end
 -- --------------------------------------------------------------------------
 -- Nodes to Pandoc
 --
--- The vocabulary is small and closed: it is exactly what figmint's shared
+-- The vocabulary is small and closed: it is exactly what fromwhere's shared
 -- renderer emits, and both halves are in this repository.
 -- --------------------------------------------------------------------------
 
@@ -260,7 +260,7 @@ end
 -- cannot produce a diagram the ordinary way. It can, however, ask for the same
 -- runtime Quarto would have loaded and emit the markup that runtime looks for
 -- — which means the graph is drawn by Quarto's own bundled Mermaid rather than
--- by anything figmint ships or fetches.
+-- by anything fromwhere ships or fetches.
 local function mermaid(node)
   local share = os.getenv("QUARTO_SHARE_PATH")
   local source = tostring(node.value or "")
@@ -361,16 +361,16 @@ local function unavailable(element)
   local body = pandoc.Blocks({
     pandoc.Para(
       words(
-        "figmint could not be run, so there is no provenance to show here. "
+        "fromwhere could not be run, so there is no provenance to show here. "
           .. "Install it in this document's environment, or set "
-          .. "FIGMINT_QUARTO to the path of `figmint-quarto`."
+          .. "FROMWHERE_QUARTO to the path of `fromwhere-quarto`."
       )
     ),
   })
   body:extend(element.content)
   return pandoc.Div(
     body,
-    pandoc.Attr("", { "callout-important" }, { { "title", "figmint" } })
+    pandoc.Attr("", { "callout-important" }, { { "title", "fromwhere" } })
   )
 end
 
@@ -383,7 +383,7 @@ local function retired(element)
   local body = pandoc.Blocks({
     pandoc.Para(
       words(
-        "`.figmint-provenance` was replaced by `.figmint` with no `src`. "
+        "`.fromwhere-provenance` was replaced by `.fromwhere` with no `src`. "
           .. "Move any options across unchanged."
       )
     ),
@@ -391,12 +391,12 @@ local function retired(element)
   body:extend(element.content)
   return pandoc.Div(
     body,
-    pandoc.Attr("", { "callout-important" }, { { "title", "figmint" } })
+    pandoc.Attr("", { "callout-important" }, { { "title", "fromwhere" } })
   )
 end
 
-local function figmint_div(element)
-  local result = call("figmint", {
+local function fromwhere_div(element)
+  local result = call("fromwhere", {
     options = options_of(element),
     base = document_directory(),
   })
@@ -415,7 +415,7 @@ local function figmint_div(element)
       or blocks(body)
     if element.identifier ~= "" or #caption > 0 then
       -- A Quarto figure: numbered, cross-referenceable, captioned. The caption
-      -- comes from the div rather than from figmint, so citations and
+      -- comes from the div rather than from fromwhere, so citations and
       -- cross-references inside it keep working.
       out:insert(
         pandoc.Figure(
@@ -450,21 +450,21 @@ local function figmint_div(element)
 end
 
 local function handle(element)
-  -- Checked before `figmint`, because `figmint-provenance` does not contain it
+  -- Checked before `fromwhere`, because `fromwhere-provenance` does not contain it
   -- as a class but a document being migrated may well carry both.
-  if element.classes:includes("figmint-provenance") then
+  if element.classes:includes("fromwhere-provenance") then
     return retired(element)
   end
-  if element.classes:includes("figmint") then
-    return figmint_div(element)
+  if element.classes:includes("fromwhere") then
+    return fromwhere_div(element)
   end
   return nil
 end
 
 function Pandoc(doc)
-  -- Read before walking, so `figmint: command:` is known by the time the first
+  -- Read before walking, so `fromwhere: command:` is known by the time the first
   -- div needs it. A `Meta` handler would be traversed after the blocks.
-  local meta = doc.meta.figmint
+  local meta = doc.meta.fromwhere
   if meta and meta.command then
     configured = pandoc.utils.stringify(meta.command)
   end

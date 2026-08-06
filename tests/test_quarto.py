@@ -1,7 +1,7 @@
 """The Quarto extension: the executable protocol, and what it hands back.
 
-The value is mostly in the protocol and in the split. `figmint.lua` spawns this
-program and exchanges JSON with it, so a broken spec or a stray `print` on
+The value is mostly in the protocol and in the split. `fromwhere.lua` spawns
+this program and exchanges JSON with it, so a broken spec or a stray `print` on
 stdout shows up as a document that quietly loses every provenance panel. The
 Lua half is not exercised here — it needs Quarto — so what these tests hold
 down is the contract it consumes: the three display kinds, the body/panel
@@ -19,14 +19,14 @@ from pathlib import Path
 
 import pytest
 
-from figmint.quarto import (
+from fromwhere.quarto import (
     EXTENSION_FILES,
     SPEC,
     install_extension,
     main,
     run_directive,
 )
-from figmint.store import Artifact, Input, Store, hash_file
+from fromwhere.store import Artifact, Input, Store, hash_file
 
 
 def payload(target: str | None = None, base: Path | None = None, **options):
@@ -94,8 +94,8 @@ def project(tmp_path: Path, monkeypatch) -> Path:
     # Declared, so the fixture's default state is a clean one. Without this
     # every panel here reports incomplete provenance — correctly, and
     # unhelpfully, since almost none of these tests are about that.
-    from figmint.declare import declare
-    from figmint.origins import Author, attested
+    from fromwhere.declare import declare
+    from fromwhere.origins import Author, attested
 
     declare(tmp_path / "data.csv", attested(Author("A Researcher")))
     monkeypatch.chdir(tmp_path)
@@ -107,7 +107,7 @@ class TestProtocol:
         """Two of them made one idea look like two features."""
         assert main([]) == 0
         spec = json.loads(capsys.readouterr().out)
-        assert [d["name"] for d in spec["directives"]] == ["figmint"]
+        assert [d["name"] for d in spec["directives"]] == ["fromwhere"]
         # Both scopes' options are declared together: Quarto passes every
         # attribute through, and a reader moving `artifact` onto a block that
         # already has `rows` should not have to know which list it came from.
@@ -119,12 +119,12 @@ class TestProtocol:
 
     def test_the_real_executable_answers(self, project: Path):
         spec = subprocess.run(
-            [sys.executable, "-m", "figmint.quarto"],
+            [sys.executable, "-m", "fromwhere.quarto"],
             capture_output=True,
             text=True,
             check=True,
         )
-        assert json.loads(spec.stdout)["name"] == "figmint"
+        assert json.loads(spec.stdout)["name"] == "fromwhere"
 
         for sent, expected in (
             (payload("plot.png"), "figure"),
@@ -134,9 +134,9 @@ class TestProtocol:
                 [
                     sys.executable,
                     "-m",
-                    "figmint.quarto",
+                    "fromwhere.quarto",
                     "--directive",
-                    "figmint",
+                    "fromwhere",
                 ],
                 input=json.dumps(sent),
                 capture_output=True,
@@ -200,8 +200,8 @@ class TestArtifactBlock:
     def test_the_panel_is_named_in_the_readers_terms(self, project: Path):
         """Calling a table a figure is a small lie in the one place the panel
         is meant to be exact."""
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         declare(project / "data.csv", attested(Author("A Researcher")))
         assert "Table is up to date" in all_text(
@@ -330,14 +330,14 @@ class TestPathResolution:
 class TestExtensionInstall:
     def test_it_writes_a_usable_extension(self, tmp_path: Path):
         target = install_extension(tmp_path)
-        assert target == tmp_path / "_extensions" / "figmint"
+        assert target == tmp_path / "_extensions" / "fromwhere"
         for name in EXTENSION_FILES:
             assert (target / name).is_file()
         # The filter has to run before Quarto's own or the callouts are grey
         # boxes and the figures are unnumbered; nothing else records that.
-        assert "figmint.lua" in (target / "_extension.yml").read_text()
+        assert "fromwhere.lua" in (target / "_extension.yml").read_text()
         assert "pre-ast" in (target / "_extension.yml").read_text()
 
-        # Installing twice is how a project picks up a new figmint.
+        # Installing twice is how a project picks up a new fromwhere.
         install_extension(tmp_path)
-        assert (target / "figmint.lua").is_file()
+        assert (target / "fromwhere.lua").is_file()

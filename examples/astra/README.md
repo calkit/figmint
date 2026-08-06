@@ -1,14 +1,14 @@
-# figmint + ASTRA
+# fromwhere + ASTRA
 
 **ASTRA declares the decision space** — every methodological choice that could
 plausibly move a number, with its options and the reasoning behind each.
-**figmint records what actually ran** — the SHA256 of every input as it was when
+**fromwhere records what actually ran** — the SHA256 of every input as it was when
 the output was made, who is answerable for the primary files, and the Content
 Credentials on the figure that leaves the repository.
 
 The join between them is the command. Every recipe in `astra.yaml` is wrapped in
-`figmint run`, and every decision reaches the command line, so the command
-figmint writes into `figmint.toml` names the options that produced the artifact
+`fromwhere run`, and every decision reaches the command line, so the command
+fromwhere writes into `provenance.toml` names the options that produced the artifact
 sitting beside it:
 
 ```toml
@@ -26,7 +26,7 @@ than in the project environment — and `pyproject.toml` here mentions neither:
 
 ```sh
 uv tool install astra-analysis
-uv tool install figmint-fresh
+uv tool install fromwhere
 ```
 
 ## Running it
@@ -35,7 +35,7 @@ uv tool install figmint-fresh
 uv lock
 uv run python src/run.py                          # the baseline universe
 uv run python src/run.py universes/smoothed.yaml  # the alternative
-figmint status
+fromwhere status
 ```
 
 `src/run.py` is a ~60-line runner and is not part of either tool. `astra`
@@ -47,17 +47,17 @@ The declarations are a one-time authoring step. Nothing produces the dataset or
 the scripts, and a declaration is a statement by a person:
 
 ```sh
-figmint declare data/performance.csv --mine
-figmint declare src/curves.py --mine --with-ai 'Claude Opus 5'
+fromwhere declare data/performance.csv --mine
+fromwhere declare src/curves.py --mine --with-ai 'Claude Opus 5'
 # ...and the rest of src/
 ```
 
 ## The record is committed
 
-`figmint.toml` is in version control, along with every artifact it describes.
+`provenance.toml` is in version control, along with every artifact it describes.
 That is not incidental to the example: the record _is_ the evidence, and a
 project that ignores its own record is one where nobody can check anything
-without rebuilding first. Clone this and `figmint status` has an answer
+without rebuilding first. Clone this and `fromwhere status` has an answer
 immediately.
 
 ## The two universes disagree, which is the point
@@ -81,19 +81,19 @@ taking the maximum of a curve you did not fit is not a coherent request.
 
 ## The gap this example found
 
-figmint records the files a command **names**, not the ones a script imports.
+fromwhere records the files a command **names**, not the ones a script imports.
 `src/curves.py` holds the fit shared by the plots and the peak — precisely so a
 figure and the number quoted from it cannot disagree — but it appears nowhere on
-the command line, so figmint could not see it. Editing it changed every result
+the command line, so fromwhere could not see it. Editing it changed every result
 and made nothing stale.
 
 The fix is one flag, and it is in the recipes:
 
 ```
-figmint run --no-sign -i {inputs.measurements} -i src/curves.py ...
+fromwhere run --no-sign -i {inputs.measurements} -i src/curves.py ...
 ```
 
-Worth knowing in general: figmint hashes what the command mentions, which
+Worth knowing in general: fromwhere hashes what the command mentions, which
 catches the entry-point script for free and misses everything it imports. If a
 module can change a result, pass it with `-i`.
 
@@ -110,29 +110,29 @@ never travel; the stacked figure does. That also reads correctly as a statement
 of intent — _this is the artifact I am putting my name on_.
 
 `results/peak.json` is recorded but not signed, because JSON has nowhere to put
-a manifest. For that output the line in `figmint.toml` is the only provenance
+a manifest. For that output the line in `provenance.toml` is the only provenance
 there is, which is exactly why the header at the top of that file is not
 decoration.
 
 ## What each tool would miss alone
 
-Without figmint, `astra.yaml` says which options _should_ have produced the
+Without fromwhere, `astra.yaml` says which options _should_ have produced the
 figure and cannot say which ones did, nor whether the file on disk is still the
 one they produced.
 
-Without ASTRA, `figmint.toml` records `--fit polynomial` faithfully and has
+Without ASTRA, `provenance.toml` records `--fit polynomial` faithfully and has
 nothing to say about what else could have been chosen, why, or what it would
 have cost. A record of one path through a decision space that is nowhere
 written down.
 
 ## Reproducibility gotchas
 
-`astra` and `figmint` are on your `PATH` as tools, not in `pyproject.toml` —
+`astra` and `fromwhere` are on your `PATH` as tools, not in `pyproject.toml` —
 they have to be, because both wrap the recipe command from the outside. So the
 environment the science runs in is pinned by `uv.lock`, and the two tools
 wrapping it are not.
 
 That matters a little less here than elsewhere: `astra` never executes anything,
-so it cannot change a number. `figmint` can only record. Still, the general
-shape holds — figmint records the lock of the environment the _command_ ran in,
+so it cannot change a number. `fromwhere` can only record. Still, the general
+shape holds — fromwhere records the lock of the environment the _command_ ran in,
 and whatever wraps that command is outside it. See the top-level README.

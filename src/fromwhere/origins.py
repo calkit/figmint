@@ -2,8 +2,8 @@
 
 Every chain ends somewhere. Follow a figure back far enough and you reach a file
 nothing in the project produced — measurements from an instrument, a dataset
-downloaded from a repository, a photograph. `figmint run` cannot record those,
-because figmint was not there when they were made.
+downloaded from a repository, a photograph. `fromwhere run` cannot record
+those, because fromwhere was not there when they were made.
 
 Left alone, that is the hole in the middle of an otherwise checkable record: a
 figure that is `reproducible` in every link, resting on a CSV that appeared one
@@ -31,11 +31,11 @@ of claim it is:
     somebody remembered at declaration time.
   * **`--doi`** — a published, immutable source. The strongest form here,
     because a DOI resolves to something a reader can fetch.
-  * **`--url`** — a plain web address, and the one claim figmint checks as it
-    makes it. figmint fetches the URL and compares what came back against the
+  * **`--url`** — a plain web address, and the one claim fromwhere checks as it
+    makes it. fromwhere fetches the URL and compares what came back against the
     file on disk, so the record says *this address served exactly these bytes,
     at this moment*. That is weaker than a DOI and stronger than an attestation:
-    the download really happened and figmint watched it, but a URL is mutable
+    the download really happened and fromwhere watched it, but a URL is mutable
     and may serve something else tomorrow. The timestamp is what makes the claim
     mean anything a year later.
   * **`--git <location@rev>`** / **`--calkit <location@rev>`** — a
@@ -74,7 +74,7 @@ SCHEMES = ("git", "calkit")
 
 #: Signatures that mark an author as a generative tool rather than a person.
 #: Deliberately a short, explicit, auditable list rather than clever detection:
-#: this is a guess, it is wrong sometimes, and both `figmint declare` and the
+#: this is a guess, it is wrong sometimes, and both `fromwhere declare` and the
 #: rendered panel show what it decided so a wrong guess is visible and can be
 #: overridden with `--author`/`--with-ai`.
 AI_SIGNATURES = (
@@ -138,9 +138,9 @@ class Origin:
     #: Everyone who made it, in the order they appear. Always contains at least
     #: one person for an attestation: a tool cannot be accountable for a file.
     authors: tuple[Author, ...] = ()
-    #: When figmint fetched it, for `url`. Not decoration: an address without a
-    #: date is a claim about nothing in particular, because what it serves can
-    #: change the day after it is written down.
+    #: When fromwhere fetched it, for `url`. Not decoration: an address without
+    #: a date is a claim about nothing in particular, because what it serves
+    #: can change the day after it is written down.
     fetched: str | None = None
 
     def describe(self) -> str:
@@ -214,7 +214,7 @@ CHUNK = 1 << 20
 def fetch(url: str, destination: Path) -> str:
     """Download a URL to a file, and say when.
 
-    stdlib only, deliberately: figmint's whole job is to be the thing you can
+    stdlib only, deliberately: fromwhere's whole job is to be the thing you can
     still run in five years, and a provenance tool that pulls an HTTP stack in
     to download a CSV has made itself harder to trust than the claim it records.
 
@@ -232,17 +232,17 @@ def fetch(url: str, destination: Path) -> str:
     if scheme not in ("http", "https"):
         raise OriginError(
             f"`{url}` is not an http(s) address. `--url` records a download "
-            f"figmint performed; a local path is not one, and `--mine` is the "
-            f"claim you are looking for."
+            f"fromwhere performed; a local path is not one, and `--mine` is "
+            f"the claim you are looking for."
         )
 
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(destination.name + ".figmint-download")
+    temporary = destination.with_name(destination.name + ".fromwhere-download")
     # A default `User-Agent` of `Python-urllib/3.x` is refused outright by a
     # number of data repositories, which surfaces as a 403 that looks like a
     # permissions problem rather than a politeness one.
-    request = urllib.request.Request(url, headers={"User-Agent": "figmint"})
+    request = urllib.request.Request(url, headers={"User-Agent": "fromwhere"})
     try:
         with urllib.request.urlopen(
             request, timeout=FETCH_TIMEOUT
@@ -392,13 +392,13 @@ def git_author(cwd: Path) -> str | None:
 # An earlier design signed each declared artifact with a C2PA sidecar, since a
 # CSV cannot carry an embedded manifest. It was dropped.
 #
-# The declaration already lives in `figmint.toml` next to the artifact's hash,
-# so altering the file is detectable from the record alone. A sidecar would put
-# the same claim in a second place, and it would be exactly as easy to delete as
-# the line it duplicates — ceremony that looks like a cryptographic guarantee
-# without being one.
+# The declaration already lives in `provenance.toml` next to the artifact's
+# hash, so altering the file is detectable from the record alone. A sidecar
+# would put the same claim in a second place, and it would be exactly as easy
+# to delete as the line it duplicates — ceremony that looks like a
+# cryptographic guarantee without being one.
 #
-# The honest limitation, stated rather than papered over: `figmint.toml` is
+# The honest limitation, stated rather than papered over: `provenance.toml` is
 # plain text, and its header is a social deterrent, not a cryptographic one.
 # Making declarations tamper-evident means signing *the record*, once, rather
 # than scattering signatures across the files it describes. That is a real piece

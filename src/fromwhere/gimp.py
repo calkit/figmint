@@ -1,4 +1,4 @@
-"""`figmint gimp export` — flatten a GIMP document, and record that it came from one.
+"""`fromwhere gimp export` — flatten a GIMP document, and record that it came from one.
 
 An `.xcf` is a source: layers, masks, the arrangement someone made by hand. The
 PNG that goes in a paper is derived from it, and the derivation is exactly the
@@ -6,7 +6,8 @@ step that normally disappears. Six months later the figure is a PNG and the
 question "which layers were on when this was exported?" has no answer.
 
 This runs GIMP's own batch export and records the `.xcf` as the PNG's input, so
-`figmint status` reports the export as stale the moment the document is edited.
+`fromwhere status` reports the export as stale the moment the document is
+edited.
 
 Two details that are easy to get wrong, both found the hard way:
 

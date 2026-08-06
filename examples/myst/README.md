@@ -1,4 +1,4 @@
-# figmint + MyST
+# fromwhere + MyST
 
 A small document whose figure carries its own provenance.
 
@@ -14,11 +14,11 @@ make serve       # read the document
 
 ## What to look at
 
-`figmint.toml` — the record. One artifact per section, each with the SHA256 of
+`provenance.toml` — the record. One artifact per section, each with the SHA256 of
 its bytes, the hashes of everything it was derived from, and the command that
 produced it. Read the header before touching it.
 
-`index.md` — the document. The `:::{figmint}` blocks render the record into the
+`index.md` — the document. The `:::{fromwhere}` blocks render the record into the
 page, so a reader gets the provenance without leaving the figure.
 
 ## The loop
@@ -56,6 +56,6 @@ pixi, which has `nodejs` on conda-forge and would put it in the lock.
 Electron application with no conda or PyPI package, so no lock file can pin it,
 and `figures/composite.svg` rests on a tool version the record cannot name.
 
-Both are instances of one thing: figmint records the lock of the environment the
+Both are instances of one thing: fromwhere records the lock of the environment the
 _command_ ran in, and a tool that wraps the command from outside is not in that
 lock. See the note in the top-level README.

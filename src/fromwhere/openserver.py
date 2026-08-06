@@ -17,7 +17,7 @@ Two details make it behave like a button rather than a link:
     are". Returning a page would navigate the reader away from the document
     they were reading.
   * It is only advertised when it is running. The plugin emits this link only
-    when `FIGMINT_OPEN_URL` is set, so a published HTML build gets a plain
+    when `FROMWHERE_OPEN_URL` is set, so a published HTML build gets a plain
     command instead of a link to a port on somebody else's laptop.
 
 Scope: this binds to loopback, serves exactly one route, and refuses any path
@@ -43,9 +43,9 @@ HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
 #: Environment variable the MyST plugin reads to decide whether to emit a link.
-URL_ENV = "FIGMINT_OPEN_URL"
+URL_ENV = "FROMWHERE_OPEN_URL"
 #: Override for the command used to open a file.
-EDITOR_ENV = "FIGMINT_EDITOR"
+EDITOR_ENV = "FROMWHERE_EDITOR"
 
 
 def editor_command() -> list[str]:
@@ -96,7 +96,7 @@ class OpenHandler(BaseHTTPRequestHandler):
             self.send_error(404, "no such file")
             return
         if not self.editor:
-            self.send_error(501, "no editor found; set FIGMINT_EDITOR")
+            self.send_error(501, "no editor found; set FROMWHERE_EDITOR")
             return
 
         try:

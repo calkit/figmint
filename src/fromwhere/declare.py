@@ -1,9 +1,9 @@
-"""`figmint declare` — put a primary artifact's origin on the record.
+"""`fromwhere declare` — put a primary artifact's origin on the record.
 
-`figmint run` records what figmint watched being made. This records what it did
-not: the measurements, the downloaded dataset, the image somebody was handed.
-Without it those files sit at the bottom of the chain unexplained, and every
-check above them passes — which is what makes the gap easy to miss.
+`fromwhere run` records what fromwhere watched being made. This records what it
+did not: the measurements, the downloaded dataset, the image somebody was
+handed. Without it those files sit at the bottom of the chain unexplained, and
+every check above them passes — which is what makes the gap easy to miss.
 """
 
 from __future__ import annotations
@@ -27,14 +27,15 @@ from .store import Artifact, Store, hash_file
 def fetch_origin(url: str, path: Path) -> Origin:
     """Download a URL and record that it happened, at a time, to these bytes.
 
-    This is the one origin figmint *checks* while making it, and the two cases
-    read differently:
+    This is the one origin fromwhere *checks* while making it, and the two
+    cases read differently:
 
-    * **The file is not there yet.** figmint downloads it. The record then says
-      where it came from because figmint fetched it, not because anyone said so.
-    * **The file is already there.** figmint fetches anyway and compares. Being
-      told "this came from that URL" is an attestation; going and looking is
-      evidence, and the difference is the entire point of the flag.
+    * **The file is not there yet.** fromwhere downloads it. The record then
+      says where it came from because fromwhere fetched it, not because
+      anyone said so.
+    * **The file is already there.** fromwhere fetches anyway and compares.
+      Being told "this came from that URL" is an attestation; going and
+      looking is evidence, and the difference is the entire point of the flag.
 
     A mismatch is refused rather than reconciled. Either the file was edited
     after it was downloaded or the address has moved on, and both are things a
@@ -47,7 +48,7 @@ def fetch_origin(url: str, path: Path) -> Origin:
         return Origin(kind="url", value=url, fetched=stamp)
 
     existing = hash_file(path)
-    scratch = path.with_name(path.name + ".figmint-check")
+    scratch = path.with_name(path.name + ".fromwhere-check")
     try:
         stamp = fetch(url, scratch)
         downloaded = hash_file(scratch)
@@ -176,7 +177,7 @@ def declare(path: Path, origin: Origin) -> Artifact:
     produced them, and without a declaration they sit at the bottom of the chain
     unexplained.
 
-    The other is an artifact figmint already tracks that was nonetheless made by
+    The other is an artifact fromwhere already tracks that was nonetheless made by
     hand: a `.drawio` canvas is assembled from recorded panels but arranged by
     people, and increasingly by people and agents together. Those already have
     inputs, and a declaration must *add* authorship to them rather than replace

@@ -1,12 +1,12 @@
 """The provenance record as a picture.
 
-`figmint.toml` is already a DAG: every artifact names its inputs, and some of
-those inputs are themselves artifacts. Drawing it needs nothing but the record —
-no pipeline to interrogate, no static analysis, no second source of truth that
-could disagree with the freshness check printed beside it.
+`provenance.toml` is already a DAG: every artifact names its inputs, and some
+of those inputs are themselves artifacts. Drawing it needs nothing but the
+record — no pipeline to interrogate, no static analysis, no second source of
+truth that could disagree with the freshness check printed beside it.
 
 Rendered as Mermaid because MyST draws that natively, so a document gets the
-diagram without figmint shipping a line of JavaScript.
+diagram without fromwhere shipping a line of JavaScript.
 
 What the shapes mean is the whole design. A reader should be able to tell, at a
 glance, which nodes are *recorded* (and therefore checkable), which are raw
@@ -26,7 +26,7 @@ from .store import Store
 #: Node shapes, by what the node *is*. Mermaid's vocabulary is small, so this
 #: groups rather than distinguishing everything.
 SHAPES = {
-    #: A recorded artifact: something figmint watched being made.
+    #: A recorded artifact: something fromwhere watched being made.
     "artifact": ("[", "]"),
     #: A raw input: no artifact record names it as an output, so nothing in the
     #: project accounts for where it came from.
@@ -100,7 +100,7 @@ def build(root: Path, reports: list[ArtifactStatus] | None = None) -> Graph:
         # environment. Routing the other inputs through the script says that,
         # and turns a fan-in into the chain a reader is actually tracing.
         #
-        # figmint never reads the script, so this is inferred from "they were
+        # fromwhere never reads the script, so this is inferred from "they were
         # inputs to the same command" rather than observed. That is the same
         # claim the record already makes, drawn more usefully.
         code = [i.path for i in artifact.inputs if i.kind == "code"]

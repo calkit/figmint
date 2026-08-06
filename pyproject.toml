@@ -1,9 +1,9 @@
 [project]
-name = "figmint-fresh"
+name = "fromwhere"
 # Taken from the git tag by hatch-vcs, so a release is cut by tagging and
 # there is no version to forget to bump.
 dynamic = ["version"]
-description = "Create fresh figures."
+description = "Know where it came from: artifact provenance tracking."
 readme = "README.md"
 authors = [
     { name = "Pete Bachant", email = "petebachant@gmail.com" }
@@ -15,13 +15,13 @@ dependencies = [
 ]
 
 [project.scripts]
-figmint = "figmint.cli:main"
+fromwhere = "fromwhere.cli:main"
 # The MyST executable-plugin entry point. mystmd spawns this by path, so it has
-# to exist as a real executable file rather than a `figmint myst` subcommand.
-figmint-myst = "figmint.myst:main"
+# to exist as a real executable file rather than a `fromwhere myst` subcommand.
+fromwhere-myst = "fromwhere.myst:main"
 # The same, for Quarto: the Lua filter spawns this by name to get the nodes it
 # turns into Pandoc's AST.
-figmint-quarto = "figmint.quarto:main"
+fromwhere-quarto = "fromwhere.quarto:main"
 
 [build-system]
 requires = ["hatchling>=1.5.0", "hatch-vcs>=0.3.0"]
@@ -45,7 +45,7 @@ git_describe_command = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/figmint"]
+packages = ["src/fromwhere"]
 
 [tool.hatch.build.targets.sdist]
 # Named explicitly because hatchling otherwise ships everything git tracks,
@@ -53,7 +53,7 @@ packages = ["src/figmint"]
 # Anchored with a leading slash: the patterns are gitignore-style, so a bare
 # `README.md` would also pull in the example's.
 include = [
-    "/src/figmint",
+    "/src/fromwhere",
     "/tests",
     "/docs",
     "/README.md",
@@ -77,13 +77,13 @@ dev = [
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["src/figmint"]
+source = ["src/fromwhere"]
 
 [tool.coverage.report]
 skip_empty = true
 
 [tool.mypy]
-files = ["src/figmint"]
+files = ["src/fromwhere"]
 disallow_untyped_defs = true
 no_implicit_optional = true
 check_untyped_defs = true

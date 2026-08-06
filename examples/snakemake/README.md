@@ -1,7 +1,7 @@
-# figmint + Snakemake
+# fromwhere + Snakemake
 
 **Snakemake owns execution and the graph** — what is out of date, what runs, in
-what order. **figmint owns the evidence** — the SHA256 of every input as it was
+what order. **fromwhere owns the evidence** — the SHA256 of every input as it was
 when the output was made, who is answerable for the primary files, and the
 Content Credentials embedded in the artifact that leaves the repository.
 
@@ -13,15 +13,15 @@ neither:
 
 ```sh
 uv tool install snakemake
-uv tool install figmint-fresh
+uv tool install fromwhere
 ```
 
 ## Running it
 
 ```sh
-uv lock          # the environment figmint records as an input
+uv lock          # the environment fromwhere records as an input
 snakemake --cores 1
-figmint status
+fromwhere status
 ```
 
 The declarations are a one-time authoring step. Nothing produces a dataset or a
@@ -30,18 +30,18 @@ check above it passes straight over — and a declaration is a statement by a
 person, which is not something a workflow manager can make on their behalf:
 
 ```sh
-figmint declare data/performance.csv --mine
-figmint declare scripts/plot_cp.py --mine --with-ai 'Claude Opus 5'
-figmint declare scripts/plot_ct.py --mine --with-ai 'Claude Opus 5'
-figmint declare scripts/stack.py   --mine --with-ai 'Claude Opus 5'
+fromwhere declare data/performance.csv --mine
+fromwhere declare scripts/plot_cp.py --mine --with-ai 'Claude Opus 5'
+fromwhere declare scripts/plot_ct.py --mine --with-ai 'Claude Opus 5'
+fromwhere declare scripts/stack.py   --mine --with-ai 'Claude Opus 5'
 ```
 
 ## The record is committed
 
-`figmint.toml` is in version control, along with every artifact it describes.
+`provenance.toml` is in version control, along with every artifact it describes.
 That is not incidental to the example: the record _is_ the evidence, and a
 project that ignores its own record is one where nobody can check anything
-without rebuilding first. Clone this and `figmint status` has an answer
+without rebuilding first. Clone this and `fromwhere status` has an answer
 immediately.
 
 ## The shape of a rule
@@ -55,16 +55,16 @@ rule plot:
     output:
         "figures/{panel}_curve.svg",
     shell:
-        "figmint run --no-sign -i {input.data} -o {output}"
+        "fromwhere run --no-sign -i {input.data} -o {output}"
         " -- uv run python {input.script}"
 ```
 
-figmint wraps the **shell command**, not Snakemake. Wrapping Snakemake would
-make figmint the entrypoint, record one enormous artifact, and lose the
+fromwhere wraps the **shell command**, not Snakemake. Wrapping Snakemake would
+make fromwhere the entrypoint, record one enormous artifact, and lose the
 per-figure chain that is the entire point.
 
 The command inside has to go through an environment manager with a lock file —
-here `uv run`, so `uv.lock` is recorded alongside the CSV. figmint refuses a
+here `uv run`, so `uv.lock` is recorded alongside the CSV. fromwhere refuses a
 bare command, and the refusal is deliberate: the same script under a different
 Plotly draws a different figure, and a record naming only the data would call
 that unchanged. `uv.lock` is listed as a rule input too, so Snakemake reruns on
@@ -81,15 +81,15 @@ The difference is what the record is _for_:
 
 ```sh
 rm -rf .snakemake/     # Snakemake now wants to rebuild all three rules
-figmint status         # unchanged: everything still ok
+fromwhere status         # unchanged: everything still ok
 ```
 
 Snakemake's state is a **cache** — local, disposable, about scheduling. Delete
-it and you rebuild. figmint's is **evidence** — committed, human-readable, and
+it and you rebuild. fromwhere's is **evidence** — committed, human-readable, and
 the thing the header at the top of it warns agents not to edit. Delete that and
 you have not lost a cache.
 
-And it is silent on everything figmint exists for. `.snakemake/` cannot say who
+And it is silent on everything fromwhere exists for. `.snakemake/` cannot say who
 wrote a script, whether a model was involved, or whether the published figure
 carries a manifest a reader outside the repository could check.
 
@@ -111,18 +111,18 @@ putting my name on_.
 
 ## Which tool repairs what
 
-`snakemake` is the entrypoint. Prefer it over `figmint rebuild` here: two
+`snakemake` is the entrypoint. Prefer it over `fromwhere rebuild` here: two
 components that each claim to know how to rebuild the project, from different
-graphs, will drift. `figmint status` still reports — that is the part Snakemake
+graphs, will drift. `fromwhere status` still reports — that is the part Snakemake
 has no answer for — but the repair is `snakemake --cores 1`.
 
 ## Reproducibility gotchas
 
-`snakemake` and `figmint` are on your `PATH` as tools, not in `pyproject.toml` —
+`snakemake` and `fromwhere` are on your `PATH` as tools, not in `pyproject.toml` —
 they have to be, because both wrap the shell command from the outside. So the
 environment the science runs in is pinned by `uv.lock`, and the two tools
 wrapping it are not.
 
-That is the general shape of the limitation: figmint records the lock of the
+That is the general shape of the limitation: fromwhere records the lock of the
 environment the _command_ ran in, and whatever wraps that command is outside it.
 See the note in the top-level README.

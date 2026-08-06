@@ -1,13 +1,13 @@
 [project]
-# A real project environment, so `uv run` has a lock file for figmint to record
+# A real project environment, so `uv run` has a lock file for fromwhere to record
 # as an input. That is not incidental: the same script under a different NumPy
 # fits a slightly different polynomial, and the lock is what makes that visible
 # rather than assumed.
 #
-# Neither astra nor figmint is in here. Both wrap the work from the outside —
-# astra describes it, figmint records it — so both belong on your PATH as tools
+# Neither astra nor fromwhere is in here. Both wrap the work from the outside —
+# astra describes it, fromwhere records it — so both belong on your PATH as tools
 # rather than in the environment the science runs in.
-name = "figmint-astra-example"
+name = "fromwhere-astra-example"
 version = "0.1.0"
 description = "ASTRA analysis whose artifacts carry their provenance"
 requires-python = ">=3.12"

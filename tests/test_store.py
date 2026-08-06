@@ -1,6 +1,6 @@
 """The provenance record itself.
 
-`figmint.toml` is evidence, and the tests that matter most here are about it
+`provenance.toml` is evidence, and the tests that matter most here are about it
 staying that way: the header has to be present, the round-trip has to be exact,
 and a partial write must not leave something that reads as "no provenance".
 """
@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from figmint.store import (
+from fromwhere.store import (
     HEADER,
+    LEGACY_STORE_NAME,
     STORE_NAME,
     Artifact,
     Input,
@@ -191,11 +192,11 @@ class TestDurability:
 
 
 class TestDeclarations:
-    """Primary artifacts: the ones figmint did not watch being made."""
+    """Primary artifacts: the ones fromwhere did not watch being made."""
 
     def test_an_attestation_records_who_claimed_it(self, project: Path):
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         artifact = declare(
             project / "data" / "raw.csv", attested(Author("A Researcher"))
@@ -205,8 +206,8 @@ class TestDeclarations:
         assert [a.name for a in artifact.authors] == ["A Researcher"]
 
     def test_a_declaration_round_trips(self, project: Path):
-        from figmint.declare import declare
-        from figmint.origins import parse_location
+        from fromwhere.declare import declare
+        from fromwhere.origins import parse_location
 
         declare(
             project / "data" / "raw.csv",
@@ -226,8 +227,8 @@ class TestDeclarationSurvivesRewrites:
     """
 
     def test_authors_survive_a_later_rewrite(self, project: Path):
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         target = project / "data" / "raw.csv"
         declare(
@@ -252,8 +253,8 @@ class TestDeclarationSurvivesRewrites:
         assert [i.path for i in artifact.inputs] == ["other.csv"]
 
     def test_an_explicit_new_declaration_wins(self, project: Path):
-        from figmint.declare import declare
-        from figmint.origins import Author, attested
+        from fromwhere.declare import declare
+        from fromwhere.origins import Author, attested
 
         target = project / "data" / "raw.csv"
         declare(target, attested(Author("First")))
@@ -261,3 +262,42 @@ class TestDeclarationSurvivesRewrites:
         assert [
             a.name for a in Store.load(project).get("data/raw.csv").authors
         ] == ["Second"]
+
+
+class TestTheOldRecordName:
+    """`figmint.toml`, from before the tool was renamed.
+
+    Read rather than ignored, because ignoring it looks identical to a project
+    with no provenance at all — the one failure mode this file must not have.
+    """
+
+    def test_it_is_read_migrated_and_announced(self, project: Path, capsys):
+        recorded(project).save()
+        legacy = project / LEGACY_STORE_NAME
+        (project / STORE_NAME).rename(legacy)
+
+        # Read under the old name, and said out loud.
+        store = Store.load(project)
+        assert store.get("figures/plot.png").command == "uv run plot.py"
+        assert LEGACY_STORE_NAME in capsys.readouterr().err
+
+        # The root is still found by walking up to it.
+        assert find_root(project / "figures") == project
+
+        # Recording anything writes the new name, leaving the old file alone
+        # rather than deleting a record on the user's behalf.
+        store.record(Artifact(path="figures/other.png", hash="sha256:bb"))
+        store.save()
+        assert (project / STORE_NAME).is_file()
+        assert legacy.is_file()
+        assert set(Store.load(project).artifacts) == {
+            "figures/plot.png",
+            "figures/other.png",
+        }
+
+    def test_the_new_name_wins_when_both_are_present(self, project: Path):
+        recorded(project).save()
+        (project / LEGACY_STORE_NAME).write_text(
+            '[artifact."figures/stale.png"]\nhash = "sha256:cc"\n'
+        )
+        assert set(Store.load(project).artifacts) == {"figures/plot.png"}
