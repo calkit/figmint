@@ -1,0 +1,45 @@
+stages:
+  plot-cp:
+    cmd: calkit xenv -n main --no-check -- figmint run --no-sign -i 
+      data/performance.csv -o figures/cp_curve.svg -- calkit xenv -n 
+      main -- python scripts/plot_cp.py
+    deps:
+      - data/performance.csv
+      - scripts/plot_cp.py
+      - .calkit/env-locks/main
+    outs:
+      - figures/cp_curve.svg:
+          cache: false
+          persist: false
+    desc: Automatically generated from the 'plot-cp' stage in 
+      calkit.yaml. Changes made here will be overwritten.
+  plot-ct:
+    cmd: calkit xenv -n main --no-check -- figmint run --no-sign -i 
+      data/performance.csv -o figures/ct_curve.svg -- calkit xenv -n 
+      main -- python scripts/plot_ct.py
+    deps:
+      - data/performance.csv
+      - scripts/plot_ct.py
+      - .calkit/env-locks/main
+    outs:
+      - figures/ct_curve.svg:
+          cache: false
+          persist: false
+    desc: Automatically generated from the 'plot-ct' stage in 
+      calkit.yaml. Changes made here will be overwritten.
+  stack-panels:
+    cmd: calkit xenv -n main --no-check -- figmint run -i 
+      figures/cp_curve.svg -i figures/ct_curve.svg -o 
+      figures/performance.svg -- calkit xenv -n main -- python 
+      scripts/stack.py
+    deps:
+      - scripts/stack.py
+      - .calkit/env-locks/main
+      - figures/cp_curve.svg
+      - figures/ct_curve.svg
+    outs:
+      - figures/performance.svg:
+          cache: false
+          persist: false
+    desc: Automatically generated from the 'stack-panels' stage in 
+      calkit.yaml. Changes made here will be overwritten.

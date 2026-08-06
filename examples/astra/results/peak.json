@@ -1,0 +1,6 @@
+{
+  "peak_power_coefficient": 0.401,
+  "peak_tip_speed_ratio": 2.8,
+  "curve_fit": "raw",
+  "peak_estimator": "argmax"
+}

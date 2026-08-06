@@ -9,8 +9,9 @@ stopped at the command line where only the author ever saw it.
 
 `:::{figmint}` emits the same figure node MyST would have produced, so numbering
 and `[](#fig-...)` cross-references behave normally, and attaches the provenance
-underneath it. `:::{figmint-provenance}` does the same for the document as a
-whole, which is a composite artifact in its own right.
+underneath it. Given no argument it describes the document as a whole, which is
+a composite artifact in its own right — the same question at a wider scope, not
+a second feature.
 
 It is an *executable* plugin rather than a JavaScript one, which mystmd supports
 by spawning a program and speaking JSON to it: called with no arguments it
@@ -426,11 +427,48 @@ def origin_paragraph(report: ArtifactStatus) -> dict[str, Any] | None:
     return paragraph(*children)
 
 
+def undeclared(chain: list[ChainItem], store: Store) -> list[str]:
+    """Files in the chain that nothing in the record accounts for.
+
+    Not produced by any recorded command and not declared as primary: a file
+    that simply appeared. A lock file is exempt — it is generated from a spec
+    already in the project, by the manager named in the command, and demanding
+    an origin for `uv.lock` would be noise, which is how a real finding gets
+    ignored.
+    """
+    return [
+        item.path
+        for item in chain
+        if item.kind != "environment" and item.path not in store.artifacts
+    ]
+
+
+def declare_hint(paths: list[str]) -> dict[str, Any]:
+    """The command that closes the gap, ready to copy.
+
+    Named for the first offender rather than printed once per file: a reader
+    who runs it once knows the shape, and a panel listing six variations of the
+    same command is one nobody reads to the end of.
+    """
+    return paragraph(
+        strong("To fix: "),
+        code(f"figmint declare {paths[0]} --mine [--with-ai <tool>]"),
+        text(" — or "),
+        code("--doi"),
+        text("/"),
+        code("--git"),
+        text("/"),
+        code("--calkit"),
+        text(" if it came from somewhere a reader could fetch."),
+    )
+
+
 def headline(
     report: ArtifactStatus,
     creds: ContentCredentials | None,
     chain: list[ChainItem],
     noun: str = "Figure",
+    missing: list[str] | None = None,
 ) -> tuple[str, str]:
     """Admonition kind and title summarising the artifact's standing.
 
@@ -481,6 +519,23 @@ def headline(
                 f"current inputs"
             )
         return "danger", f"{noun} is out of date — {detail}"
+
+    # Every hash matches and something in the chain is still unaccounted for.
+    # This is the finding that most needs saying out loud, precisely because
+    # nothing else is wrong: a figure can be current in every link and still
+    # rest on data nobody can place or a script nobody will claim. Left as a
+    # green "up to date" with the gap folded away inside the panel, the tool
+    # would be doing the hiding.
+    #
+    # A warning rather than a danger, and the distinction is real: nothing here
+    # is broken and no output needs regenerating. What is missing is a person's
+    # statement, which only a person can supply.
+    if missing:
+        return (
+            "warning",
+            f"{noun} has incomplete provenance — nothing accounts for "
+            f"{', '.join(missing)}",
+        )
 
     # The input count and the AI disclosure are both in the panel already; a
     # title that repeats them is a title nobody finishes reading.
@@ -569,11 +624,17 @@ def render(
     creds = credentials_for(source) if source.is_file() else None
     store = Store.for_path(source)
     chain = chain_items(report, store) if report.artifact else []
-    kind, title = headline(report, creds, chain, noun)
+    missing = undeclared(chain, store)
+    kind, title = headline(report, creds, chain, noun, missing)
 
     children: list[dict[str, Any]] = []
     if chain:
         children.append(inputs_table(chain, store))
+    if missing:
+        # Beside the table rather than only in it. The table already marks the
+        # row "⚠ undeclared", but a reader who has seen the headline needs the
+        # remedy, not a second look at the finding.
+        children.append(declare_hint(missing))
     origin = origin_paragraph(report)
     if origin:
         children.append(origin)
@@ -705,6 +766,20 @@ SPEC: dict[str, Any] = {
 #: one — a dataset has provenance worth showing and nothing to display.
 RENDERABLE = (".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf")
 
+#: Figures that are a whole page rather than a picture: an interactive Plotly
+#: or Altair chart, a rendered notebook. Embedded in a frame, because an
+#: `image` node cannot show one and a filename is not a figure.
+#:
+#: These are the artifacts where the record earns the most. HTML cannot carry
+#: Content Credentials in either direction — c2pa does not recognise the type —
+#: so for an interactive figure the line in `figmint.toml` is the only
+#: provenance there is.
+EMBEDDABLE = (".html", ".htm")
+
+#: How tall the frame is, when nobody says. A chart written by Plotly at its
+#: default size fits inside this; anything else should pass `:height:`.
+EMBED_HEIGHT = "420px"
+
 #: Delimited data, rendered as a table. Somebody who puts a CSV in a document
 #: wants to *see* the numbers — showing them a filename and a provenance panel
 #: answers a question nobody asked.
@@ -716,22 +791,53 @@ TABULAR = {".csv": ",", ".tsv": "\t"}
 TABLE_ROW_LIMIT = 25
 
 #: What the panel calls the thing it is describing. Calling a table a figure is
-#: a small lie in the one place the panel is meant to be exact.
-NOUN = {"figure": "Figure", "table": "Table", "artifact": "Artifact"}
+#: a small lie in the one place the panel is meant to be exact. An interactive
+#: chart is still a figure to a reader, so it is one here.
+NOUN = {
+    "figure": "Figure",
+    "interactive": "Figure",
+    "table": "Table",
+    "artifact": "Artifact",
+}
 
 
-def display_kind(target: str) -> str:
+def display_kind(target: str, override: Any = None) -> str:
     """How this artifact should be shown: a picture, a table, or a name.
+
+    The extension answers this nearly always, so `kind` is an override rather
+    than something anybody has to write: it is for the `.dat` that is really
+    delimited, or the `.svg` that is a diagram of the method and has no business
+    being numbered as a figure. An unrecognised value falls back to the guess,
+    because this is presentation and a document should not fail to build over it.
 
     Shared with the Quarto extension, which draws the same three cases with a
     different vocabulary. Deciding it in one place is what keeps a `.tsv` from
     being a table in one document and a bare filename in the other.
     """
+    wanted = str(override or "").strip().lower()
+    if wanted in NOUN:
+        return wanted
     if target.lower().endswith(RENDERABLE):
         return "figure"
+    if target.lower().endswith(EMBEDDABLE):
+        return "interactive"
     if Path(target).suffix.lower() in TABULAR:
         return "table"
     return "artifact"
+
+
+def wants_document(data: dict[str, Any]) -> bool:
+    """Whether this block is about the document rather than about one file.
+
+    Naming no file is the ordinary way to say it — there is nothing else the
+    panel could be about. `:kind: document` exists for the case where a path is
+    present and irrelevant, and for readers who would rather say what they mean
+    than rely on an absence.
+    """
+    options = data.get("options") or {}
+    if str(options.get("kind") or "").strip().lower() == "document":
+        return True
+    return not str(data.get("arg") or "").strip()
 
 
 def read_table(
@@ -785,6 +891,10 @@ def data_table(
 
 
 def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """One directive, two scopes: a named artifact, or the document itself."""
+    if wants_document(data):
+        return document_directive(data)
+
     options = data.get("options") or {}
     node = data.get("node") or {}
     target = (data.get("arg") or "").strip()
@@ -795,8 +905,10 @@ def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
 
     out: list[dict[str, Any]] = []
     caption = caption_children(node)
-    kind = display_kind(target)
-    delimiter = TABULAR.get(Path(target).suffix.lower())
+    kind = display_kind(target, options.get("kind"))
+    # Defaulted rather than looked up, so `:kind: table` works on the `.dat`
+    # that is the reason anybody would write it.
+    delimiter = TABULAR.get(Path(target).suffix.lower(), ",")
 
     if kind == "figure":
         image: dict[str, Any] = {"type": "image", "url": target}
@@ -815,7 +927,7 @@ def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
         if caption:
             figure["children"].append({"type": "caption", "children": caption})
         out.append(figure)
-    elif kind == "table" and delimiter is not None:
+    elif kind == "table":
         # Delimited data: show the numbers. Wrapped in a table container so it
         # is numbered and cross-referenceable exactly as a figure is — a table
         # in a paper is an artifact with provenance like any other.
@@ -833,6 +945,26 @@ def run_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
             block["children"].insert(
                 0, {"type": "caption", "children": caption}
             )
+        out.append(block)
+    elif kind == "interactive":
+        # A whole page rather than a picture: an interactive chart, a rendered
+        # notebook. MyST has a node for exactly this, so it is used rather than
+        # raw HTML, which some themes strip.
+        frame: dict[str, Any] = {
+            "type": "iframe",
+            "src": target,
+            "width": str(options.get("width") or "100%"),
+        }
+        block = {
+            "type": "container",
+            "kind": "figure",
+            "children": [frame],
+        }
+        if options.get("name"):
+            block["identifier"] = str(options["name"]).lower()
+            block["label"] = str(options["name"])
+        if caption:
+            block["children"].append({"type": "caption", "children": caption})
         out.append(block)
     else:
         # Neither a picture nor a table. Naming it and showing its provenance
@@ -941,10 +1073,26 @@ def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
             paragraph(
                 emphasis(
                     "This document's own output is excluded above — you are "
-                    "looking at it. Check it with `figmint status`."
-                )
+                    "looking at it. Check it with "
+                ),
+                code("figmint status"),
+                emphasis("."),
             )
         )
+
+    # Every file the project consumed that nothing in the record accounts for.
+    # Gathered from the whole record rather than from the outputs listed above,
+    # because a gap two links back is still a gap in this document's chain.
+    loose = sorted(
+        {
+            item.path
+            for artifact in store.artifacts.values()
+            for item in artifact.inputs
+            if item.kind != "environment" and item.path not in store.artifacts
+        }
+    )
+    if loose:
+        children.append(declare_hint(loose))
 
     troubled = [r for r in outputs if not r.trustworthy]
     if troubled:
@@ -952,6 +1100,16 @@ def document_directive(data: dict[str, Any]) -> list[dict[str, Any]]:
         title = (
             f"Document is out of date — {len(troubled)} of {len(outputs)} "
             f"output(s) need rebuilding"
+        )
+    elif loose:
+        # Said here as well as on the figure, and deliberately: a document
+        # panel reporting "up to date" over a figure panel reporting a gap
+        # would read as a disagreement between them rather than as two views of
+        # one fact, and a reader would have to work out which to believe.
+        kind = "warning"
+        title = (
+            f"Document has incomplete provenance — nothing accounts for "
+            f"{len(loose)} input(s)"
         )
     else:
         kind = "note"
@@ -1055,8 +1213,16 @@ def main(argv: list[str] | None = None) -> int:
         json.dump(run_directive(payload), sys.stdout)
         return 0
     if kind == "--directive" and name == "figmint-provenance":
-        json.dump(document_directive(payload), sys.stdout)
-        return 0
+        # Folded into `figmint` with no argument. mystmd will not route this —
+        # the spec no longer declares it — so reaching here means a stale
+        # plugin registration, and saying which replaced it beats a bare
+        # "unsupported".
+        print(
+            "figmint-myst: `figmint-provenance` was replaced by `figmint` "
+            "with no argument",
+            file=sys.stderr,
+        )
+        return 1
 
     # Anything else is a mystmd/figmint version mismatch rather than a user
     # error, so say so on stderr where `myst build --debug` will show it.

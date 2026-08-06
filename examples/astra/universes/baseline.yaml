@@ -1,0 +1,9 @@
+# The measurements as measured, and the peak as the largest of them. Nothing
+# is modelled, so nothing can be over-modelled — the conservative reading, and
+# the one to justify departing from rather than the one to justify.
+id: baseline
+description: "Raw curve, peak read off the measurements"
+
+decisions:
+  curve_fit: raw
+  peak_estimator: argmax

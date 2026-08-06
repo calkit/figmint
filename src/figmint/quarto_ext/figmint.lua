@@ -219,6 +219,42 @@ local function escape(value)
   return (value:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
 end
 
+--- An interactive figure — a Plotly or Altair chart, a rendered notebook.
+-- Framed rather than inlined so the chart's own scripts and styles cannot
+-- reach the document around it. Raw HTML because there is no Pandoc element
+-- for a frame; outside HTML the file is named instead, which is the honest
+-- answer when the format cannot show a web page at all.
+local function embed(node)
+  local url = tostring(node.url or "")
+  if not quarto.doc.is_format("html:js") then
+    return pandoc.Blocks({
+      pandoc.Para({
+        pandoc.Str("Interactive figure: "),
+        pandoc.Code(url),
+        pandoc.Str(" (open it in a browser; this format cannot show it)."),
+      }),
+    })
+  end
+  -- A raw *inline* in a Plain, not a RawBlock. Quarto rebuilds a figure's
+  -- content when it numbers it and discards raw blocks on the way through, so
+  -- a RawBlock here renders as an empty box under a correct caption — which
+  -- looks like a broken figure and reads like a missing one.
+  return pandoc.Blocks({
+    pandoc.Plain({
+      pandoc.RawInline(
+        "html",
+        '<iframe src="'
+          .. escape(url)
+          .. '" style="width:'
+          .. escape(tostring(node.width or "100%"))
+          .. ";height:"
+          .. escape(tostring(node.height or "420px"))
+          .. ';border:none" loading="lazy"></iframe>'
+      ),
+    }),
+  })
+end
+
 --- The derivation DAG, drawn where it can be drawn.
 -- Quarto renders Mermaid in its *engine*, before pandoc ever runs, so a filter
 -- cannot produce a diagram the ordinary way. It can, however, ask for the same
@@ -291,6 +327,8 @@ local function block(node)
     return pandoc.Blocks({ callout(node) })
   elseif kind == "image" then
     return pandoc.Blocks({ pandoc.Plain({ image(node) }) })
+  elseif kind == "embed" then
+    return embed(node)
   end
   warn("unknown block node `" .. tostring(kind) .. "`")
   return pandoc.Blocks({})
@@ -336,7 +374,28 @@ local function unavailable(element)
   )
 end
 
-local function artifact_div(element)
+--- Said in the document, because the alternative here is silence.
+-- A retired class is just an unknown class to Pandoc: the div renders as a
+-- plain box and the panel vanishes without anything being wrong enough to
+-- report. A document that quietly stopped showing its provenance is exactly
+-- the failure this tool exists to prevent.
+local function retired(element)
+  local body = pandoc.Blocks({
+    pandoc.Para(
+      words(
+        "`.figmint-provenance` was replaced by `.figmint` with no `src`. "
+          .. "Move any options across unchanged."
+      )
+    ),
+  })
+  body:extend(element.content)
+  return pandoc.Div(
+    body,
+    pandoc.Attr("", { "callout-important" }, { { "title", "figmint" } })
+  )
+end
+
+local function figmint_div(element)
   local result = call("figmint", {
     options = options_of(element),
     base = document_directory(),
@@ -348,21 +407,25 @@ local function artifact_div(element)
   local out = pandoc.Blocks({})
   local caption = element.content
   local body = result.body or {}
-  if result.kind == "figure" and body[1] then
-    local picture = image(body[1])
+  if (result.kind == "figure" or result.kind == "interactive") and body[1] then
+    -- A picture and an interactive chart differ only in what goes inside the
+    -- figure; both are figures to a reader and both should be numbered.
+    local content = result.kind == "figure"
+        and pandoc.Blocks({ pandoc.Plain({ image(body[1]) }) })
+      or blocks(body)
     if element.identifier ~= "" or #caption > 0 then
       -- A Quarto figure: numbered, cross-referenceable, captioned. The caption
       -- comes from the div rather than from figmint, so citations and
       -- cross-references inside it keep working.
       out:insert(
         pandoc.Figure(
-          pandoc.Plain({ picture }),
+          content,
           { long = caption },
           pandoc.Attr(element.identifier, {}, {})
         )
       )
     else
-      out:insert(pandoc.Plain({ picture }))
+      out:extend(content)
     end
   elseif result.kind == "table" then
     local rendered = blocks(body)
@@ -386,26 +449,14 @@ local function artifact_div(element)
   return out
 end
 
-local function provenance_div(element)
-  local result = call("figmint-provenance", {
-    options = options_of(element),
-    base = document_directory(),
-  })
-  if result == nil then
-    return unavailable(element)
-  end
-  local out = blocks(result.body)
-  out:extend(element.content)
-  out:extend(blocks(result.panel))
-  return out
-end
-
 local function handle(element)
-  if element.classes:includes("figmint") then
-    return artifact_div(element)
-  end
+  -- Checked before `figmint`, because `figmint-provenance` does not contain it
+  -- as a class but a document being migrated may well carry both.
   if element.classes:includes("figmint-provenance") then
-    return provenance_div(element)
+    return retired(element)
+  end
+  if element.classes:includes("figmint") then
+    return figmint_div(element)
   end
   return nil
 end

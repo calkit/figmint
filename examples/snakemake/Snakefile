@@ -1,0 +1,78 @@
+# figmint inside a Snakemake workflow.
+#
+# Snakemake owns execution and the graph: it works out what is out of date from
+# the rules' inputs and outputs, and runs what needs running. figmint owns the
+# evidence: the SHA256 of every input as it was when the output was made, the
+# declarations of who is answerable for the primary files, and the Content
+# Credentials embedded in the artifact that leaves the repository.
+#
+# The overlap is smaller than it looks. Snakemake keeps its own record of what
+# it built and from what, under `.snakemake/`, and it is good at it — a touched
+# file with unchanged content does not trigger a rerun. But that record is a
+# *cache*: local, disposable, and about scheduling. Delete `.snakemake/` and
+# Snakemake rebuilds everything; delete `figmint.toml` and you have not lost a
+# cache, you have lost the evidence.
+#
+# It is also silent on everything figmint exists for. It cannot say who wrote a
+# script, whether a model was involved, or whether the published figure carries
+# a manifest a reader outside the repository could check. Those are claims by
+# people, and a workflow manager has no business making them.
+
+# Short names on purpose: the wildcard below turns each into both a script and
+# an output, and `figures/{panel}.svg` would also match `performance.svg` and
+# send Snakemake looking for a `scripts/plot_performance.py` that does not
+# exist.
+PANELS = ["cp", "ct"]
+
+
+rule all:
+    input:
+        "figures/performance.svg",
+
+
+# figmint wraps the *shell command*, not snakemake. Wrapping snakemake would
+# make figmint the entrypoint, record one enormous artifact, and lose the
+# per-figure chain that is the entire point.
+#
+# The command inside has to go through an environment manager with a lock file
+# — here `uv run`, so `uv.lock` is recorded alongside the CSV. That refusal is
+# deliberate: the same script under a different Plotly draws a different figure,
+# and a record naming only the data would call that unchanged.
+#
+# `--no-sign` because these panels never leave the repository. See the README:
+# a signature is not deterministic, so signing an intermediate turns every
+# no-op edit into a full rebuild of everything downstream.
+rule plot:
+    input:
+        data="data/performance.csv",
+        script="scripts/plot_{panel}.py",
+        lock="uv.lock",
+    output:
+        "figures/{panel}_curve.svg",
+    shell:
+        "figmint run --no-sign -i {input.data} -o {output}"
+        " -- uv run python {input.script}"
+
+
+# The boundary. This is the figure that gets pasted into a manuscript, so this
+# is the one that earns a signature — and the rebuild cascade a signature
+# causes stops here, because nothing is built from it.
+rule stack:
+    input:
+        panels=expand("figures/{panel}_curve.svg", panel=PANELS),
+        script="scripts/stack.py",
+        lock="uv.lock",
+    output:
+        "figures/performance.svg",
+    shell:
+        "figmint run -i {input.panels[0]} -i {input.panels[1]} -o {output}"
+        " -- uv run python {input.script}"
+
+
+# Not a rule. Nothing produces a dataset or a plotting script, so without a
+# declaration the record has a hole at the bottom that every check above it
+# passes straight over — and a declaration is a statement by a person, which is
+# not something a workflow manager can make on their behalf.
+#
+#   figmint declare data/performance.csv --mine
+#   figmint declare scripts/plot_cp.py --mine --with-ai 'Claude Opus 5'

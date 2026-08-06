@@ -279,6 +279,42 @@ _copy_ inside the diagram, so refreshing afterwards would publish the old
 pictures — then renders, signs the result with every panel as an ingredient,
 and re-records the diagram itself.
 
+#### A panel that went in through the GUI
+
+Sometimes a figure is already on the canvas: dragged in, pasted, or inserted
+with draw.io's own **Insert → Image** before anybody had heard of figmint.
+figmint cannot tell where such a shape came from, so the diagram is recorded
+without it and the composite rests on a picture nothing accounts for.
+
+You can say where it came from by hand. In draw.io, select the shape and use
+**Edit → Edit Style…** — or right-click → **Edit Style** — and check that the
+shape is wrapped in an `<object>`; if the style dialog shows a bare `mxCell`,
+add a label first (**F2**, then anything), which is what makes draw.io wrap it.
+Then use **Extras → Edit Diagram…** and add one attribute to that `<object>`:
+
+```xml
+<object label="" src="figures/cp_curve.png" id="7">
+```
+
+That is the whole of it. `src` is a path relative to the project root, and it
+is the only thing figmint needs:
+
+- **The hash is optional.** figmint computes one from the bytes already
+  embedded in the shape, so a person who can type a path but cannot work out a
+  SHA256 is not stuck. Requiring both would silently drop the panel from the
+  record — the diagram would look complete while resting on a figure nothing
+  accounted for, which is the exact failure the record exists to make visible.
+- **The next export fills it in.** `figmint drawio export` writes the hash onto
+  the shape once it has verified it, so the gap closes itself and the diagram
+  becomes checkable by anything that reads it without also reading
+  `figmint.toml`.
+
+One caveat that is the reason `figmint drawio import` exists at all: draw.io
+re-encodes anything over 1200 px through a canvas when _it_ embeds an image,
+which destroys any Content Credentials the file carried, including an
+AI-generation disclosure. Adding `src` afterwards restores the _link_, not the
+manifest. For a panel that carries credentials worth keeping, re-import it.
+
 ### GIMP
 
 To export a PNG from GIMP with provenance tracking, run:
@@ -293,6 +329,17 @@ Figmint includes a MyST plugin for inspecting and checking embedded figure
 provenance and freshness.
 It also enables inspecting document-level provenance, since that's a
 composite artifact itself.
+
+There is **one directive**, because there was only ever one question: what is
+this, what was it made from, and is it still true. The scope is the argument.
+Name a file and the panel is about that file:
+
+```
+:::{figmint} figures/composite.svg
+:name: fig-performance
+The composite figure.
+:::
+```
 
 The directive is not only for figures. Point it at a `.csv` or `.tsv` and it
 renders the numbers as a table — numbered and cross-referenceable like any
@@ -311,20 +358,61 @@ Credentials at all: the line in `figmint.toml` is its only provenance. Long
 tables are truncated at `:rows:` (25 by default) with a note saying so — a
 table is for reading, and a thousand rows of it is a scroll bar.
 
-Anything that is neither a picture nor a table renders as its filename with the
-panel attached, and the panel names what it is looking at: _Figure_, _Table_,
-or _Artifact_.
-
-The document-level panel takes an `:artifact:` option naming the document's own
-output(s):
+Point it at an `.html` file — an interactive Plotly or Altair chart, a rendered
+notebook — and it is embedded in a frame, numbered and cross-referenced like
+any other figure:
 
 ```
-:::{figmint-provenance}
+:::{figmint} figures/cp_curve_interactive.html
+:name: fig-cp
+:height: 400px
+Hover for the numbers; drag to zoom.
+:::
+```
+
+That is the case where the record earns the most of all. **HTML cannot carry
+Content Credentials in either direction** — c2pa does not recognize the type —
+so for an interactive figure the line in `figmint.toml` is the only provenance
+there is. It also has to be self-contained: an artifact that fetches half of
+itself from a CDN at read time is not an artifact anyone can hash, because what
+a reader sees depends on what that URL served them.
+
+The panel has a state between green and red, and it is the one worth knowing
+about: **incomplete provenance**. Every hash matches, nothing is stale, nothing
+was tampered with — and something in the chain is a file nobody has claimed:
+
+```
+⚠️ Figure has incomplete provenance — nothing accounts for scripts/plot_cp.py
+   To fix: figmint declare scripts/plot_cp.py --mine [--with-ai <tool>]
+```
+
+A warning rather than an error, because nothing is broken and no output needs
+regenerating; what is missing is a person's statement, and only a person can
+supply it. It gets its own state because every automated check passes, which is
+exactly what makes the gap easy to miss — and a panel that printed a green tick
+with the finding folded away inside it would be the thing doing the hiding. The
+document-level panel says the same, so the two cannot appear to disagree.
+
+Anything that is none of those renders as its filename with the panel attached,
+and the panel names what it is looking at: _Figure_, _Table_, or _Artifact_.
+The extension decides which, and `:kind:` overrides it for the `.dat` that is
+really delimited, or the `.svg` that is a diagram of the method and has no
+business being numbered as a figure.
+
+Name **no** file and the panel is about the document you are reading — a
+composite artifact in its own right, and the same question one scope wider.
+`:artifact:` names the document's own output(s):
+
+```
+:::{figmint}
 :artifact: _build/html/index.html, _build/exports/paper.pdf
 :table: true
 :graph: true
 :::
 ```
+
+(`:kind: document` says it outright, for a block that has a path and wants the
+document anyway.)
 
 Naming them does two things. It shows the command that rebuilds the document,
 read from the record so it cannot drift from what actually produced the file.
@@ -400,14 +488,18 @@ The measurements underlying [@fig-performance].
 :::
 ```
 
-The document-level panel takes the same `artifact` option, naming the
-document's own output(s) so it can show the rebuild command and leave them out
-of its own freshness tally:
+Name no `src` and the panel is about the document, exactly as in MyST. It takes
+the same `artifact` option, naming the document's own output(s) so it can show
+the rebuild command and leave them out of its own freshness tally:
 
 ```
-::: {.figmint-provenance artifact="_site/index.html" table="true" graph="true"}
+::: {.figmint artifact="_site/index.html" table="true" graph="true"}
 :::
 ```
+
+A `.figmint-provenance` div is no longer a thing, and rather than rendering as
+an anonymous grey box it says what replaced it — an unknown class is silence,
+and silence is the failure this panel exists to prevent.
 
 Everything that decides _what to say_ — the chain, the AI disclosure, the
 headline, the truncation note — is the same Python that answers `figmint
@@ -434,3 +526,22 @@ launches `quarto preview --no-watch-inputs` and re-renders only when you save
 the document it is previewing. With input watching off, nothing on the
 filesystem can trigger a render — not the script, and not a touched `.qmd`. Use
 `make preview` in a terminal, or save the `.qmd` after editing a script.
+
+## Examples
+
+Five worked projects, each runnable, in [`examples/`](examples):
+
+| Example                           | What it shows                                                                                                                      |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| [`myst`](examples/myst)           | The MyST plugin, a draw.io composite, and an AI-generated panel whose disclosure travels in its own Content Credentials            |
+| [`quarto`](examples/quarto)       | The Quarto extension: Plotly panels, a composite figure, a CSV rendered as a cross-referenceable table, and a document-level panel |
+| [`calkit`](examples/calkit)       | figmint wrapping a Calkit stage command, with `figmint.toml` beside a `dvc.lock` — and why signing belongs at the boundary         |
+| [`snakemake`](examples/snakemake) | The same arrangement under Snakemake, and what a build cache is for versus what a record is for                                    |
+| [`astra`](examples/astra)         | ASTRA declaring the decision space while figmint records which options actually produced the bytes                                 |
+
+The last three share a shape worth naming. figmint wraps the **stage command**,
+never the workflow manager: wrapping the manager would make figmint the
+entrypoint, record one enormous artifact, and lose the per-figure chain that is
+the whole point. And in each of them the repair for a stale artifact is the
+manager's own command, not `figmint rebuild` — two components that each claim to
+know how to rebuild a project, from different graphs, will drift.

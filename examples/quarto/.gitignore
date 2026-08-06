@@ -1,11 +1,17 @@
-# Everything here is produced by `make all`, including the record itself: the
-# hashes in figmint.toml describe files built on the machine that ran it, so
-# committing them would ship a record that describes somebody else's bytes.
-/_extensions/
+# `figmint.toml` is NOT here, and that is the point. It is the record — the
+# evidence this whole project is about — so it is committed like any other
+# source of truth, alongside the artifacts it describes and the lock file it
+# names. A figmint project that ignores its own record is one where nobody can
+# check anything without rebuilding first.
+
+# The rendered site: a build output, and the one artifact whose absence the
+# record can survive. Run `make all` and it appears.
 /_site/
 /.quarto/
-/figures/
-/figmint.toml
-/uv.lock
-
 **/*.quarto_ipynb
+
+# The installed copy of the filter, which lives in this repository already.
+/_extensions/
+
+# uv's own directory, not the lock file.
+/.venv/

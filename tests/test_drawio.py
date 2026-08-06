@@ -415,6 +415,59 @@ class TestReimport:
         assert len(Diagram.open(project / "c.drawio").embedded()) == 2
 
 
+class TestHandAddedPanels:
+    """A panel put on the canvas through draw.io's own Extras > Edit Style.
+
+    Somebody doing that can write `src` by hand; they have no way to work out a
+    SHA256. Demanding both would drop the panel from the record silently — the
+    diagram would look complete while resting on a figure nothing accounted
+    for, which is exactly the failure the record exists to make visible.
+    """
+
+    def strip_hash(self, diagram: Path) -> None:
+        text = diagram.read_text(encoding="utf-8")
+        diagram.write_text(
+            re.sub(r'\shash="sha256:[0-9a-f]+"', "", text), encoding="utf-8"
+        )
+
+    def test_a_panel_with_no_hash_is_still_an_input(
+        self, project: Path, monkeypatch
+    ):
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        self.strip_hash(project / "c.drawio")
+        assert 'hash="sha256:' not in (project / "c.drawio").read_text()
+
+        # Re-recorded by an export, which is the next thing that touches it.
+        seen = TestExport().fake_drawio(project, monkeypatch)
+        export(project / "c.drawio", project / "c.svg", sign=False)
+        del seen
+
+        recorded = Store.load(project).artifacts["c.drawio"]
+        assert [i.path for i in recorded.inputs] == ["figures/plot.png"]
+        # Computed from the bytes sitting in the diagram, which are right there.
+        assert recorded.inputs[0].hash == hash_file(
+            project / "figures/plot.png"
+        )
+
+    def test_the_export_writes_the_missing_hash_back(
+        self, project: Path, monkeypatch
+    ):
+        """So the diagram is checkable by anything that reads it without also
+        reading figmint.toml — and so the gap closes itself."""
+        import_image(project / "figures/plot.png", project / "c.drawio")
+        self.strip_hash(project / "c.drawio")
+
+        seen = TestExport().fake_drawio(project, monkeypatch)
+        result = export(project / "c.drawio", project / "c.svg", sign=False)
+        del seen
+
+        # Nothing was redrawn, so nothing is reported as re-embedded: filling
+        # in a hash is not the same event as replacing a picture.
+        assert result.refreshed == []
+        text = (project / "c.drawio").read_text(encoding="utf-8")
+        assert f'hash="{hash_file(project / "figures/plot.png")}"' in text
+
+
 class TestAutomaticRefresh:
     """Export re-embeds redrawn panels; nothing needs re-importing by hand.
 

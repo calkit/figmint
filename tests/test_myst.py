@@ -120,18 +120,57 @@ def project(tmp_path: Path, monkeypatch) -> Path:
         )
     )
     store.save()
+    # Declared, so the fixture's default state is a clean one. Without this
+    # every panel in this file reports incomplete provenance — correctly, and
+    # unhelpfully, since almost none of these tests are about that.
+    from figmint.declare import declare
+    from figmint.origins import Author, attested
+
+    declare(tmp_path / "data.csv", attested(Author("A Researcher")))
     monkeypatch.chdir(tmp_path)
     return tmp_path
+
+
+def undeclared_artifact(project: Path, name: str = "other.png") -> str:
+    """An artifact resting on a file nothing accounts for."""
+    (project / "raw.csv").write_text("a,b\n1,2\n")
+    (project / name).write_bytes(b"\x89PNG\r\n\x1a\nother")
+    store = Store.load(project)
+    store.record(
+        Artifact(
+            path=name,
+            hash=hash_file(project / name),
+            command="uv run other.py",
+            inputs=[Input("raw.csv", hash_file(project / "raw.csv"))],
+        )
+    )
+    store.save()
+    return name
 
 
 class TestProtocol:
     def test_no_arguments_prints_the_spec(self, capsys):
         assert main([]) == 0
         spec = json.loads(capsys.readouterr().out)
-        assert [d["name"] for d in spec["directives"]] == [
-            "figmint",
-            "figmint-provenance",
-        ]
+        # One directive: a figure, a table and a whole document are the same
+        # question at different scopes, and two of them made that look like two
+        # features with two vocabularies to learn.
+        assert [d["name"] for d in spec["directives"]] == ["figmint"]
+        assert spec["directives"][0]["arg"]["required"] is False
+        options = spec["directives"][0]["options"]
+        assert {"kind", "rows", "artifact", "graph"} <= set(options)
+
+    def test_the_retired_directive_names_its_replacement(
+        self, monkeypatch, capsys
+    ):
+        """Only reachable from a stale plugin registration, which is exactly
+        when "unsupported request" would send somebody looking in the wrong
+        place."""
+        monkeypatch.setattr("sys.stdin", io.StringIO("{}"))
+        assert main(["--directive", "figmint-provenance"]) == 1
+        assert (
+            "replaced by `figmint` with no argument" in capsys.readouterr().err
+        )
 
     def test_the_spec_is_json_serializable(self):
         # An enum or a Path would sneak past a unit test and fail only when
@@ -266,9 +305,25 @@ class TestPanel:
         assert "environment" in text
 
     def test_an_undeclared_input_is_called_out(self, project: Path):
-        """The one thing in the panel that is wrong while every check passes."""
-        panel = find(run_directive(payload("plot.png")), "admonition")
-        assert "undeclared" in all_text(panel)
+        """The one thing wrong while every automated check passes.
+
+        Every hash matches, so the panel would otherwise print a green "up to
+        date" with the gap folded away inside it — the tool doing the hiding.
+        It gets its own state, a warning rather than a danger: nothing is
+        broken and no output needs regenerating. What is missing is a person's
+        statement, which only a person can supply, so the remedy is named.
+        """
+        target = undeclared_artifact(project)
+        panel = find(run_directive(payload(target)), "admonition")
+        shown = all_text(panel)
+
+        assert panel["kind"] == "warning"
+        assert "has incomplete provenance" in shown
+        assert "nothing accounts for raw.csv" in shown
+        # The row keeps saying it too — the headline is a summary, not a
+        # replacement for the table.
+        assert "undeclared" in shown
+        assert "figmint declare raw.csv --mine" in shown
 
     def test_a_declared_input_shows_its_origin(self, project: Path):
         """The provenance of the components, not just their names.
@@ -550,6 +605,50 @@ class TestPanel:
         nodes = run_directive(payload("plot.png", provenance=False))
         assert find(nodes, "admonition") is None
         assert find(nodes, "container") is not None
+
+
+class TestScope:
+    def test_naming_no_artifact_describes_the_document(self, project: Path):
+        """One directive, two scopes.
+
+        A figure, a table and a whole document are the same question — what is
+        this, what was it made from, is it still true — asked at different
+        scopes. Two directives made that look like two features.
+        """
+        for sent in (payload(""), payload("", kind="document")):
+            nodes = run_directive(sent)
+            panel = find(nodes, "admonition")
+            assert "Document is up to date" in all_text(panel)
+            # Not a figure: nothing was named to draw.
+            assert find(nodes, "container") is None
+
+    def test_an_html_artifact_is_framed_not_named(self, project: Path):
+        """An interactive chart is a figure, not a filename — and MyST's own
+        `iframe` node is used rather than raw HTML, which some themes strip."""
+        (project / "chart.html").write_text("<html></html>")
+        nodes = run_directive(payload("chart.html"))
+        container = find(nodes, "container")
+        assert container["kind"] == "figure"
+        assert find(nodes, "iframe")["src"] == "chart.html"
+        assert find(nodes, "image") is None
+        assert "Figure is not tracked" in all_text(find(nodes, "admonition"))
+
+    def test_kind_overrides_what_the_extension_says(self, project: Path):
+        """For the `.dat` that is really delimited, and the diagram of the
+        method that has no business being numbered as a figure."""
+        (project / "readings.dat").write_text("x,y\n3,4\n")
+        forced = run_directive(payload("readings.dat", kind="table"))
+        assert find(forced, "container")["kind"] == "table"
+        assert "3" in all_text(find(forced, "table"))
+
+        plain = run_directive(payload("plot.png", kind="artifact"))
+        assert find(plain, "image") is None
+        assert "Artifact is up to date" in all_text(find(plain, "admonition"))
+
+        # Presentation, not a provenance claim: a value nobody recognises
+        # falls back to the guess rather than failing the build.
+        guessed = run_directive(payload("plot.png", kind="picture"))
+        assert find(guessed, "container")["kind"] == "figure"
 
 
 class TestDocumentSummary:

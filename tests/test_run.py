@@ -102,6 +102,11 @@ class TestEnvironmentGate:
         assert env.manager == "calkit"
         assert env.lock == project / "env.lock"
         assert calls[0][:4] == ["calkit", "describe", "env", "-n"]
+        # Asked for outright. Calkit's default output is YAML, which parses as
+        # neither JSON nor an error, so without this the answer comes back
+        # unreadable — and a mock that hands over JSON regardless would never
+        # notice.
+        assert "--json" in calls[0]
 
     @pytest.mark.parametrize(
         "command",

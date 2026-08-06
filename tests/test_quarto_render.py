@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from figmint.declare import declare
+from figmint.origins import Author, attested
 from figmint.quarto import install_extension
 from figmint.store import Artifact, Input, Store, hash_file
 
@@ -46,7 +48,7 @@ Referenced as [@fig-cp].
 The measurements.
 :::
 
-::: {.figmint-provenance artifact="_site/doc.html"}
+::: {.figmint artifact="_site/doc.html"}
 :::
 """
 
@@ -100,6 +102,10 @@ def document(tmp_path: Path) -> Path:
         )
     )
     store.save()
+    # Declared, so the fixture's default state is a clean one: without this
+    # every panel reports incomplete provenance, correctly and unhelpfully.
+    for name in ("data.csv", "plot.py"):
+        declare(tmp_path / name, attested(Author("A Researcher")))
     install_extension(tmp_path)
     return tmp_path
 
@@ -189,6 +195,64 @@ class TestRendering:
         page = render(document)
         assert "Figure is out of date" in page
         assert "data.csv changed since it was made" in page
+
+    def test_the_retired_class_says_what_replaced_it(self, document: Path):
+        """An unknown class is just a div to Pandoc: it renders, the panel
+        vanishes, and nothing is wrong enough to report. Silence is the one
+        failure this tool cannot have, so the block says so in the page."""
+        (document / "doc.qmd").write_text(
+            DOCUMENT + "\n::: {.figmint-provenance}\n:::\n"
+        )
+        page = render(document)
+        assert "was replaced by" in page
+        assert 'class="callout callout-style-default callout-important' in page
+
+    def test_an_interactive_figure_survives_quartos_float_machinery(
+        self, document: Path
+    ):
+        """The frame has to be a raw *inline*.
+
+        Quarto rebuilds a figure's content when it numbers it and discards raw
+        blocks on the way through, which renders as an empty box under a
+        perfectly correct caption — the failure that looks like a broken figure
+        and reads like a missing one.
+        """
+        (document / "chart.html").write_text("<html><body>hi</body></html>")
+        (document / "doc.qmd").write_text(
+            DOCUMENT
+            + '\n::: {.figmint src="chart.html" #fig-live height="400px"}\n'
+            + "An interactive chart.\n:::\n"
+        )
+        page = render(document)
+        assert '<iframe src="chart.html"' in page
+        assert "height:400px" in page
+        # Numbered like any other figure — the second in this document — and
+        # its panel present.
+        assert "Figure&nbsp;2" in page
+        assert "Figure is not tracked" in page
+
+    def test_an_undeclared_input_turns_the_panel_amber(self, document: Path):
+        """Every hash matches and something is still unaccounted for.
+
+        The state most at risk of being rendered as a green tick, because
+        nothing automated is failing — which is exactly what makes the gap easy
+        to miss.
+        """
+        # Take the declaration away: the file did not change, only the record's
+        # account of who is answerable for it.
+        store = Store.load(document)
+        del store.artifacts["plot.py"]
+        store.save()
+        page = render(document)
+
+        assert 'class="callout callout-style-default callout-warning' in page
+        assert "Figure has incomplete provenance" in page
+        assert "nothing accounts for plot.py" in page
+        assert "figmint declare plot.py --mine" in page
+        # And the document panel agrees rather than reporting all clear over
+        # the top of it.
+        assert "Document has incomplete provenance" in page
+        assert 'title="🌿 Figure is up to date"' not in page
 
     def test_an_untracked_artifact_says_so(self, document: Path):
         """Nothing recorded for it at all: the panel has to be honest about

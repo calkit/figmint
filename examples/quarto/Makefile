@@ -10,10 +10,15 @@
 RUN     := uv run
 FIGMINT := $(RUN) figmint
 
-DATA   := data/performance.csv
-SCRIPT := scripts/plot_cp.py
-FIGURE := figures/cp_curve.png
-HTML   := _site/index.html
+DATA      := data/performance.csv
+CP_SCRIPT := scripts/plot_cp.py
+CT_SCRIPT := scripts/plot_ct.py
+CP        := figures/cp_curve.svg
+CP_HTML   := figures/cp_curve_interactive.html
+CT        := figures/ct_curve.svg
+DIAGRAM   := figures/composite.drawio
+COMPOSITE := figures/composite.svg
+HTML      := _site/index.html
 
 .DEFAULT_GOAL := help
 
@@ -40,15 +45,43 @@ _extensions/figmint/figmint.lua: uv.lock
 .PHONY: declare
 declare:  ## Say where the primary artifacts came from
 	$(FIGMINT) declare $(DATA) --mine
-	$(FIGMINT) declare $(SCRIPT) --mine --with-ai 'Claude Opus 5'
+	$(FIGMINT) declare $(CP_SCRIPT) --mine --with-ai 'Claude Opus 5'
+	$(FIGMINT) declare $(CT_SCRIPT) --mine --with-ai 'Claude Opus 5'
+	$(FIGMINT) declare $(DIAGRAM) --mine
 	$(FIGMINT) declare index.qmd --mine
 	$(FIGMINT) declare _quarto.yml --mine
 
-# The environment is an input to this, which is why `uv.lock` is a prerequisite:
-# a different matplotlib draws a different figure, and figmint records the lock
-# precisely so that is visible rather than assumed.
-$(FIGURE): $(DATA) $(SCRIPT) uv.lock
-	$(FIGMINT) run -i $(DATA) -o $@ -- uv run python $(SCRIPT)
+# The environment is an input to these, which is why `uv.lock` is a
+# prerequisite: a different Plotly draws a different figure, and figmint
+# records the lock precisely so that is visible rather than assumed.
+$(CP): $(DATA) $(CP_SCRIPT) uv.lock
+	$(FIGMINT) run -i $(DATA) -o $@ -- uv run python $(CP_SCRIPT)
+
+$(CT): $(DATA) $(CT_SCRIPT) uv.lock
+	$(FIGMINT) run -i $(DATA) -o $@ -- uv run python $(CT_SCRIPT)
+
+# Recorded but not signed, and not by choice: c2pa does not recognize HTML in
+# either direction, so `figmint.toml` is the only provenance this figure has.
+$(CP_HTML): $(DATA) scripts/plot_cp_interactive.py uv.lock
+	$(FIGMINT) run -i $(DATA) -o $@ \
+	    -- uv run python scripts/plot_cp_interactive.py
+
+# `drawio import` is an *authoring* step — it puts a new panel on the canvas —
+# so it is not a build rule. Nothing here re-imports: each shape in the diagram
+# records the `src` it came from, and the export re-embeds any panel that has
+# been redrawn since, keeping the layout the author gave it. That is why the
+# `.drawio` is the one thing under figures/ that is committed.
+#
+# The export is also what carries the provenance out of draw.io: `src` and
+# `hash` live on mxCells that do not survive into a rendered SVG, so the SVG is
+# signed with every panel as an ingredient instead.
+$(COMPOSITE): $(DIAGRAM) $(CP) $(CT)
+	$(FIGMINT) drawio export $(DIAGRAM) $@
+
+.PHONY: compose
+compose:  ## Author the diagram from scratch (only needed if you delete it)
+	$(FIGMINT) drawio import $(CP) $(DIAGRAM) --width 460 --x 0 --y 0
+	$(FIGMINT) drawio import $(CT) $(DIAGRAM) --width 460 --x 500 --y 0
 
 # The document is an artifact too, and the most useful one to check: it is what
 # a reader actually receives. Its inputs are the sources it is built from —
@@ -61,15 +94,19 @@ $(FIGURE): $(DATA) $(SCRIPT) uv.lock
 #
 # Recorded but not signed: c2pa does not recognize HTML, so `figmint.toml` is
 # the only provenance this output has.
-$(HTML): index.qmd _quarto.yml $(FIGURE) uv.lock _extensions/figmint/figmint.lua
-	$(FIGMINT) run -i index.qmd -i _quarto.yml -i $(FIGURE) \
+$(HTML): index.qmd _quarto.yml $(COMPOSITE) $(CP_HTML) uv.lock \
+		_extensions/figmint/figmint.lua
+	$(FIGMINT) run -i index.qmd -i _quarto.yml -i $(COMPOSITE) -i $(CP_HTML) \
 	    -o $@ -- uv run quarto render
 
 uv.lock: pyproject.toml
 	uv lock
 
 .PHONY: plot
-plot: $(FIGURE)  ## Produce the figure, recording its provenance
+plot: $(CP) $(CT) $(CP_HTML)  ## Produce the figures, recording their provenance
+
+.PHONY: composite
+composite: $(COMPOSITE)  ## Export the multi-panel figure from the diagram
 
 .PHONY: site
 site: $(HTML)  ## Build the document, recording its provenance

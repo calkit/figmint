@@ -232,6 +232,25 @@ class Embedded:
         return f"sha256:{hashlib.sha256(self.payload).hexdigest()}"
 
 
+def panel_inputs(document: "Diagram") -> list[Input]:
+    """Every embedded panel, as an input of the diagram.
+
+    A shape needs a `src` to be an input at all — without one there is no file
+    to point at. It does *not* need a `hash`: the bytes are embedded right
+    there, so one can be computed. That matters for a panel put on the canvas
+    through draw.io's own **Extras → Edit Style**, where a person writes `src`
+    by hand and has no way to work out a SHA256. Requiring both would drop such
+    a panel from the record silently — the diagram would look complete while
+    resting on a figure nothing accounted for, which is the exact failure the
+    record exists to make visible.
+    """
+    return [
+        Input(item.src, item.hash or item.embedded_hash or "")
+        for item in document.embedded()
+        if item.src and (item.hash or item.embedded_hash)
+    ]
+
+
 @dataclass
 class Diagram:
     """A `.drawio` (or `.drawio.svg`) document, opened for reading or writing."""
@@ -244,6 +263,11 @@ class Diagram:
     #: but not the rendering around it, and a file whose picture and metadata
     #: disagree is worse than one that refuses to be written.
     rendered: bool = False
+    #: Set whenever something in the tree has been changed in memory. Export
+    #: needs this because not every change is a re-embedded panel: filling in a
+    #: hash somebody could not compute by hand is a real edit that nothing else
+    #: would report, and a diagram that is not saved keeps the gap forever.
+    dirty: bool = False
 
     @classmethod
     def open(cls, path: Path) -> "Diagram":
@@ -495,6 +519,7 @@ class Diagram:
             wrapper.set("id", shape_id)
         wrapper.set(ATTR_SRC, relative)
         wrapper.set(ATTR_HASH, f"sha256:{hashlib.sha256(data).hexdigest()}")
+        self.dirty = True
 
         cell = ET.SubElement(wrapper, "mxCell")
         cell.set(
@@ -536,11 +561,27 @@ class Diagram:
                 # command that could still produce something useful.
                 continue
             current = hash_file(source)
+            # `embedded_hash` is the fallback for a shape somebody added
+            # through draw.io's own Edit Style, where `src` can be written by
+            # hand and a SHA256 cannot. The picture is still there to hash.
             if current == (item.hash or item.embedded_hash):
+                if not item.hash:
+                    # Up to date, and now it says so. Filling this in is what
+                    # makes a hand-added panel checkable by anything that reads
+                    # the diagram without also reading `figmint.toml`.
+                    self.set_hash(item.shape_id, current)
                 continue
             self.place(source, relative=item.src)
             refreshed.append(item.src)
         return refreshed
+
+    def set_hash(self, shape_id: str, value: str) -> None:
+        """Record a panel's hash on its shape, leaving everything else alone."""
+        for wrapper in self.model.iter("object"):
+            if wrapper.get("id") == shape_id:
+                wrapper.set(ATTR_HASH, value)
+                self.dirty = True
+                return
 
     def save(self) -> None:
         if self.rendered:
@@ -651,17 +692,10 @@ def import_image(
     )
     document.save()
 
-    # Every embedded image is an input of the diagram, so `figmint status`
-    # reports the composite as stale when any panel is regenerated.
-    inputs = [
-        Input(item.src, item.hash)
-        for item in document.embedded()
-        if item.src and item.hash
-    ]
     artifact = Artifact(
         path=store.relative(diagram),
         hash=hash_file(diagram),
-        inputs=inputs,
+        inputs=panel_inputs(document),
         command=None,
         kind="authored",
     )
@@ -751,7 +785,10 @@ def export(
     store = Store.for_path(diagram)
     document = Diagram.open(diagram)
     refreshed = document.refresh(store.root)
-    if refreshed:
+    # `dirty` rather than `refreshed`: a hash filled in on a hand-added panel
+    # is a change nobody re-embedded, and leaving it unsaved would mean the gap
+    # never closes.
+    if document.dirty:
         document.save()
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -775,11 +812,7 @@ def export(
 
     # Re-record the diagram: exporting is the act that blesses the arrangement.
     document = Diagram.open(diagram)
-    panels = [
-        Input(item.src, item.hash)
-        for item in document.embedded()
-        if item.src and item.hash
-    ]
+    panels = panel_inputs(document)
     store.record(
         Artifact(
             path=store.relative(diagram),

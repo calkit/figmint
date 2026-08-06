@@ -1,0 +1,156 @@
+# ASTRA declares the decision space; figmint records what actually ran.
+#
+# The two answer adjacent questions and neither answers the other's. ASTRA says
+# what could defensibly have been chosen and which option this universe picked.
+# figmint says what was on disk when the command ran, byte for byte, who is
+# answerable for the primary files, and whether the published figure still
+# matches them.
+#
+# The join between them is the command. Every recipe below is wrapped in
+# `figmint run`, and every decision that changes a number reaches the command
+# line — so the command figmint records in `figmint.toml` names the options that
+# produced the artifact sitting next to it. "Which universe is this figure
+# from?" becomes a question about the record rather than about somebody's
+# memory.
+
+version: "0.0.12"
+id: turbine_performance
+name: "Cross-flow turbine performance curves"
+description: |
+  Power and torque coefficients against tip speed ratio, from a single towing
+  tank run, and the peak operating point read off them. Synthetic values; the
+  point of the example is the decision space, not the turbine.
+
+  Two choices move the numbers. How a curve is drawn through eleven scattered
+  measurements is not a display setting — a smoothed curve and a
+  connect-the-dots curve disagree about where the peak is and how high it gets,
+  and the peak is what a reader quotes. And having drawn one, whether the peak
+  is the largest measured point or the maximum of the fit is a second, separate
+  choice with its own answer.
+
+inputs:
+  - id: measurements
+    type: data
+    label: "Towing tank run"
+    source: data/performance.csv
+    description: |
+      Eleven tip speed ratios with a measured power coefficient at each.
+      figmint declares this separately: nothing produced it, so the record
+      would otherwise have a hole at the bottom that every check above it
+      passes straight over.
+
+outputs:
+  - id: cp_curve
+    type: figure
+    label: "Power coefficient"
+    description: "Power coefficient against tip speed ratio."
+    inputs: [measurements]
+    decisions: [curve_fit]
+    recipe:
+      # Recorded unsigned: this panel never leaves the repository, and a C2PA
+      # manifest carries a fresh instance ID and timestamp, so signing an
+      # intermediate turns every no-op edit into a rebuild of everything
+      # downstream. See the README.
+      command: >-
+        figmint run --no-sign
+        -i {inputs.measurements} -i src/curves.py
+        -o figures/cp_curve.svg
+        -- uv run python src/plot_cp.py --fit {decisions.curve_fit}
+
+  - id: ct_curve
+    type: figure
+    label: "Torque coefficient"
+    description: "Torque coefficient against tip speed ratio, C_T = C_P / lambda."
+    inputs: [measurements]
+    decisions: [curve_fit]
+    recipe:
+      command: >-
+        figmint run --no-sign
+        -i {inputs.measurements} -i src/curves.py
+        -o figures/ct_curve.svg
+        -- uv run python src/plot_ct.py --fit {decisions.curve_fit}
+
+  - id: performance_figure
+    type: figure
+    label: "Performance figure"
+    description: |
+      The two panels side by side — the figure that goes in the paper, and so
+      the one that is signed. The rebuild cascade a signature causes stops
+      here, because nothing is built from it.
+    inputs: [cp_curve, ct_curve]
+    recipe:
+      command: >-
+        figmint run
+        -i figures/cp_curve.svg -i figures/ct_curve.svg
+        -o figures/performance.svg
+        -- uv run python src/stack.py
+
+  - id: peak
+    type: metric
+    label: "Peak operating point"
+    description: |
+      The maximum power coefficient and the tip speed ratio at which it occurs
+      — the pair of numbers a reader quotes from a paper like this.
+    inputs: [measurements]
+    decisions: [curve_fit, peak_estimator]
+    recipe:
+      command: >-
+        figmint run
+        -i {inputs.measurements} -i src/curves.py
+        -o results/peak.json
+        -- uv run python src/peak.py
+        --fit {decisions.curve_fit}
+        --estimator {decisions.peak_estimator}
+
+decisions:
+  curve_fit:
+    label: "How the curve is drawn through the measurements"
+    tags: [preprocessing]
+    rationale: |
+      Eleven points do not determine a curve. Joining them asserts that the
+      measurements are the signal; fitting a polynomial asserts that the
+      underlying performance curve is smooth and the scatter is noise. Both are
+      defensible for a towing tank run, and they disagree about the peak — which
+      is the number this analysis exists to report, so the choice cannot be
+      made silently in a plotting call.
+    default: raw
+    options:
+      raw:
+        label: "Connect the measured points"
+        description: |
+          No model at all: the curve passes exactly through every measurement.
+          Honest about what was measured, and noisy — the peak it shows is
+          whichever run happened to come out highest.
+      polynomial:
+        label: "Least-squares polynomial"
+        description: |
+          A quartic through all eleven points. Smooths measurement scatter and
+          gives a peak that does not depend on a single run, at the cost of
+          asserting a shape the data did not have to take, and of behaving
+          badly near the ends of the range.
+
+  peak_estimator:
+    label: "How the peak is located"
+    tags: [stats]
+    rationale: |
+      Having drawn a curve, there are two different things "the peak" can mean,
+      and they are not interchangeable. Reporting the largest measurement is a
+      statement about the run; reporting the maximum of the fit is a statement
+      about the turbine. A paper that quotes one while plotting the other is
+      making a claim it did not compute.
+    default: argmax
+    options:
+      argmax:
+        label: "Largest measured point"
+        description: |
+          The highest C_P actually observed, at the lambda it was observed at.
+          Cannot exceed what was measured, and is quantized to the tip speed
+          ratios that were run.
+      fit_peak:
+        label: "Maximum of the fitted curve"
+        description: |
+          The curve is evaluated on a dense grid and its maximum taken, so the
+          peak can fall between measured tip speed ratios. Only meaningful with
+          a fit; on the raw curve there is no curve between the points to take
+          a maximum of.
+        requires: [curve_fit.polynomial]

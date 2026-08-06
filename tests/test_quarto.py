@@ -22,7 +22,6 @@ import pytest
 from figmint.quarto import (
     EXTENSION_FILES,
     SPEC,
-    document_directive,
     install_extension,
     main,
     run_directive,
@@ -92,18 +91,28 @@ def project(tmp_path: Path, monkeypatch) -> Path:
         )
     )
     store.save()
+    # Declared, so the fixture's default state is a clean one. Without this
+    # every panel here reports incomplete provenance — correctly, and
+    # unhelpfully, since almost none of these tests are about that.
+    from figmint.declare import declare
+    from figmint.origins import Author, attested
+
+    declare(tmp_path / "data.csv", attested(Author("A Researcher")))
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
 
 class TestProtocol:
-    def test_the_spec_describes_both_directives(self, capsys):
+    def test_there_is_one_directive(self, capsys):
+        """Two of them made one idea look like two features."""
         assert main([]) == 0
         spec = json.loads(capsys.readouterr().out)
-        assert [d["name"] for d in spec["directives"]] == [
-            "figmint",
-            "figmint-provenance",
-        ]
+        assert [d["name"] for d in spec["directives"]] == ["figmint"]
+        # Both scopes' options are declared together: Quarto passes every
+        # attribute through, and a reader moving `artifact` onto a block that
+        # already has `rows` should not have to know which list it came from.
+        options = spec["directives"][0]["options"]
+        assert {"src", "kind", "rows", "artifact", "graph"} <= set(options)
         # An enum or a Path would sneak past a unit test and fail only when the
         # filter parses stdout.
         json.dumps(SPEC)
@@ -117,9 +126,9 @@ class TestProtocol:
         )
         assert json.loads(spec.stdout)["name"] == "figmint"
 
-        for directive, sent in (
-            ("figmint", payload("plot.png")),
-            ("figmint-provenance", payload()),
+        for sent, expected in (
+            (payload("plot.png"), "figure"),
+            (payload(), "document"),
         ):
             result = subprocess.run(
                 [
@@ -127,7 +136,7 @@ class TestProtocol:
                     "-m",
                     "figmint.quarto",
                     "--directive",
-                    directive,
+                    "figmint",
                 ],
                 input=json.dumps(sent),
                 capture_output=True,
@@ -137,6 +146,7 @@ class TestProtocol:
             )
             answer = json.loads(result.stdout)
             assert set(answer) == {"kind", "body", "panel"}
+            assert answer["kind"] == expected
             assert find(answer["panel"], "admonition") is not None
 
     def test_an_unknown_request_fails_loudly(self, monkeypatch, capsys):
@@ -171,6 +181,22 @@ class TestArtifactBlock:
         assert find(other["body"], "image") is None
         assert "notes.txt" in all_text(other["body"])
 
+    def test_an_html_artifact_is_embedded_not_named(self, project: Path):
+        """An interactive chart is a figure, not a filename.
+
+        It is also the case where the record earns the most: HTML cannot carry
+        Content Credentials in either direction, so the panel is the only
+        provenance the figure has.
+        """
+        (project / "chart.html").write_text("<html></html>")
+        result = run_directive(payload("chart.html", height="400px"))
+        assert result["kind"] == "interactive"
+        assert result["body"][0]["type"] == "embed"
+        assert result["body"][0]["url"] == "chart.html"
+        assert result["body"][0]["height"] == "400px"
+        # Still called a figure, because that is what a reader sees.
+        assert "Figure is not tracked" in all_text(result["panel"])
+
     def test_the_panel_is_named_in_the_readers_terms(self, project: Path):
         """Calling a table a figure is a small lie in the one place the panel
         is meant to be exact."""
@@ -201,12 +227,25 @@ class TestArtifactBlock:
             "panel"
         ]
 
-    def test_a_missing_src_says_so_instead_of_failing(self, project: Path):
-        """A stack trace here would abort the whole render, and the block that
-        caused it is the one thing the message would not name."""
-        result = run_directive(payload())
-        assert result["kind"] == "artifact"
-        assert "no src given" in all_text(result["body"])
+    def test_kind_overrides_what_the_extension_says(self, project: Path):
+        """For the `.dat` that is really delimited, and the diagram of the
+        method that has no business being numbered as a figure."""
+        (project / "readings.dat").write_text("x,y\n3,4\n")
+        forced = run_directive(payload("readings.dat", kind="table"))
+        assert forced["kind"] == "table"
+        assert "3" in all_text(find(forced["body"], "table"))
+
+        plain = run_directive(payload("plot.png", kind="artifact"))
+        assert plain["kind"] == "artifact"
+        assert find(plain["body"], "image") is None
+        assert "Artifact" in all_text(plain["panel"])
+
+        # Presentation, not a provenance claim: a value nobody recognises
+        # falls back to the guess rather than failing the build.
+        assert (
+            run_directive(payload("plot.png", kind="picture"))["kind"]
+            == "figure"
+        )
 
     def test_long_tables_are_truncated(self, project: Path):
         (project / "big.csv").write_text(
@@ -225,13 +264,18 @@ class TestArtifactBlock:
 
 
 class TestDocumentBlock:
-    def test_it_summarizes_every_recorded_artifact(self, project: Path):
-        result = document_directive(payload())
-        assert result["kind"] == "provenance"
-        panel = find(result["panel"], "admonition")
-        assert "Document is up to date" in all_text(panel)
-        assert "plot.png" in all_text(find(panel, "table"))
-        assert find(panel, "mermaid") is not None
+    def test_naming_no_artifact_describes_the_document(self, project: Path):
+        """The scope is the argument: no `src`, and the panel is about the
+        page you are reading. `kind` says it outright for anyone who would
+        rather not rely on an absence."""
+        for sent in (payload(), payload(kind="document")):
+            result = run_directive(sent)
+            assert result["kind"] == "document"
+            assert result["body"] == []
+            panel = find(result["panel"], "admonition")
+            assert "Document is up to date" in all_text(panel)
+            assert "plot.png" in all_text(find(panel, "table"))
+            assert find(panel, "mermaid") is not None
 
     def test_its_own_output_is_left_out_of_the_tally(self, project: Path):
         """A document cannot honestly report on itself from the inside: while
@@ -250,11 +294,11 @@ class TestDocumentBlock:
         (project / "_site").mkdir()
         (project / "_site" / "index.html").write_text("a newer build")
 
-        without = all_text(document_directive(payload())["panel"])
+        without = all_text(run_directive(payload())["panel"])
         assert "out of date" in without
 
         with_it = all_text(
-            document_directive(payload(artifact="_site/index.html"))["panel"]
+            run_directive(payload(artifact="_site/index.html"))["panel"]
         )
         assert "Document is up to date" in with_it
         # Named, so the panel can still say how to rebuild it.

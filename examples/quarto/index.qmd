@@ -3,28 +3,79 @@ title: Figmint tracks artifact provenance
 author: Example Author
 ---
 
-A small document whose figure carries its own provenance. The panel below was
-produced by a script figmint knows nothing about; what figmint knows is what the
-script was given, what environment it ran in, and what came out.
+A small document whose figures carry their own provenance. They were produced by
+scripts figmint knows nothing about; what figmint knows is what each script was
+given, what environment it ran in, and what came out.
 
 ## The figure
 
-::: {.figmint src="figures/cp_curve.png" #fig-performance width="70%"}
-Power coefficient against tip speed ratio, measured in a towing tank—synthetic
-values for this example.
+::: {.figmint src="figures/composite.svg" #fig-performance width="95%"}
+(a) Power coefficient and (b) torque coefficient against tip speed ratio,
+measured in a towing tank—synthetic values for this example.
 :::
 
 Expand the panel under [@fig-performance] and you get what a reader would
 otherwise have to take on trust: what this picture was made from, whether it is
-still current, and—where the record says so—that part of it was made with a
-generative tool. All of it is read from `figmint.toml` and the file's own
+still current, and—where the record says so—which parts were made with a
+generative tool. All of it is read from `figmint.toml` and the files' own
 Content Credentials when the document builds. Nothing on this page is typed by
 hand.
+
+That is a *composite*: two panels, arranged in draw.io, exported as one SVG.
+Its chain is three deep and the panel above lists all of it, because "what was
+this made from" is not answered by naming the diagram it came out of.
+
+## The same figure, interactive
+
+A figure need not be a picture. Point the block at an HTML file and it is
+embedded in a frame, numbered and cross-referenced like any other—hover for the
+numbers, drag to zoom, double-click to reset:
+
+::: {.figmint src="figures/cp_curve_interactive.html" #fig-cp height="400px"}
+Power coefficient against tip speed ratio, drawn by Plotly as a web page rather
+than an image—the same measurements as panel (a) of [@fig-performance].
+:::
+
+Its panel is amber, and deliberately so. Every hash behind [@fig-cp] matches —
+nothing is stale, nothing was tampered with, every automated check passes — and
+the script that drew it is a file nobody has claimed. That is the gap this tool
+exists to make visible, and it is the easiest one in the world to miss, because
+nothing is *failing*. Left as a green tick with the finding folded away inside
+the panel, figmint would be the one doing the hiding.
+
+It is a warning rather than an error because nothing is broken and no output
+needs regenerating. What is missing is a person's statement, and only a person
+can supply it:
+
+```sh
+figmint declare scripts/plot_cp_interactive.py --mine --with-ai 'Claude Opus 5'
+```
+
+Run that and the panel goes green. It is left undone here on purpose, so the
+state is visible in a built document rather than only described in a README.
+
+This is also where the record earns the most. [@fig-cp] **cannot carry Content
+Credentials at all**: c2pa does not recognize HTML in either direction, so
+there is nowhere in the file for a manifest to live. The panel underneath it is
+the only provenance this figure has, which is exactly why the warning at the
+top of `figmint.toml` is not decoration.
+
+The file is self-contained—Plotly's library is inlined rather than fetched from
+a CDN—and that is a provenance decision rather than a convenience one. An
+artifact that downloads half of itself at read time is not an artifact anybody
+can hash: what a reader sees would depend on what that URL served them, and
+figmint would be recording the wrapper rather than the figure. It costs a few
+megabytes, which is the honest price.
+
+The static panels are a different trade. `figures/cp_curve.svg` is an SVG,
+which *can* carry Content Credentials, so it is signed where it is made and the
+disclosure survives into the composite instead of stopping at the first
+re-encode.
 
 ## How it got there
 
 ```sh
-figmint run -i data/performance.csv -o figures/cp_curve.png \
+figmint run -i data/performance.csv -o figures/cp_curve.svg \
     -- uv run python scripts/plot_cp.py
 ```
 
@@ -41,8 +92,8 @@ the code that drew it was rewritten.
 
 The command has to go through a manager with a deterministic lock file—here
 `uv run`, so `uv.lock` is recorded alongside the CSV. That is not bookkeeping.
-The same script under a different matplotlib draws a different figure, and a
-record naming only the data would call that unchanged.
+The same script under a different Plotly draws a different figure, and a record
+naming only the data would call that unchanged.
 
 ### Going stale
 
@@ -61,6 +112,47 @@ is to regenerate it—never to edit the hashes in `figmint.toml`. That file is
 evidence, and a record edited to match files it does not describe is
 indistinguishable from a forged one.
 :::
+
+## How the composite was assembled
+
+A figure made of several panels is an artifact whose inputs happen to be other
+artifacts:
+
+```sh
+figmint drawio import figures/cp_curve.svg figures/composite.drawio
+figmint drawio import figures/ct_curve.svg figures/composite.drawio
+# ...arrange it in draw.io...
+figmint drawio export figures/composite.drawio figures/composite.svg
+```
+
+Each panel goes in byte-for-byte, carrying `src` and `hash` on its shape, and
+the diagram is recorded with the panels as inputs. Regenerating a panel makes
+the composite stale—which nothing inside draw.io could ever notice, since it
+holds a *copy* with no link back.
+
+Use the figmint command rather than draw.io's own **Insert → Image**. draw.io
+re-encodes anything over 1200 px through a canvas before embedding it, which
+destroys whatever Content Credentials the image carried.
+
+`import` is an *authoring* step: it puts a new panel on the canvas, and you
+should not need to run it again when a panel is redrawn. You don't—each shape
+records where it came from, so `drawio export` re-embeds any panel that has
+moved on, keeps the position and size you gave it, and says which ones it
+touched. That is why `figures/composite.drawio` is committed here while
+everything else under `figures/` is generated: the *arrangement* is the work.
+
+### Why export is a separate step
+
+A `.drawio` is a source; it is not a picture anything but draw.io can display.
+`figmint drawio export` renders one, and does three things while it is there:
+
+- exports with `--embed-diagram`, so the shapes' `src` and `hash` survive into
+  the SVG and the published file can still be checked;
+- **re-records the diagram**, because editing it in draw.io is the entire point
+  of keeping one and every edit changes its bytes. Without this the composite
+  would sit permanently `modified`, and that signal—*somebody wrote this file
+  behind figmint's back*—would be worth nothing;
+- signs the result, naming both the diagram and its panels as ingredients.
 
 ## The data behind it
 
@@ -83,15 +175,16 @@ A document is a composite too—of every artifact it embeds. The graph is the
 record itself, drawn: `figmint.toml` is already a DAG, so nothing here can
 disagree with the freshness reported beside it.
 
-::: {.figmint-provenance artifact="_site/index.html" table="true" graph="true"}
+::: {.figmint artifact="_site/index.html" table="true" graph="true"}
 :::
 
 Read it left to right and you have the answer to "where did this figure come
-from": a CSV is read by a script, running under the environment the lock file
-pins, to make the plot; the plot makes the page. The script sits *in* the
-chain rather than beside it, because that is what happened—a figure is not the
-sum of a dataset, a lock and some code stirred together. Rounded nodes are raw
-inputs; nothing in the project produced them.
+from": one CSV is read by two scripts, running under the environment the lock
+file pins, to make two panels; the panels make the diagram; the diagram makes
+the published picture; that makes the page. The scripts sit *in* the chain
+rather than beside it, because that is what happened—a figure is not the sum of
+a dataset, a lock and some code stirred together. Rounded nodes are raw inputs;
+nothing in the project produced them.
 
 figmint never reads the script, so that edge is inferred from the data and the
 code having been inputs to the same command. It is the claim the record was
@@ -113,9 +206,9 @@ tally. `figmint status` checks it from outside, where the answer has settled.
 ## Where the chain ends
 
 Follow any figure back far enough and you reach a file figmint did not make.
-Here that is `data/performance.csv`—measurements—and `scripts/plot_cp.py`, the
-code that drew the plot. `figmint run` cannot record where those came from,
-because figmint was not there.
+Here that is `data/performance.csv`—measurements—and the two plotting scripts.
+`figmint run` cannot record where those came from, because figmint was not
+there.
 
 Left alone they are the hole in the middle of an otherwise checkable record: a
 figure that is current in every link, resting on data nobody can place. Every
@@ -125,7 +218,13 @@ artifact is *declared*, and the declaration says which kind of claim it is:
 ```sh
 figmint declare data/performance.csv --mine
 figmint declare scripts/plot_cp.py --mine --with-ai 'Claude Opus 5'
+figmint declare scripts/plot_ct.py --mine --with-ai 'Claude Opus 5'
+figmint declare figures/composite.drawio --mine
 ```
+
+The `.drawio` is in that list because it is assembled from recorded panels but
+*arranged* by hand. It has a derivation chain and an author list at the same
+time, and declaring the authors leaves its inputs untouched.
 
 `--mine` is an attestation—nothing verifies it, and figmint says so wherever it
 is displayed. A DOI resolves to something a reader can fetch; `--git` and

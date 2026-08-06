@@ -16,7 +16,10 @@ construct that takes an argument, options, and a *parsed* caption:
     Power coefficient against tip speed ratio.
     :::
 
-    ::: {.figmint-provenance artifact="_site/index.html"}
+Name no `src` and it describes the document instead — the same question at a
+wider scope, not a second feature:
+
+    ::: {.figmint artifact="_site/index.html"}
     :::
 
 The split between this module and `figmint.lua` is not arbitrary. Everything
@@ -40,6 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from .myst import (
+    EMBED_HEIGHT,
     NOUN,
     TABLE_ROW_LIMIT,
     TABULAR,
@@ -49,12 +53,16 @@ from .myst import (
     display_kind,
     paragraph,
     render,
+    wants_document,
 )
 from .myst import (
     document_directive as myst_document_directive,
 )
 from .status import check_path
 
+#: One block, two scopes — see the note on `myst.SPEC`. Here the scope is the
+#: `src` attribute: name a file and the panel is about that file, name none and
+#: it is about the document.
 SPEC: dict[str, Any] = {
     "name": "figmint",
     "author": "figmint",
@@ -63,21 +71,34 @@ SPEC: dict[str, Any] = {
         {
             "name": "figmint",
             "doc": (
-                "Embed an artifact together with what it was made from and "
-                "whether it is still current."
+                "Show what an artifact was made from and whether it is still "
+                "current. With no `src`, the document itself."
             ),
             "options": {
                 "src": {
                     "type": "string",
                     "doc": (
-                        "Path to the artifact, relative to the document. "
-                        "Required."
+                        "Path to the artifact, relative to the document. Omit "
+                        "it for a panel about the whole document."
                     ),
-                    "required": True,
+                },
+                "kind": {
+                    "type": "string",
+                    "doc": (
+                        "document, figure, table, or artifact. Defaults to "
+                        "document when no src is given, and otherwise to "
+                        "whatever the file extension says."
+                    ),
                 },
                 "width": {
                     "type": "string",
                     "doc": "Rendered width, as on any Quarto image.",
+                },
+                "height": {
+                    "type": "string",
+                    "doc": (
+                        "Frame height for an interactive figure, e.g. 420px."
+                    ),
                 },
                 "align": {"type": "string", "doc": "left, center, or right."},
                 "alt": {"type": "string", "doc": "Alt text."},
@@ -92,22 +113,16 @@ SPEC: dict[str, Any] = {
                     "type": "boolean",
                     "doc": "Show the provenance panel. Defaults to true.",
                 },
-            },
-        },
-        {
-            "name": "figmint-provenance",
-            "doc": (
-                "Summarize the whole document's provenance: every recorded "
-                "artifact and whether it is current."
-            ),
-            "options": {
                 "table": {
                     "type": "boolean",
-                    "doc": "Show the artifact table.",
+                    "doc": "Document panel: show the artifact table.",
                 },
                 "graph": {
                     "type": "boolean",
-                    "doc": "Draw the derivation DAG. Defaults to true.",
+                    "doc": (
+                        "Document panel: draw the derivation DAG. Defaults to "
+                        "true."
+                    ),
                 },
                 "direction": {
                     "type": "string",
@@ -116,9 +131,9 @@ SPEC: dict[str, Any] = {
                 "artifact": {
                     "type": "string",
                     "doc": (
-                        "This document's own output(s), comma separated. "
-                        "Named so the panel can show how to rebuild them and "
-                        "leave them out of its own freshness tally."
+                        "Document panel: this document's own output(s), comma "
+                        "separated. Named so the panel can show how to rebuild "
+                        "them and leave them out of its own freshness tally."
                     ),
                 },
             },
@@ -178,7 +193,7 @@ def _relocate(data: dict[str, Any]) -> None:
 
 
 def run_directive(data: dict[str, Any]) -> dict[str, Any]:
-    """One artifact: what to show for it, and what is known about it.
+    """One block, two scopes: a named artifact, or the document itself.
 
     The body and the panel are handed back separately because only the Lua half
     can finish the body — a Quarto figure carries the caption and the
@@ -186,20 +201,23 @@ def run_directive(data: dict[str, Any]) -> dict[str, Any]:
     arrive from the document rather than from here.
     """
     _relocate(data)
+    # `wants_document` reads the argument from `arg`, which is where MyST puts
+    # the path; Quarto puts it in `src`. Copied across rather than given its own
+    # rule, so there is one definition of "no artifact was named".
     options = data.get("options") or {}
     target = str(options.get("src") or "").strip()
-    if not target:
+    if wants_document({"arg": target, "options": options}):
         return {
-            "kind": "artifact",
-            "body": [paragraph(code("figmint: no src given"))],
-            "panel": [],
+            "kind": "document",
+            "body": [],
+            "panel": myst_document_directive(data),
         }
 
     source = Path(target)
     if not source.is_absolute():
         source = Path.cwd() / source
 
-    kind = display_kind(target)
+    kind = display_kind(target, options.get("kind"))
     body: list[dict[str, Any]] = []
     if kind == "figure":
         image: dict[str, Any] = {"type": "image", "url": target}
@@ -207,11 +225,27 @@ def run_directive(data: dict[str, Any]) -> dict[str, Any]:
             if options.get(key):
                 image[key] = str(options[key])
         body.append(image)
+    elif kind == "interactive":
+        # A whole page rather than a picture: an interactive Plotly or Altair
+        # chart, a rendered notebook. Framed rather than inlined, so the
+        # chart's own scripts and styles cannot reach the document around it —
+        # a figure that restyles the page it is embedded in is a figure nobody
+        # will use twice.
+        body.append(
+            {
+                "type": "embed",
+                "url": target,
+                "width": str(options.get("width") or "100%"),
+                "height": str(options.get("height") or EMBED_HEIGHT),
+            }
+        )
     elif kind == "table":
         body.extend(
             data_table(
                 source,
-                TABULAR[Path(target).suffix.lower()],
+                # Defaulted rather than looked up, so `kind="table"` works on
+                # the `.dat` that is the reason anybody would write it.
+                TABULAR.get(Path(target).suffix.lower(), ","),
                 int(options.get("rows") or TABLE_ROW_LIMIT),
             )
         )
@@ -225,16 +259,6 @@ def run_directive(data: dict[str, Any]) -> dict[str, Any]:
     if as_bool(options.get("provenance")):
         panel.append(render(check_path(source), source, NOUN[kind]))
     return {"kind": kind, "body": body, "panel": panel}
-
-
-def document_directive(data: dict[str, Any]) -> dict[str, Any]:
-    """The document as a composite, one level up from a single artifact."""
-    _relocate(data)
-    return {
-        "kind": "provenance",
-        "body": [],
-        "panel": myst_document_directive(data),
-    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -252,9 +276,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if kind == "--directive" and name == "figmint":
         json.dump(run_directive(payload), sys.stdout)
-        return 0
-    if kind == "--directive" and name == "figmint-provenance":
-        json.dump(document_directive(payload), sys.stdout)
         return 0
 
     # Anything else is a figmint/extension version mismatch rather than a user

@@ -121,7 +121,10 @@ A document is a composite too — of every artifact it embeds. The graph is the
 record itself, drawn: `figmint.toml` is already a DAG, so nothing here can
 disagree with the freshness reported beside it.
 
-:::{figmint-provenance}
+The same directive, one scope wider: name no file and the panel is about the
+document rather than about a figure in it.
+
+:::{figmint}
 :artifact: \_build/html/index.html
 :table: true
 :graph: true

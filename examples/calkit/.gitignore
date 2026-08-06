@@ -1,0 +1,7 @@
+# `figmint.toml` is NOT here, and neither are the figures. The record is the
+# evidence this project is about, and an artifact nobody committed is one
+# nobody can check — so both are committed, exactly as in a real project.
+#
+# `dvc.lock` and `dvc.yaml` are committed too. Calkit generates them, but they
+# are how a collaborator gets the same pipeline state; only edit `calkit.yaml`.
+/.venv/

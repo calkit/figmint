@@ -1,0 +1,10 @@
+# ASTRA analysis
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.DS_Store
+
+# `figmint.toml` is NOT here, and neither are figures/ or results/. The record
+# is the evidence this project is about, and an artifact nobody committed is
+# one nobody can check — including the peak the paper would quote.
+/.venv/

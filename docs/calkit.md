@@ -1,5 +1,10 @@
 # Use within a Calkit project
 
+A working version of everything below is in
+[`examples/calkit`](https://github.com/calkit/figmint/tree/main/examples/calkit):
+three stages, two of them deliberately unsigned, and a `figmint.toml` sitting
+beside a `dvc.lock`.
+
 Calkit and Figmint have different jobs.
 Calkit is the overall research project manager with its own environment-aware
 workflow/pipeline system built upon DVC,

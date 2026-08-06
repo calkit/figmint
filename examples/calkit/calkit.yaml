@@ -1,0 +1,92 @@
+name: figmint-calkit-example
+title: figmint inside a Calkit pipeline
+description: >-
+  Calkit owns execution and the graph; figmint owns the evidence. Each stage
+  command is wrapped by figmint, so DVC sees a stage that produces a signed,
+  recorded artifact rather than a raw one it would immediately consider
+  modified.
+
+environments:
+  main:
+    kind: uv-venv
+    path: requirements.txt
+    python: "3.12"
+
+pipeline:
+  stages:
+    # `kind: command` rather than `python-script`, because a `python-script`
+    # stage runs the script and nothing else — there is nowhere to put the
+    # figmint wrapper. Writing the command out is what buys the wrapper, and
+    # figmint has to be around the *whole* of it: it hashes the inputs, runs
+    # everything below, then hashes and signs what came out.
+    #
+    # The inner `calkit xenv -n main` is not redundant with the outer one
+    # Calkit adds. figmint refuses a bare command on purpose — the environment
+    # is an input, and the prefix is how it knows which lock pins it, which it
+    # then resolves by asking `calkit describe env`. Calkit fronts Docker,
+    # Conda, Julia and renv, each locking somewhere different, and guessing
+    # would mean reimplementing that and then drifting from it.
+    #
+    # `--no-sign` on the panels is the point of this example rather than an
+    # economy. A C2PA manifest carries a fresh instance ID and timestamp, so
+    # signing identical bytes twice produces different files — and under DVC
+    # that turns every no-op edit into a full rebuild of everything
+    # downstream. These panels never leave the repository, so the signature
+    # would buy nothing and cost that.
+    plot-cp:
+      kind: command
+      environment: main
+      command: >-
+        figmint run --no-sign
+        -i data/performance.csv
+        -o figures/cp_curve.svg
+        -- calkit xenv -n main -- python scripts/plot_cp.py
+      inputs:
+        - data/performance.csv
+        - scripts/plot_cp.py
+      outputs:
+        - path: figures/cp_curve.svg
+          storage: git
+
+    plot-ct:
+      kind: command
+      environment: main
+      command: >-
+        figmint run --no-sign
+        -i data/performance.csv
+        -o figures/ct_curve.svg
+        -- calkit xenv -n main -- python scripts/plot_ct.py
+      inputs:
+        - data/performance.csv
+        - scripts/plot_ct.py
+      outputs:
+        - path: figures/ct_curve.svg
+          storage: git
+
+    # The boundary. This is the figure that leaves the repository — pasted into
+    # a manuscript, mailed to a co-author — so it is the one that earns a
+    # signature, and the cascade it triggers stops here because nothing is
+    # built from it.
+    stack-panels:
+      kind: command
+      environment: main
+      command: >-
+        figmint run
+        -i figures/cp_curve.svg
+        -i figures/ct_curve.svg
+        -o figures/performance.svg
+        -- calkit xenv -n main -- python scripts/stack.py
+      inputs:
+        - from_stage_outputs: plot-cp
+        - from_stage_outputs: plot-ct
+        - scripts/stack.py
+      outputs:
+        - path: figures/performance.svg
+          storage: git
+
+figures:
+  - path: figures/performance.svg
+    title: Turbine performance
+    description: >-
+      Power and torque coefficients against tip speed ratio. Signed, because
+      this is the one that gets sent to people.

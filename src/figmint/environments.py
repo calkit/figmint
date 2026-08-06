@@ -122,7 +122,10 @@ def _calkit_lock(command: list[str], cwd: Path) -> Path:
 
     try:
         completed = subprocess.run(
-            ["calkit", "describe", "env", "-n", name],
+            # `--json` is not optional politeness: without it Calkit prints
+            # YAML, which parses as neither JSON nor an error and would leave
+            # figmint reporting that it could not read the answer it asked for.
+            ["calkit", "describe", "env", "-n", name, "--json"],
             cwd=cwd,
             capture_output=True,
             text=True,

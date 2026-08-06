@@ -1,0 +1,13 @@
+# The alternative reading: the scatter is measurement noise, the underlying
+# performance curve is smooth, and the peak is a property of the turbine rather
+# than of whichever run came out highest.
+#
+# `peak_estimator: fit_peak` is only legal here. astra.yaml marks it
+# `requires: [curve_fit.polynomial]`, so pairing it with the raw curve is
+# caught by `astra universe check` before anything runs.
+id: smoothed
+description: "Quartic fit, peak taken from the curve"
+
+decisions:
+  curve_fit: polynomial
+  peak_estimator: fit_peak
