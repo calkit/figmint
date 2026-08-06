@@ -64,7 +64,9 @@ def ordered(outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return done
 
 
-def resolve(command: str, sources: dict[str, str], chosen: dict[str, str]) -> str:
+def resolve(
+    command: str, sources: dict[str, str], chosen: dict[str, str]
+) -> str:
     """Fill in `{inputs.x}` and `{decisions.y}`.
 
     An unknown placeholder is fatal rather than left in place: a command with a

@@ -55,7 +55,7 @@ figmint declare src/curves.py --mine --with-ai 'Claude Opus 5'
 ## The record is committed
 
 `figmint.toml` is in version control, along with every artifact it describes.
-That is not incidental to the example: the record *is* the evidence, and a
+That is not incidental to the example: the record _is_ the evidence, and a
 project that ignores its own record is one where nobody can check anything
 without rebuilding first. Clone this and `figmint status` has an answer
 immediately.
@@ -107,7 +107,7 @@ every no-op edit produces a new hash and a rebuild of everything downstream.
 
 So sign at the **boundary**: the artifact that leaves the repository. The panels
 never travel; the stacked figure does. That also reads correctly as a statement
-of intent — *this is the artifact I am putting my name on*.
+of intent — _this is the artifact I am putting my name on_.
 
 `results/peak.json` is recorded but not signed, because JSON has nowhere to put
 a manifest. For that output the line in `figmint.toml` is the only provenance
@@ -116,7 +116,7 @@ decoration.
 
 ## What each tool would miss alone
 
-Without figmint, `astra.yaml` says which options *should* have produced the
+Without figmint, `astra.yaml` says which options _should_ have produced the
 figure and cannot say which ones did, nor whether the file on disk is still the
 one they produced.
 

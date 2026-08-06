@@ -33,10 +33,10 @@ name = "Pete Bachant <petebachant@gmail.com>"
 kind = "person"
 
 [artifact."figures/cp_curve.svg"]
-hash = "sha256:738d7c184edccacfe6259adcc53dbc4e233045dcf70ba4a6f59eb31f60412990"
+hash = "sha256:e36cf094470ce1622718235f577e55ff56788802f6829a913bb74e6addd609fb"
 kind = "run"
 command = "calkit xenv -n main -- python scripts/plot_cp.py"
-recorded = "2026-08-06T00:35:05+00:00"
+recorded = "2026-08-06T02:28:52+00:00"
 
 [[artifact."figures/cp_curve.svg".inputs]]
 path = "data/performance.csv"
@@ -54,10 +54,10 @@ hash = "sha256:47eefd50f047efdb2d811628a60499e09a98ab9729e2088eddbc7c16e7504130"
 kind = "code"
 
 [artifact."figures/ct_curve.svg"]
-hash = "sha256:00bd270b01c593658b75ebb7bb5b03f6f215613790e33dcb80847b1796458f38"
+hash = "sha256:82cd027dc13e5ad255195b5e66c8bc280096b4f1461fa3133cb2f8beb9b39961"
 kind = "run"
 command = "calkit xenv -n main -- python scripts/plot_ct.py"
-recorded = "2026-08-06T00:35:10+00:00"
+recorded = "2026-08-06T02:28:55+00:00"
 
 [[artifact."figures/ct_curve.svg".inputs]]
 path = "data/performance.csv"
@@ -75,20 +75,20 @@ hash = "sha256:a7b55c57ad88e5ae545f02da8b3d36bf7af148ceb754a2b0e508c254bf3e8084"
 kind = "code"
 
 [artifact."figures/performance.svg"]
-hash = "sha256:f06c31a1082f3457c95752c0ffacd8c3df6d2de1f3ef0d6dfab83ca5d990ba22"
+hash = "sha256:40ac4bc195df44d59a269835a25808a446cad7003ec51b68870926b0ed5a42c7"
 kind = "run"
 command = "calkit xenv -n main -- python scripts/stack.py"
-recorded = "2026-08-06T00:35:11+00:00"
+recorded = "2026-08-06T02:28:57+00:00"
 signed = true
 
 [[artifact."figures/performance.svg".inputs]]
 path = "figures/cp_curve.svg"
-hash = "sha256:738d7c184edccacfe6259adcc53dbc4e233045dcf70ba4a6f59eb31f60412990"
+hash = "sha256:e36cf094470ce1622718235f577e55ff56788802f6829a913bb74e6addd609fb"
 kind = "file"
 
 [[artifact."figures/performance.svg".inputs]]
 path = "figures/ct_curve.svg"
-hash = "sha256:00bd270b01c593658b75ebb7bb5b03f6f215613790e33dcb80847b1796458f38"
+hash = "sha256:82cd027dc13e5ad255195b5e66c8bc280096b4f1461fa3133cb2f8beb9b39961"
 kind = "file"
 
 [[artifact."figures/performance.svg".inputs]]
@@ -98,7 +98,7 @@ kind = "environment"
 
 [[artifact."figures/performance.svg".inputs]]
 path = "scripts/stack.py"
-hash = "sha256:47f688f301bbcbd0eb78767891c1bbf631e08620afd289af39907a089b717fb9"
+hash = "sha256:3fba3c128dd9ad0fb66f4f8e3d371bd6b29cdf0306fa621ab9a0d1662ca824e7"
 kind = "code"
 
 [artifact."scripts/plot_cp.py"]
@@ -130,9 +130,9 @@ name = "Claude Opus 5"
 kind = "ai"
 
 [artifact."scripts/stack.py"]
-hash = "sha256:47f688f301bbcbd0eb78767891c1bbf631e08620afd289af39907a089b717fb9"
+hash = "sha256:3fba3c128dd9ad0fb66f4f8e3d371bd6b29cdf0306fa621ab9a0d1662ca824e7"
 kind = "primary"
-recorded = "2026-08-06T00:35:38+00:00"
+recorded = "2026-08-06T02:28:56+00:00"
 origin_kind = "attested"
 
 [[artifact."scripts/stack.py".authors]]

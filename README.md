@@ -477,6 +477,15 @@ Power coefficient against tip speed ratio.
 :::
 ```
 
+One Pandoc habit to know about, because scientific captions walk into it
+constantly: a caption beginning `(a)` is parsed as an **ordered list**, not as a
+panel label. Pandoc's `fancy_lists` treats `(a)`, `(1)` and `a.` at the start of
+a block as list markers, and the result is a caption turned into an `<ol>` with
+Quarto's own "Figure 1:" prefix chopped into list items. Nothing warns you. Bold
+the label — `**(a)** Power coefficient…` — or escape it as `\(a\)`. This is
+plain Quarto behavior rather than anything figmint does, and it applies to every
+caption in the document.
+
 Point it at a `.csv` or `.tsv` and it renders the numbers as a table, numbered
 and cross-referenceable like any other, with the same provenance panel
 underneath. Anything that is neither a picture nor a table renders as its
@@ -531,13 +540,13 @@ filesystem can trigger a render — not the script, and not a touched `.qmd`. Us
 
 Five worked projects, each runnable, in [`examples/`](examples):
 
-| Example                           | What it shows                                                                                                                      |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| [`myst`](examples/myst)           | The MyST plugin, a draw.io composite, and an AI-generated panel whose disclosure travels in its own Content Credentials            |
-| [`quarto`](examples/quarto)       | The Quarto extension: Plotly panels, a composite figure, a CSV rendered as a cross-referenceable table, and a document-level panel |
-| [`calkit`](examples/calkit)       | figmint wrapping a Calkit stage command, with `figmint.toml` beside a `dvc.lock` — and why signing belongs at the boundary         |
-| [`snakemake`](examples/snakemake) | The same arrangement under Snakemake, and what a build cache is for versus what a record is for                                    |
-| [`astra`](examples/astra)         | ASTRA declaring the decision space while figmint records which options actually produced the bytes                                 |
+| Example                           | What it shows                                                                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`myst`](examples/myst)           | The MyST plugin, a draw.io composite, and an AI-generated panel whose disclosure travels in its own Content Credentials                                 |
+| [`quarto`](examples/quarto)       | The Quarto extension: Plotly panels, an interactive figure, a composite, a CSV as a cross-referenceable table — under pixi, so the lock pins Quarto too |
+| [`calkit`](examples/calkit)       | figmint wrapping a Calkit stage command, with `figmint.toml` beside a `dvc.lock` — and why signing belongs at the boundary                              |
+| [`snakemake`](examples/snakemake) | The same arrangement under Snakemake, and what a build cache is for versus what a record is for                                                         |
+| [`astra`](examples/astra)         | ASTRA declaring the decision space while figmint records which options actually produced the bytes                                                      |
 
 The last three share a shape worth naming. figmint wraps the **stage command**,
 never the workflow manager: wrapping the manager would make figmint the

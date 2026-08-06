@@ -13,5 +13,13 @@ _site
 **/_site
 **/_extensions
 
-# Signed artifacts — figmint has recorded their hashes.
+# Recorded artifacts — figmint has hashed these, and several are signed. A
+# formatter that rewrites the bytes makes the record describe a file that no
+# longer exists, and destroys any Content Credentials on the way through. The
+# SVGs and the interactive HTML are both fair game to prettier without this.
 examples/myst/figures
+examples/quarto/figures
+examples/calkit/figures
+examples/snakemake/figures
+examples/astra/figures
+examples/astra/results

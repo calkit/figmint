@@ -25,7 +25,7 @@
 [artifact."_quarto.yml"]
 hash = "sha256:d8565ec519c5b71a3105e4f4f6558f38622f9acc361d017cc073652f8b645e78"
 kind = "primary"
-recorded = "2026-08-06T01:09:16+00:00"
+recorded = "2026-08-06T02:36:21+00:00"
 origin_kind = "attested"
 
 [[artifact."_quarto.yml".authors]]
@@ -33,14 +33,14 @@ name = "Pete Bachant <petebachant@gmail.com>"
 kind = "person"
 
 [artifact."_site/index.html"]
-hash = "sha256:048cf232bee6f4d8cf1876aa3053fe093b35508349df1c34f1708cbfd3683cb4"
+hash = "sha256:8bda747741ffee054f5316c34b286ec6cad159c992fe4fd430aacaea4efe4af0"
 kind = "run"
-command = "uv run quarto render"
-recorded = "2026-08-06T01:51:36+00:00"
+command = "pixi run quarto render"
+recorded = "2026-08-06T02:36:33+00:00"
 
 [[artifact."_site/index.html".inputs]]
 path = "index.qmd"
-hash = "sha256:7e1ca01c0e0668725be9cf5b0a4db0cc0825a1b66a108f8f3b919a872e36f4ea"
+hash = "sha256:54d4d4bb0bd68d89003d5baec28d9e6dc3a35fcd22a4dc5f10b90d5f030de778"
 kind = "file"
 
 [[artifact."_site/index.html".inputs]]
@@ -50,23 +50,23 @@ kind = "file"
 
 [[artifact."_site/index.html".inputs]]
 path = "figures/composite.svg"
-hash = "sha256:1213ae8919a4391571b62588df2aa3688b7c81a1bc360cef20fe31362a8a8d41"
+hash = "sha256:8d45e7fc9be6b0cb1d5497e5667ca88a7b468ea892f71752dfa09ee17e4e0b5b"
 kind = "file"
 
 [[artifact."_site/index.html".inputs]]
 path = "figures/cp_curve_interactive.html"
-hash = "sha256:724b0e16ffc6aa9bea8ca8c4cca25dc3cb84e3f4487c9882345880440d021838"
+hash = "sha256:022c779c3f6682ff31cd15a307a3470c8add2dfaca72dae75710b25ebba3b3a4"
 kind = "file"
 
 [[artifact."_site/index.html".inputs]]
-path = "uv.lock"
-hash = "sha256:330be2bb0321c811534501de9bb9c271e20119925de8cb9a235faa3aff88954b"
+path = "pixi.lock"
+hash = "sha256:93f33600599149252a97ff1234f6d9455c7385a5fd77470f56391f3d7558a9a2"
 kind = "environment"
 
 [artifact."data/performance.csv"]
 hash = "sha256:da736db8e856206999bddc068e158b7345dd3e2f4df840be0892b3bed8de31a9"
 kind = "primary"
-recorded = "2026-08-06T01:09:15+00:00"
+recorded = "2026-08-06T02:36:19+00:00"
 origin_kind = "attested"
 
 [[artifact."data/performance.csv".authors]]
@@ -74,9 +74,9 @@ name = "Pete Bachant <petebachant@gmail.com>"
 kind = "person"
 
 [artifact."figures/composite.drawio"]
-hash = "sha256:b4f1b154bfad6548e2dc1b4f5c34b9b54ab9ccaa5535364ff7709a242994e5d6"
+hash = "sha256:cc8f05fa4f5d718a81a4a50d3ff75907b5e1926caffae6a80f91e822f61dc1d1"
 kind = "authored"
-recorded = "2026-08-06T01:09:16+00:00"
+recorded = "2026-08-06T02:36:28+00:00"
 origin_kind = "attested"
 
 [[artifact."figures/composite.drawio".authors]]
@@ -85,31 +85,31 @@ kind = "person"
 
 [[artifact."figures/composite.drawio".inputs]]
 path = "figures/cp_curve.svg"
-hash = "sha256:07d0a3da593a83bef5d89565a25514138dea0947f8ee8fda5095bc021282f39d"
+hash = "sha256:9e45512c5746350ed0500dfd66408cbef77b47023108f74040a79285f60eb255"
 kind = "file"
 
 [[artifact."figures/composite.drawio".inputs]]
 path = "figures/ct_curve.svg"
-hash = "sha256:550e43271b069c4c13dc6674e3db70ccc7216a77faf2c273cb47ce1411273fff"
+hash = "sha256:f14093dbfad7be8c8804d2ca19002955f5634c11c1df2dfac7834c03b75b8ca6"
 kind = "file"
 
 [artifact."figures/composite.svg"]
-hash = "sha256:1213ae8919a4391571b62588df2aa3688b7c81a1bc360cef20fe31362a8a8d41"
+hash = "sha256:8d45e7fc9be6b0cb1d5497e5667ca88a7b468ea892f71752dfa09ee17e4e0b5b"
 kind = "drawio-export"
 command = "figmint drawio export figures/composite.drawio figures/composite.svg"
-recorded = "2026-08-06T00:55:51+00:00"
+recorded = "2026-08-06T02:36:28+00:00"
 signed = true
 
 [[artifact."figures/composite.svg".inputs]]
 path = "figures/composite.drawio"
-hash = "sha256:b4f1b154bfad6548e2dc1b4f5c34b9b54ab9ccaa5535364ff7709a242994e5d6"
+hash = "sha256:cc8f05fa4f5d718a81a4a50d3ff75907b5e1926caffae6a80f91e822f61dc1d1"
 kind = "file"
 
 [artifact."figures/cp_curve.svg"]
-hash = "sha256:07d0a3da593a83bef5d89565a25514138dea0947f8ee8fda5095bc021282f39d"
+hash = "sha256:9e45512c5746350ed0500dfd66408cbef77b47023108f74040a79285f60eb255"
 kind = "run"
-command = "uv run python scripts/plot_cp.py"
-recorded = "2026-08-06T00:26:28+00:00"
+command = "pixi run python scripts/plot_cp.py"
+recorded = "2026-08-06T02:36:24+00:00"
 signed = true
 
 [[artifact."figures/cp_curve.svg".inputs]]
@@ -118,8 +118,8 @@ hash = "sha256:da736db8e856206999bddc068e158b7345dd3e2f4df840be0892b3bed8de31a9"
 kind = "file"
 
 [[artifact."figures/cp_curve.svg".inputs]]
-path = "uv.lock"
-hash = "sha256:330be2bb0321c811534501de9bb9c271e20119925de8cb9a235faa3aff88954b"
+path = "pixi.lock"
+hash = "sha256:93f33600599149252a97ff1234f6d9455c7385a5fd77470f56391f3d7558a9a2"
 kind = "environment"
 
 [[artifact."figures/cp_curve.svg".inputs]]
@@ -128,10 +128,10 @@ hash = "sha256:47eefd50f047efdb2d811628a60499e09a98ab9729e2088eddbc7c16e7504130"
 kind = "code"
 
 [artifact."figures/cp_curve_interactive.html"]
-hash = "sha256:724b0e16ffc6aa9bea8ca8c4cca25dc3cb84e3f4487c9882345880440d021838"
+hash = "sha256:022c779c3f6682ff31cd15a307a3470c8add2dfaca72dae75710b25ebba3b3a4"
 kind = "run"
-command = "uv run python scripts/plot_cp_interactive.py"
-recorded = "2026-08-06T00:57:18+00:00"
+command = "pixi run python scripts/plot_cp_interactive.py"
+recorded = "2026-08-06T02:36:29+00:00"
 
 [[artifact."figures/cp_curve_interactive.html".inputs]]
 path = "data/performance.csv"
@@ -139,8 +139,8 @@ hash = "sha256:da736db8e856206999bddc068e158b7345dd3e2f4df840be0892b3bed8de31a9"
 kind = "file"
 
 [[artifact."figures/cp_curve_interactive.html".inputs]]
-path = "uv.lock"
-hash = "sha256:330be2bb0321c811534501de9bb9c271e20119925de8cb9a235faa3aff88954b"
+path = "pixi.lock"
+hash = "sha256:93f33600599149252a97ff1234f6d9455c7385a5fd77470f56391f3d7558a9a2"
 kind = "environment"
 
 [[artifact."figures/cp_curve_interactive.html".inputs]]
@@ -149,10 +149,10 @@ hash = "sha256:addf632e102ba24e174feee3e120e866f6a2f4444b44207e89490384cf1a4d2b"
 kind = "code"
 
 [artifact."figures/ct_curve.svg"]
-hash = "sha256:550e43271b069c4c13dc6674e3db70ccc7216a77faf2c273cb47ce1411273fff"
+hash = "sha256:f14093dbfad7be8c8804d2ca19002955f5634c11c1df2dfac7834c03b75b8ca6"
 kind = "run"
-command = "uv run python scripts/plot_ct.py"
-recorded = "2026-08-06T00:55:49+00:00"
+command = "pixi run python scripts/plot_ct.py"
+recorded = "2026-08-06T02:36:27+00:00"
 signed = true
 
 [[artifact."figures/ct_curve.svg".inputs]]
@@ -161,8 +161,8 @@ hash = "sha256:da736db8e856206999bddc068e158b7345dd3e2f4df840be0892b3bed8de31a9"
 kind = "file"
 
 [[artifact."figures/ct_curve.svg".inputs]]
-path = "uv.lock"
-hash = "sha256:330be2bb0321c811534501de9bb9c271e20119925de8cb9a235faa3aff88954b"
+path = "pixi.lock"
+hash = "sha256:93f33600599149252a97ff1234f6d9455c7385a5fd77470f56391f3d7558a9a2"
 kind = "environment"
 
 [[artifact."figures/ct_curve.svg".inputs]]
@@ -171,9 +171,9 @@ hash = "sha256:a7b55c57ad88e5ae545f02da8b3d36bf7af148ceb754a2b0e508c254bf3e8084"
 kind = "code"
 
 [artifact."index.qmd"]
-hash = "sha256:7e1ca01c0e0668725be9cf5b0a4db0cc0825a1b66a108f8f3b919a872e36f4ea"
+hash = "sha256:54d4d4bb0bd68d89003d5baec28d9e6dc3a35fcd22a4dc5f10b90d5f030de778"
 kind = "primary"
-recorded = "2026-08-06T01:50:29+00:00"
+recorded = "2026-08-06T02:36:20+00:00"
 origin_kind = "attested"
 
 [[artifact."index.qmd".authors]]
@@ -183,7 +183,7 @@ kind = "person"
 [artifact."scripts/plot_cp.py"]
 hash = "sha256:47eefd50f047efdb2d811628a60499e09a98ab9729e2088eddbc7c16e7504130"
 kind = "primary"
-recorded = "2026-08-06T01:09:15+00:00"
+recorded = "2026-08-06T02:36:19+00:00"
 origin_kind = "attested"
 
 [[artifact."scripts/plot_cp.py".authors]]
@@ -197,7 +197,7 @@ kind = "ai"
 [artifact."scripts/plot_ct.py"]
 hash = "sha256:a7b55c57ad88e5ae545f02da8b3d36bf7af148ceb754a2b0e508c254bf3e8084"
 kind = "primary"
-recorded = "2026-08-06T01:09:16+00:00"
+recorded = "2026-08-06T02:36:20+00:00"
 origin_kind = "attested"
 
 [[artifact."scripts/plot_ct.py".authors]]

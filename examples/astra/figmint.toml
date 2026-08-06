@@ -47,10 +47,10 @@ name = "Pete Bachant <petebachant@gmail.com>"
 kind = "person"
 
 [artifact."figures/cp_curve.svg"]
-hash = "sha256:3dd7422c887e13f3f33ae8889e758baccfd698c23da53cdbe4c45f0eb3453fce"
+hash = "sha256:91f24b6e2d99d119e5f85d4180a4e0d11d76776e5ec8665613546e2e94f00fb9"
 kind = "run"
 command = "uv run python src/plot_cp.py --fit raw"
-recorded = "2026-08-06T00:48:44+00:00"
+recorded = "2026-08-06T02:29:02+00:00"
 
 [[artifact."figures/cp_curve.svg".inputs]]
 path = "data/performance.csv"
@@ -73,10 +73,10 @@ hash = "sha256:2185509c6dad7bc5e839ec54a9d90d4814cda4fa0691c672b5df8e6316da1514"
 kind = "code"
 
 [artifact."figures/ct_curve.svg"]
-hash = "sha256:6964106297146a4522678c688a85d368a3c9f784abf267afccc619a5a81e3f45"
+hash = "sha256:42bfc6cd1b294883d810f3a44dcaaa7c134a660df286e80cb550967ee81666ab"
 kind = "run"
 command = "uv run python src/plot_ct.py --fit raw"
-recorded = "2026-08-06T00:48:47+00:00"
+recorded = "2026-08-06T02:29:05+00:00"
 
 [[artifact."figures/ct_curve.svg".inputs]]
 path = "data/performance.csv"
@@ -99,20 +99,20 @@ hash = "sha256:69dffac4f587587d9c0bb5c4b24c51d698dc789d19f56a44236bf2d2408cc4b3"
 kind = "code"
 
 [artifact."figures/performance.svg"]
-hash = "sha256:19530ba956a1b4f68f5dcdf288286c26ef027c8ac95e3adfffdd28c4bc7dc3df"
+hash = "sha256:ce13950b4b32a3ffe785c01bfaf15f68f1abdb294d6562720cdd24b0f6f51c4e"
 kind = "run"
 command = "uv run python src/stack.py"
-recorded = "2026-08-06T00:48:47+00:00"
+recorded = "2026-08-06T02:29:05+00:00"
 signed = true
 
 [[artifact."figures/performance.svg".inputs]]
 path = "figures/cp_curve.svg"
-hash = "sha256:3dd7422c887e13f3f33ae8889e758baccfd698c23da53cdbe4c45f0eb3453fce"
+hash = "sha256:91f24b6e2d99d119e5f85d4180a4e0d11d76776e5ec8665613546e2e94f00fb9"
 kind = "file"
 
 [[artifact."figures/performance.svg".inputs]]
 path = "figures/ct_curve.svg"
-hash = "sha256:6964106297146a4522678c688a85d368a3c9f784abf267afccc619a5a81e3f45"
+hash = "sha256:42bfc6cd1b294883d810f3a44dcaaa7c134a660df286e80cb550967ee81666ab"
 kind = "file"
 
 [[artifact."figures/performance.svg".inputs]]
@@ -122,14 +122,14 @@ kind = "environment"
 
 [[artifact."figures/performance.svg".inputs]]
 path = "src/stack.py"
-hash = "sha256:47f688f301bbcbd0eb78767891c1bbf631e08620afd289af39907a089b717fb9"
+hash = "sha256:3fba3c128dd9ad0fb66f4f8e3d371bd6b29cdf0306fa621ab9a0d1662ca824e7"
 kind = "code"
 
 [artifact."results/peak.json"]
 hash = "sha256:a2723014f0c477187fd9a0fa3c582379551f2d1ad8ed7a3666d1c4e916e3e800"
 kind = "run"
 command = "uv run python src/peak.py --fit raw --estimator argmax"
-recorded = "2026-08-06T00:48:48+00:00"
+recorded = "2026-08-06T02:29:05+00:00"
 
 [[artifact."results/peak.json".inputs]]
 path = "data/performance.csv"
@@ -222,9 +222,9 @@ name = "Claude Opus 5"
 kind = "ai"
 
 [artifact."src/stack.py"]
-hash = "sha256:47f688f301bbcbd0eb78767891c1bbf631e08620afd289af39907a089b717fb9"
+hash = "sha256:3fba3c128dd9ad0fb66f4f8e3d371bd6b29cdf0306fa621ab9a0d1662ca824e7"
 kind = "primary"
-recorded = "2026-08-06T00:47:58+00:00"
+recorded = "2026-08-06T02:29:05+00:00"
 origin_kind = "attested"
 
 [[artifact."src/stack.py".authors]]

@@ -3,7 +3,7 @@
 A small document whose figure carries its own provenance.
 
 ```sh
-uv sync
+pixi install
 make extension   # install the Quarto filter into _extensions/
 make declare     # say where the data, the scripts and the diagram came from
 make plot        # produce the two panels, recording where they came from
@@ -14,10 +14,14 @@ make site        # build the document, recording it too
 
 `make all` does the lot. `make help` lists the rest.
 
-Two things are not Python packages and have to be installed yourself: **Quarto**
-([quarto.org](https://quarto.org/docs/get-started/)) and, for the composite,
-the **draw.io desktop app** ([drawio.com](https://www.drawio.com/)). Both need
-to be on your `PATH`.
+Python, Quarto, Plotly and kaleido all come from `pixi.toml`, so
+[pixi](https://pixi.sh) is the only thing you need beforehand. **One exception
+remains:** the composite needs the **draw.io desktop app**
+([drawio.com](https://www.drawio.com/)) on your `PATH`. It is an Electron
+application with no conda or PyPI package, so no lock file can pin it — which
+means `figures/composite.svg` rests on a tool version the record cannot name.
+That is a real gap and it is stated here rather than glossed; everything else in
+this project is pinned.
 
 **`figmint.toml` is committed**, along with every figure it describes and the
 lock file it names. That is not incidental to the example: the record is the
@@ -53,7 +57,7 @@ emitted after them is a grey box under an unnumbered picture.
 ```
 performance.csv ─┬─> plot_cp.py ─> cp_curve.svg ─┐
                  │                               ├─> composite.drawio ─> composite.svg ─> index.html
-        uv.lock ─┴─> plot_ct.py ─> ct_curve.svg ─┘
+      pixi.lock ─┴─> plot_ct.py ─> ct_curve.svg ─┘
 ```
 
 Three levels deep on purpose. A composite's only _direct_ input is the diagram,
@@ -76,6 +80,14 @@ recorded or they do not.
 
 ## Why the command needs an environment manager
 
-`make plot` runs the script through `uv run`, so `uv.lock` is recorded as an
-input alongside the CSV. A record naming only the data would call the figure
+`make plot` runs the script through `pixi run`, so `pixi.lock` is recorded as
+an input alongside the CSV. A record naming only the data would call the figure
 unchanged after a dependency upgrade that visibly redrew it.
+
+**pixi rather than uv, and Quarto is the reason.** Rendering the document is a
+recorded step too, so figmint records the lock as _its_ environment — and a
+lock that does not pin the renderer would be asserting an environment it does
+not actually control. `pixi.toml` puts Quarto, Python, Plotly and kaleido in one
+lock file, across three platforms, so the claim the record makes is one the lock
+can back. The MyST example uses uv, which is the right choice there: `mystmd`
+is a Python package and goes in the lock on its own.

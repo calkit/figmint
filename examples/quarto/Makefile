@@ -7,7 +7,7 @@
 # figure nobody had redrawn — which `figmint status` would then, correctly,
 # complain about.
 
-RUN     := uv run
+RUN     := pixi run
 FIGMINT := $(RUN) figmint
 
 DATA      := data/performance.csv
@@ -36,7 +36,7 @@ extension: _extensions/figmint/figmint.lua  ## Install the Quarto filter
 # Installed from the package rather than with `quarto add`, because the filter
 # and `figmint-quarto` speak a protocol private to figmint and have to be the
 # same version.
-_extensions/figmint/figmint.lua: uv.lock
+_extensions/figmint/figmint.lua: pixi.lock
 	$(FIGMINT) quarto install
 
 # The declarations. Nothing produces a dataset or a plotting script, so without
@@ -51,20 +51,20 @@ declare:  ## Say where the primary artifacts came from
 	$(FIGMINT) declare index.qmd --mine
 	$(FIGMINT) declare _quarto.yml --mine
 
-# The environment is an input to these, which is why `uv.lock` is a
+# The environment is an input to these, which is why `pixi.lock` is a
 # prerequisite: a different Plotly draws a different figure, and figmint
 # records the lock precisely so that is visible rather than assumed.
-$(CP): $(DATA) $(CP_SCRIPT) uv.lock
-	$(FIGMINT) run -i $(DATA) -o $@ -- uv run python $(CP_SCRIPT)
+$(CP): $(DATA) $(CP_SCRIPT) pixi.lock
+	$(FIGMINT) run -i $(DATA) -o $@ -- pixi run python $(CP_SCRIPT)
 
-$(CT): $(DATA) $(CT_SCRIPT) uv.lock
-	$(FIGMINT) run -i $(DATA) -o $@ -- uv run python $(CT_SCRIPT)
+$(CT): $(DATA) $(CT_SCRIPT) pixi.lock
+	$(FIGMINT) run -i $(DATA) -o $@ -- pixi run python $(CT_SCRIPT)
 
 # Recorded but not signed, and not by choice: c2pa does not recognize HTML in
 # either direction, so `figmint.toml` is the only provenance this figure has.
-$(CP_HTML): $(DATA) scripts/plot_cp_interactive.py uv.lock
+$(CP_HTML): $(DATA) scripts/plot_cp_interactive.py pixi.lock
 	$(FIGMINT) run -i $(DATA) -o $@ \
-	    -- uv run python scripts/plot_cp_interactive.py
+	    -- pixi run python scripts/plot_cp_interactive.py
 
 # `drawio import` is an *authoring* step — it puts a new panel on the canvas —
 # so it is not a build rule. Nothing here re-imports: each shape in the diagram
@@ -94,13 +94,13 @@ compose:  ## Author the diagram from scratch (only needed if you delete it)
 #
 # Recorded but not signed: c2pa does not recognize HTML, so `figmint.toml` is
 # the only provenance this output has.
-$(HTML): index.qmd _quarto.yml $(COMPOSITE) $(CP_HTML) uv.lock \
+$(HTML): index.qmd _quarto.yml $(COMPOSITE) $(CP_HTML) pixi.lock \
 		_extensions/figmint/figmint.lua
 	$(FIGMINT) run -i index.qmd -i _quarto.yml -i $(COMPOSITE) -i $(CP_HTML) \
-	    -o $@ -- uv run quarto render
+	    -o $@ -- pixi run quarto render
 
-uv.lock: pyproject.toml
-	uv lock
+pixi.lock: pixi.toml
+	pixi install
 
 .PHONY: plot
 plot: $(CP) $(CT) $(CP_HTML)  ## Produce the figures, recording their provenance

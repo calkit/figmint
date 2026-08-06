@@ -10,8 +10,8 @@ given, what environment it ran in, and what came out.
 ## The figure
 
 ::: {.figmint src="figures/composite.svg" #fig-performance width="95%"}
-(a) Power coefficient and (b) torque coefficient against tip speed ratio,
-measured in a towing tank—synthetic values for this example.
+**(a)** Power coefficient and **(b)** torque coefficient against tip speed
+ratio, measured in a towing tank—synthetic values for this example.
 :::
 
 Expand the panel under [@fig-performance] and you get what a reader would
@@ -76,7 +76,7 @@ re-encode.
 
 ```sh
 figmint run -i data/performance.csv -o figures/cp_curve.svg \
-    -- uv run python scripts/plot_cp.py
+    -- pixi run python scripts/plot_cp.py
 ```
 
 figmint hashed the inputs, ran the command, hashed the output, and recorded all
@@ -91,9 +91,17 @@ the code that drew it was rewritten.
 ### The environment is an input
 
 The command has to go through a manager with a deterministic lock file—here
-`uv run`, so `uv.lock` is recorded alongside the CSV. That is not bookkeeping.
-The same script under a different Plotly draws a different figure, and a record
-naming only the data would call that unchanged.
+`pixi run`, so `pixi.lock` is recorded alongside the CSV. That is not
+bookkeeping. The same script under a different Plotly draws a different figure,
+and a record naming only the data would call that unchanged.
+
+pixi rather than uv, and for a reason this document is the proof of: **Quarto
+is in that lock too**. Rendering this page is a recorded step, so figmint
+records `pixi.lock` as its environment—and if Quarto came from a system install
+the lock would be asserting an environment it does not actually pin. The record
+would be claiming more than it knows, which is the one thing it must never do.
+A different Quarto renders a different page, exactly as a different Plotly draws
+a different figure.
 
 ### Going stale
 

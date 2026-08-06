@@ -54,9 +54,7 @@ def main() -> None:
         f'viewBox="0 0 {width:g} {height:g}">'
     ]
     offset = 0.0
-    for (panel_width, panel_height), markup, label in zip(
-        sizes, panels, "ab"
-    ):
+    for (panel_width, panel_height), markup, label in zip(sizes, panels, "ab"):
         parts.append(
             f'<svg x="{offset:g}" y="0" width="{panel_width:g}" '
             f'height="{panel_height:g}">{body(markup)}</svg>'

@@ -1,8 +1,8 @@
 schema: '2.0'
 stages:
   plot-cp:
-    cmd: calkit xenv -n main --no-check -- figmint run --no-sign -i 
-      data/performance.csv -o figures/cp_curve.svg -- calkit xenv -n main -- 
+    cmd: calkit xenv -n main --no-check -- figmint run --no-sign -i
+      data/performance.csv -o figures/cp_curve.svg -- calkit xenv -n main --
       python scripts/plot_cp.py
     deps:
     - path: .calkit/env-locks/main
@@ -21,11 +21,11 @@ stages:
     outs:
     - path: figures/cp_curve.svg
       hash: md5
-      md5: 0079fa2e7d6b7860d0662e0b6a2d798c
+      md5: 42025d8952509977aab1cae99f7e1f26
       size: 10309
   plot-ct:
-    cmd: calkit xenv -n main --no-check -- figmint run --no-sign -i 
-      data/performance.csv -o figures/ct_curve.svg -- calkit xenv -n main -- 
+    cmd: calkit xenv -n main --no-check -- figmint run --no-sign -i
+      data/performance.csv -o figures/ct_curve.svg -- calkit xenv -n main --
       python scripts/plot_ct.py
     deps:
     - path: .calkit/env-locks/main
@@ -44,11 +44,11 @@ stages:
     outs:
     - path: figures/ct_curve.svg
       hash: md5
-      md5: 20a4f38383cda6fdfa24794e1d693a90
+      md5: 0f0a64ac4a7c843085257128736ca03d
       size: 9716
   stack-panels:
-    cmd: calkit xenv -n main --no-check -- figmint run -i figures/cp_curve.svg 
-      -i figures/ct_curve.svg -o figures/performance.svg -- calkit xenv -n main 
+    cmd: calkit xenv -n main --no-check -- figmint run -i figures/cp_curve.svg
+      -i figures/ct_curve.svg -o figures/performance.svg -- calkit xenv -n main
       -- python scripts/stack.py
     deps:
     - path: .calkit/env-locks/main
@@ -58,18 +58,18 @@ stages:
       nfiles: 1
     - path: figures/cp_curve.svg
       hash: md5
-      md5: 0079fa2e7d6b7860d0662e0b6a2d798c
+      md5: 42025d8952509977aab1cae99f7e1f26
       size: 10309
     - path: figures/ct_curve.svg
       hash: md5
-      md5: 20a4f38383cda6fdfa24794e1d693a90
+      md5: 0f0a64ac4a7c843085257128736ca03d
       size: 9716
     - path: scripts/stack.py
       hash: md5
-      md5: 24fa3f23c58c2ba1de5634011f02497c
-      size: 2682
+      md5: 597a122605018a4666e85bab29799cc3
+      size: 2668
     outs:
     - path: figures/performance.svg
       hash: md5
-      md5: c5418ff90cb3c4d5881b53eee0b0ce75
+      md5: f16f459bc3fb8b2a4978a8e43962c2f2
       size: 41639

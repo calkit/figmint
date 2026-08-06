@@ -44,7 +44,7 @@ figmint declare scripts/stack.py   --mine --with-ai 'Claude Opus 5'
 ## The record is committed
 
 `figmint.toml` is in version control, along with every artifact it describes.
-That is not incidental to the example: the record *is* the evidence, and a
+That is not incidental to the example: the record _is_ the evidence, and a
 project that ignores its own record is one where nobody can check anything
 without rebuilding first. Clone this and `figmint status` has an answer
 immediately.
@@ -79,7 +79,7 @@ from it.
 
 ## Why the wrapper has to be inside the stage
 
-figmint signs an artifact *before* hashing it, because embedding a C2PA
+figmint signs an artifact _before_ hashing it, because embedding a C2PA
 manifest changes the bytes. If DVC hashed an output and figmint signed it
 afterward, the hash in `dvc.lock` would be wrong the moment signing finished,
 DVC would see the output as modified, and the stage would rerun forever.
@@ -106,8 +106,8 @@ file pasted into a manuscript. `cp_curve.svg` and `ct_curve.svg` never travel;
 `performance.svg` does.
 
 That makes signing a per-stage decision rather than a project-wide switch,
-which also reads correctly as a statement of intent: *this is the artifact I am
-putting my name on*.
+which also reads correctly as a statement of intent: _this is the artifact I am
+putting my name on_.
 
 Nothing is lost by leaving a panel unsigned. figmint reads each input's own
 Content Credentials when it builds a manifest, so an AI-generated panel that
@@ -118,7 +118,7 @@ ingredient entry, which is detail rather than disclosure.
 ## `dvc.lock` and `figmint.toml` side by side
 
 They look alike — both record a command, its dependencies and its outputs, with
-hashes, environment lock included. The difference is what the hashes are *for*,
+hashes, environment lock included. The difference is what the hashes are _for_,
 and it is load bearing.
 
 `dvc.lock` records `hash: md5`, which is entirely adequate for cache

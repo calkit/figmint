@@ -39,7 +39,7 @@ figmint declare scripts/stack.py   --mine --with-ai 'Claude Opus 5'
 ## The record is committed
 
 `figmint.toml` is in version control, along with every artifact it describes.
-That is not incidental to the example: the record *is* the evidence, and a
+That is not incidental to the example: the record _is_ the evidence, and a
 project that ignores its own record is one where nobody can check anything
 without rebuilding first. Clone this and `figmint status` has an answer
 immediately.
@@ -74,10 +74,10 @@ a dependency bump for the same reason.
 
 Less than it looks. Snakemake keeps its own record of what it built and from
 what, under `.snakemake/`, and it is good at it — a touched file whose content
-did not change does *not* trigger a rerun, and restoring an old version quiets
+did not change does _not_ trigger a rerun, and restoring an old version quiets
 it again. Both tools notice a real edit; both go quiet when it is undone.
 
-The difference is what the record is *for*:
+The difference is what the record is _for_:
 
 ```sh
 rm -rf .snakemake/     # Snakemake now wants to rebuild all three rules
@@ -106,8 +106,8 @@ So sign at the **boundary**. Content Credentials earn their keep on artifacts
 that leave the repository: the published figure, the file pasted into a
 manuscript. `cp_curve.svg` and `ct_curve.svg` never travel; `performance.svg`
 does. That makes signing a per-rule decision rather than a project-wide switch,
-which also reads correctly as a statement of intent: *this is the artifact I am
-putting my name on*.
+which also reads correctly as a statement of intent: _this is the artifact I am
+putting my name on_.
 
 ## Which tool repairs what
 

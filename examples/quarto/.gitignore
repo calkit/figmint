@@ -3,6 +3,10 @@
 # source of truth, alongside the artifacts it describes and the lock file it
 # names. A figmint project that ignores its own record is one where nobody can
 # check anything without rebuilding first.
+#
+# `pixi.lock` is committed for the same reason: figmint records it as the
+# environment behind every artifact here, so a reader needs it to check the
+# claim.
 
 # The rendered site: a build output, and the one artifact whose absence the
 # record can survive. Run `make all` and it appears.
@@ -13,5 +17,5 @@
 # The installed copy of the filter, which lives in this repository already.
 /_extensions/
 
-# uv's own directory, not the lock file.
-/.venv/
+# pixi's environment directory, not the lock file.
+/.pixi/
