@@ -938,3 +938,36 @@ class TestDocumentTableIsAboutOutputs:
             "admonition",
         )
         assert "Document is up to date" in all_text(panel)
+
+
+class TestFetchedOrigin:
+    def test_a_downloaded_file_is_linked_and_dated(self, project: Path):
+        """The date is not trimmed to save room.
+
+        An address alone reads as a citation and this one is not: it names
+        whatever is served today, so when figmint looked is the part that still
+        means something a year later.
+        """
+        from figmint.declare import declare
+        from figmint.origins import Origin
+
+        declare(
+            project / "data.csv",
+            Origin(
+                kind="url",
+                value="https://example.org/raw.csv",
+                fetched="2026-01-01T00:00:00+00:00",
+            ),
+        )
+        panel = find(run_directive(payload("plot.png")), "admonition")
+        shown = all_text(panel)
+        assert "https://example.org/raw.csv" in shown
+        assert "2026-01-01" in shown
+        assert find(panel, "link")["url"] == "https://example.org/raw.csv"
+
+        # And on its own panel, with the caveat that keeps it from reading as a
+        # deposit.
+        own = all_text(find(run_directive(payload("data.csv")), "admonition"))
+        assert "downloaded from https://example.org/raw.csv" in own
+        assert "can serve something else later" in own
+        assert "nothing can verify it" not in own

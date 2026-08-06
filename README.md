@@ -135,6 +135,47 @@ rewriting that is the tampering the record exists to catch — so an artifact
 with a command keeps reporting `modified` no matter how many later runs
 consume it.
 
+### Downloads
+
+Some data just lives at a URL, and `--url` is the one origin figmint **checks
+while making it**:
+
+```sh
+figmint declare data/raw.csv --url https://example.org/datasets/raw.csv
+```
+
+figmint fetches the address. If the file is not there yet it is downloaded; if
+it is, figmint downloads it anyway and compares — and refuses if the bytes
+differ, naming both hashes, because either the file was edited after it was
+downloaded or the address has moved on and both are things you want told:
+
+```
+https://example.org/datasets/raw.csv does not serve what is in raw.csv.
+   on disk:    sha256:5179d9e0…
+   downloaded: sha256:4fd12f8c…
+```
+
+What lands in the record is the address **and the moment**:
+
+```toml
+origin_kind = "url"
+origin = "https://example.org/datasets/raw.csv"
+origin_fetched = "2026-08-06T02:49:24+00:00"
+```
+
+That pair is the claim: _this address served exactly these bytes, at this
+time_. It sits between the other two kinds and is honest about being there — a
+DOI resolves to a deposit that will not change, an attestation cannot be checked
+by anyone, and this was genuinely fetched and genuinely verified but names
+something mutable. So the panel shows the date beside the link every time, and
+says the URL can serve something else later. Being told a file came from a URL
+is an attestation; going and looking is evidence, and the timestamp is what
+keeps that distinction meaningful a year on.
+
+Downloading uses nothing but the standard library. A provenance tool that pulled
+in an HTTP stack to fetch a CSV would have made itself harder to trust than the
+claim it records.
+
 ### Where AI disclosure lives
 
 A file that carries Content Credentials already says whether it is
@@ -554,3 +595,27 @@ entrypoint, record one enormous artifact, and lose the per-figure chain that is
 the whole point. And in each of them the repair for a stale artifact is the
 manager's own command, not `figmint rebuild` — two components that each claim to
 know how to rebuild a project, from different graphs, will drift.
+
+### What the lock file does not cover
+
+figmint records the lock of the environment the **command** ran in. Anything
+that wraps that command from the outside is not in it — figmint itself, the
+workflow manager, and any tool they shell out to. That is a real limit on what
+the record means, and it is worth knowing where it bites:
+
+- **MyST needs Node.** `mystmd` on PyPI is a wrapper around a JavaScript CLI.
+  The JS ships in the wheel so the MyST version is pinned, but the runtime is
+  taken from `PATH` — and with no Node installed it stops and _asks
+  interactively_ whether to install one, which hangs a CI build rather than
+  failing it. `MYSTMD_ALLOW_NODEENV=1` answers that up front.
+- **draw.io is a desktop app.** No conda or PyPI package exists, so nothing can
+  pin it, and an exported composite rests on a version the record cannot name.
+- **Quarto can be pinned, and should be.** The Quarto example uses pixi for
+  exactly this reason: rendering the document is a recorded step, so a lock that
+  did not include the renderer would be asserting an environment it does not
+  control.
+
+The general remedy is to choose an environment manager that can hold the whole
+toolchain — pixi reaches conda-forge, which has Quarto and Node — rather than
+one that can only hold the Python part. Each example's README says which of
+these applies to it.

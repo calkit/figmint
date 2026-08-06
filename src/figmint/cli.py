@@ -203,7 +203,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             print(f"warning: nothing accounts for {path}", file=sys.stderr)
         print(
             "         declare it: `figmint declare <path> --mine "
-            "[--with-ai ...]`, `--doi ...`, or `--git ...@rev`",
+            "[--with-ai ...]`, `--doi ...`, `--url ...`, or `--git ...@rev`",
             file=sys.stderr,
         )
 
@@ -231,6 +231,7 @@ def cmd_declare(args: argparse.Namespace) -> int:
             doi=args.doi,
             git=args.git,
             calkit=args.calkit,
+            url=args.url,
         )
         artifact = declare(args.path, origin)
     except OriginError as exc:
@@ -529,6 +530,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--calkit",
         metavar="LOCATION@REV",
         help="a Calkit project location: host/owner/project/path/to/file@rev",
+    )
+    declare_cmd.add_argument(
+        "--url",
+        metavar="URL",
+        help=(
+            "download it from here and record that it happened. figmint "
+            "fetches the address and, if the file already exists, refuses "
+            "unless the bytes match — so the record says this URL served "
+            "exactly these bytes at this time"
+        ),
     )
     declare_cmd.set_defaults(func=cmd_declare)
 

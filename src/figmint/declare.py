@@ -15,12 +15,55 @@ from .origins import (
     Origin,
     OriginError,
     attested,
+    fetch,
     git_author,
     git_authors_for,
     parse_doi,
     parse_location,
 )
 from .store import Artifact, Store, hash_file
+
+
+def fetch_origin(url: str, path: Path) -> Origin:
+    """Download a URL and record that it happened, at a time, to these bytes.
+
+    This is the one origin figmint *checks* while making it, and the two cases
+    read differently:
+
+    * **The file is not there yet.** figmint downloads it. The record then says
+      where it came from because figmint fetched it, not because anyone said so.
+    * **The file is already there.** figmint fetches anyway and compares. Being
+      told "this came from that URL" is an attestation; going and looking is
+      evidence, and the difference is the entire point of the flag.
+
+    A mismatch is refused rather than reconciled. Either the file was edited
+    after it was downloaded or the address has moved on, and both are things a
+    reader needs told — quietly overwriting the file would destroy the first and
+    quietly recording the URL would falsify the second.
+    """
+    path = Path(path)
+    if not path.is_file():
+        stamp = fetch(url, path)
+        return Origin(kind="url", value=url, fetched=stamp)
+
+    existing = hash_file(path)
+    scratch = path.with_name(path.name + ".figmint-check")
+    try:
+        stamp = fetch(url, scratch)
+        downloaded = hash_file(scratch)
+    finally:
+        scratch.unlink(missing_ok=True)
+
+    if downloaded != existing:
+        raise OriginError(
+            f"{url} does not serve what is in {path.name}.\n"
+            f"   on disk:   {existing}\n"
+            f"   downloaded: {downloaded}\n"
+            f"Either the file was changed after it was downloaded, or the "
+            f"address has moved on. Both are worth knowing; neither is worth "
+            f"recording as though the download matched."
+        )
+    return Origin(kind="url", value=url, fetched=stamp)
 
 
 def resolve_origin(
@@ -33,45 +76,54 @@ def resolve_origin(
     doi: str | None = None,
     git: str | None = None,
     calkit: str | None = None,
+    url: str | None = None,
     cwd: Path | None = None,
 ) -> Origin:
     """Turn the command-line options into one claim.
 
     Exactly one, deliberately. A file that is both "mine" and fetched from a DOI
     is two different stories, and a record that holds both says neither.
+
+    `--url` is the one branch that touches the network: it does not merely parse
+    a claim, it goes and checks it. That impurity is the feature, and it is here
+    rather than hidden behind the record so a failed or mismatched download stops
+    the command instead of being written down.
     """
     authors = list(authors or [])
     with_ai = list(with_ai or [])
     attesting = bool(mine or authors or with_ai or from_git)
+    sourced = bool(doi or git or calkit or url)
 
     claims = {
         "--mine": attesting,
         "--doi": bool(doi),
         "--git": bool(git),
         "--calkit": bool(calkit),
+        "--url": bool(url),
     }
     given = [flag for flag, present in claims.items() if present]
 
     # The attestation flags produce their own errors first: they say something
     # specific about what is wrong, and "say where it came from" would be
     # technically true but useless to someone who just told us exactly that.
-    if with_ai and (doi or git or calkit):
+    if with_ai and sourced:
         raise OriginError(
-            "`--with-ai` belongs on an attestation. A published or "
-            "revision-pinned source already says where the file came from."
+            "`--with-ai` belongs on an attestation. A published, "
+            "revision-pinned, or fetched source already says where the file "
+            "came from."
         )
-    if from_git and (doi or git or calkit):
+    if from_git and sourced:
         raise OriginError(
             "`--from-git-history` reads the authors of a file in this project. "
-            "A published or revision-pinned source already says where it "
-            "came from."
+            "A published, revision-pinned, or fetched source already says "
+            "where it came from."
         )
 
     if not given:
         raise OriginError(
             "say where it came from: `--mine` if you produced it, `--doi` if it "
-            "is published, or `--git`/`--calkit` with a `location@rev` if it "
-            "lives in another project."
+            "is published, `--url` if it was downloaded, or `--git`/`--calkit` "
+            "with a `location@rev` if it lives in another project."
         )
     if len(given) > 1:
         raise OriginError(
@@ -84,6 +136,10 @@ def resolve_origin(
         return parse_location("git", git)
     if calkit:
         return parse_location("calkit", calkit)
+    if url:
+        if path is None:
+            raise OriginError("`--url` needs a path to download to")
+        return fetch_origin(url, path)
 
     # Explicit names first, so a hand-written `--author` wins over whatever the
     # history heuristic decided about the same person.
@@ -147,6 +203,7 @@ def declare(path: Path, origin: Origin) -> Artifact:
         origin_kind=origin.kind,
         origin=origin.value or None,
         origin_revision=origin.revision,
+        origin_fetched=origin.fetched,
         authors=list(origin.authors),
     )
     store.record(artifact)

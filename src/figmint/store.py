@@ -163,6 +163,10 @@ class Artifact:
     origin: str | None = None
     #: Revision, for the location forms.
     origin_revision: str | None = None
+    #: When figmint fetched it, for the `url` form. An address without a date is
+    #: a claim about nothing in particular: what it serves can change the day
+    #: after it is written down.
+    origin_fetched: str | None = None
     #: Everyone who made a declared artifact, in order. An artifact rarely has
     #: exactly one author and code almost never does, so this is a list rather
     #: than a name, and each entry records whether it is a person or a tool.
@@ -191,6 +195,8 @@ class Artifact:
             return f"created by {joined}"
         if self.origin_kind == "doi":
             return f"doi:{self.origin}"
+        if self.origin_kind == "url":
+            return f"downloaded from {self.origin} on {self.origin_fetched}"
         return f"{self.origin_kind}:{self.origin}@{self.origin_revision}"
 
     def to_dict(self) -> dict[str, Any]:
@@ -207,6 +213,8 @@ class Artifact:
                 out["origin"] = self.origin
             if self.origin_revision:
                 out["origin_revision"] = self.origin_revision
+            if self.origin_fetched:
+                out["origin_fetched"] = self.origin_fetched
         if self.authors:
             out["authors"] = [a.to_dict() for a in self.authors]
         out["inputs"] = [i.to_dict() for i in self.inputs]
@@ -227,6 +235,7 @@ class Artifact:
             origin_kind=data.get("origin_kind"),
             origin=data.get("origin"),
             origin_revision=data.get("origin_revision"),
+            origin_fetched=data.get("origin_fetched"),
             authors=_read_authors(data),
         )
 
@@ -346,6 +355,7 @@ class Store:
                 artifact.origin_kind = previous.origin_kind
                 artifact.origin = previous.origin
                 artifact.origin_revision = previous.origin_revision
+                artifact.origin_fetched = previous.origin_fetched
 
         artifact.recorded = datetime.now(timezone.utc).isoformat(
             timespec="seconds"
@@ -380,6 +390,10 @@ class Store:
                 if artifact.origin_revision:
                     lines.append(
                         f"origin_revision = {_string(artifact.origin_revision)}"
+                    )
+                if artifact.origin_fetched:
+                    lines.append(
+                        f"origin_fetched = {_string(artifact.origin_fetched)}"
                     )
             for author in artifact.authors:
                 lines.append(f"\n[[artifact.{_key(key)}.authors]]")

@@ -115,3 +115,14 @@ putting my name on_.
 components that each claim to know how to rebuild the project, from different
 graphs, will drift. `figmint status` still reports — that is the part Snakemake
 has no answer for — but the repair is `snakemake --cores 1`.
+
+## Reproducibility gotchas
+
+`snakemake` and `figmint` are on your `PATH` as tools, not in `pyproject.toml` —
+they have to be, because both wrap the shell command from the outside. So the
+environment the science runs in is pinned by `uv.lock`, and the two tools
+wrapping it are not.
+
+That is the general shape of the limitation: figmint records the lock of the
+environment the _command_ ran in, and whatever wraps that command is outside it.
+See the note in the top-level README.

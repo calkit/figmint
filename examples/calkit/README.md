@@ -145,3 +145,14 @@ wrapper from the stage's declared inputs and outputs, so the `-i` and `-o`
 flags are not written twice and cannot drift. Calkit does not implement that
 yet, so this example writes them out. When it lands, the stages above collapse
 to four lines each.
+
+## Reproducibility gotchas
+
+`calkit` and `figmint` are on your `PATH` as tools, not in `requirements.txt` —
+they have to be, because both wrap the stage command from the outside. So the
+environment the science runs in is pinned by `.calkit/env-locks/`, and the two
+tools wrapping it are not.
+
+That is the general shape of the limitation: figmint records the lock of the
+environment the _command_ ran in, and whatever wraps that command is outside it.
+See the note in the top-level README.

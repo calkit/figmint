@@ -124,3 +124,15 @@ Without ASTRA, `figmint.toml` records `--fit polynomial` faithfully and has
 nothing to say about what else could have been chosen, why, or what it would
 have cost. A record of one path through a decision space that is nowhere
 written down.
+
+## Reproducibility gotchas
+
+`astra` and `figmint` are on your `PATH` as tools, not in `pyproject.toml` —
+they have to be, because both wrap the recipe command from the outside. So the
+environment the science runs in is pinned by `uv.lock`, and the two tools
+wrapping it are not.
+
+That matters a little less here than elsewhere: `astra` never executes anything,
+so it cannot change a number. `figmint` can only record. Still, the general
+shape holds — figmint records the lock of the environment the _command_ ran in,
+and whatever wraps that command is outside it. See the top-level README.

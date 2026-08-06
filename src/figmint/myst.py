@@ -247,6 +247,11 @@ def provenance_cell(item: ChainItem, store: Store) -> dict[str, Any]:
         return cell(emphasis("⚠ no origin recorded"))
     if artifact.origin_kind == "doi":
         return cell(link(f"https://doi.org/{artifact.origin}", origin))
+    if artifact.origin_kind == "url":
+        # The date is not trimmed off to save room. An address alone reads as a
+        # citation, and this one is not: it names whatever is served today, so
+        # when figmint looked is the part that still means something later.
+        return cell(link(artifact.origin or "", origin))
 
     if artifact.kind == "authored":
         # "created by" would suggest they made it from nothing; they assembled
@@ -418,12 +423,24 @@ def origin_paragraph(report: ArtifactStatus) -> dict[str, Any] | None:
         body: dict[str, Any] = link(
             f"https://doi.org/{artifact.origin}", described
         )
+    elif artifact.origin_kind == "url":
+        body = link(artifact.origin or "", described)
     else:
         body = text(described)
 
     children = [strong("Origin: "), body]
     if artifact.origin_kind == "attested":
         children.append(emphasis(" — a declaration; nothing can verify it"))
+    if artifact.origin_kind == "url":
+        # Said every time it is displayed, for the same reason an attestation
+        # says nothing verifies it. figmint really did fetch this and really did
+        # check the bytes — but that was then, and an address is not a deposit.
+        children.append(
+            emphasis(
+                " — figmint fetched this and the bytes matched; a URL can "
+                "serve something else later"
+            )
+        )
     return paragraph(*children)
 
 

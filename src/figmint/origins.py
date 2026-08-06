@@ -31,6 +31,13 @@ of claim it is:
     somebody remembered at declaration time.
   * **`--doi`** — a published, immutable source. The strongest form here,
     because a DOI resolves to something a reader can fetch.
+  * **`--url`** — a plain web address, and the one claim figmint checks as it
+    makes it. figmint fetches the URL and compares what came back against the
+    file on disk, so the record says *this address served exactly these bytes,
+    at this moment*. That is weaker than a DOI and stronger than an attestation:
+    the download really happened and figmint watched it, but a URL is mutable
+    and may serve something else tomorrow. The timestamp is what makes the claim
+    mean anything a year later.
   * **`--git <location@rev>`** / **`--calkit <location@rev>`** — a
     revision-pinned location:
 
@@ -122,7 +129,7 @@ def looks_like_ai(name: str) -> bool:
 class Origin:
     """A claim about where a primary artifact came from."""
 
-    #: `attested`, `doi`, `git`, or `calkit`.
+    #: `attested`, `doi`, `git`, `calkit`, or `url`.
     kind: str
     #: The claim itself, normalized.
     value: str
@@ -131,12 +138,18 @@ class Origin:
     #: Everyone who made it, in the order they appear. Always contains at least
     #: one person for an attestation: a tool cannot be accountable for a file.
     authors: tuple[Author, ...] = ()
+    #: When figmint fetched it, for `url`. Not decoration: an address without a
+    #: date is a claim about nothing in particular, because what it serves can
+    #: change the day after it is written down.
+    fetched: str | None = None
 
     def describe(self) -> str:
         if self.kind == "attested":
             return f"created by {describe_authors(self.authors)}"
         if self.kind == "doi":
             return f"https://doi.org/{self.value}"
+        if self.kind == "url":
+            return f"{self.value} (fetched {self.fetched})"
         return f"{self.kind}:{self.value}@{self.revision}"
 
     @property
@@ -147,6 +160,17 @@ class Origin:
         so plainly is the point. The others name something retrievable.
         """
         return self.kind != "attested"
+
+    @property
+    def mutable(self) -> bool:
+        """Whether what it names can change without the record noticing.
+
+        A DOI resolves to a deposit; a pinned revision names a commit. A bare
+        URL names whatever is served today, so a reader who follows it a year
+        from now may be looking at something else entirely — and the panel says
+        so rather than letting the address pass for a citation.
+        """
+        return self.kind == "url"
 
     @property
     def machine_generated(self) -> bool:
@@ -177,6 +201,63 @@ def parse_location(scheme: str, value: str) -> Origin:
         value=match.group("location"),
         revision=match.group("rev"),
     )
+
+
+#: Seconds to wait on a download before giving up. Long enough for a large
+#: dataset on a slow link, short enough that a hung server does not stall a
+#: build forever.
+FETCH_TIMEOUT = 60
+
+CHUNK = 1 << 20
+
+
+def fetch(url: str, destination: Path) -> str:
+    """Download a URL to a file, and say when.
+
+    stdlib only, deliberately: figmint's whole job is to be the thing you can
+    still run in five years, and a provenance tool that pulls an HTTP stack in
+    to download a CSV has made itself harder to trust than the claim it records.
+
+    Written through a temporary file so an interrupted download cannot leave a
+    truncated one wearing a recorded hash — the single worst outcome available
+    here, because it would look exactly like a successful fetch.
+    """
+    import shutil
+    import urllib.error
+    import urllib.request
+    from datetime import datetime, timezone
+    from urllib.parse import urlparse
+
+    scheme = urlparse(url).scheme.lower()
+    if scheme not in ("http", "https"):
+        raise OriginError(
+            f"`{url}` is not an http(s) address. `--url` records a download "
+            f"figmint performed; a local path is not one, and `--mine` is the "
+            f"claim you are looking for."
+        )
+
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(destination.name + ".figmint-download")
+    # A default `User-Agent` of `Python-urllib/3.x` is refused outright by a
+    # number of data repositories, which surfaces as a 403 that looks like a
+    # permissions problem rather than a politeness one.
+    request = urllib.request.Request(url, headers={"User-Agent": "figmint"})
+    try:
+        with urllib.request.urlopen(
+            request, timeout=FETCH_TIMEOUT
+        ) as response:
+            with temporary.open("wb") as handle:
+                shutil.copyfileobj(response, handle, CHUNK)
+    except urllib.error.HTTPError as exc:
+        temporary.unlink(missing_ok=True)
+        raise OriginError(f"{url} returned {exc.code} {exc.reason}") from exc
+    except (urllib.error.URLError, OSError) as exc:
+        temporary.unlink(missing_ok=True)
+        raise OriginError(f"could not fetch {url}: {exc}") from exc
+
+    temporary.replace(destination)
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def parse_doi(value: str) -> Origin:

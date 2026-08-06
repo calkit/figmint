@@ -225,3 +225,184 @@ class TestResolution:
         )
         assert origin.kind == "attested"
         assert origin.machine_generated
+
+
+class TestUrls:
+    """The one origin figmint checks while making it.
+
+    Being told "this came from that URL" is an attestation; going and looking
+    is evidence, and the whole value of the flag is the difference. What it
+    records is narrower than a DOI and wider than a claim: *this address served
+    exactly these bytes, at this moment*.
+    """
+
+    def served(self, monkeypatch, payload: bytes, seen: list | None = None):
+        """Stand in for the network, recording what was asked for."""
+
+        def fake_fetch(url: str, destination: Path) -> str:
+            if seen is not None:
+                seen.append(url)
+            Path(destination).parent.mkdir(parents=True, exist_ok=True)
+            Path(destination).write_bytes(payload)
+            return "2026-01-01T00:00:00+00:00"
+
+        monkeypatch.setattr("figmint.declare.fetch", fake_fetch)
+
+    def test_a_missing_file_is_downloaded_and_dated(
+        self, tmp_path: Path, monkeypatch
+    ):
+        seen: list[str] = []
+        self.served(monkeypatch, b"x,y\n1,2\n", seen)
+        target = tmp_path / "data" / "raw.csv"
+
+        origin = resolve_origin(
+            url="https://example.org/raw.csv", path=target, cwd=tmp_path
+        )
+        assert seen == ["https://example.org/raw.csv"]
+        assert target.read_bytes() == b"x,y\n1,2\n"
+        assert origin.kind == "url"
+        assert origin.value == "https://example.org/raw.csv"
+        assert origin.fetched == "2026-01-01T00:00:00+00:00"
+        # Fetchable, and still not a deposit: both facts are displayed.
+        assert origin.verifiable
+        assert origin.mutable
+        assert "fetched 2026-01-01" in origin.describe()
+
+    def test_an_existing_file_is_checked_not_overwritten(
+        self, tmp_path: Path, monkeypatch
+    ):
+        self.served(monkeypatch, b"x,y\n1,2\n")
+        target = tmp_path / "raw.csv"
+        target.write_bytes(b"x,y\n1,2\n")
+
+        assert (
+            resolve_origin(
+                url="https://example.org/raw.csv", path=target, cwd=tmp_path
+            ).kind
+            == "url"
+        )
+        assert target.read_bytes() == b"x,y\n1,2\n"
+        # Nothing left lying around wearing a name that looks like the file.
+        assert [p.name for p in tmp_path.iterdir()] == ["raw.csv"]
+
+    def test_a_moved_url_is_refused_and_the_file_survives(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Either the file was edited or the address moved on. Both are worth
+        knowing; neither is worth recording as though the download matched."""
+        self.served(monkeypatch, b"something else entirely\n")
+        target = tmp_path / "raw.csv"
+        target.write_bytes(b"x,y\n1,2\n")
+
+        with pytest.raises(OriginError, match="does not serve what is in"):
+            resolve_origin(
+                url="https://example.org/raw.csv", path=target, cwd=tmp_path
+            )
+        assert target.read_bytes() == b"x,y\n1,2\n"
+        assert [p.name for p in tmp_path.iterdir()] == ["raw.csv"]
+
+    def test_only_http_addresses_are_a_download(self, tmp_path: Path):
+        """`--url` records something figmint did. Copying a local file is not
+        that, and `--mine` is the claim for it."""
+        for address in ("file:///etc/hosts", "/data/raw.csv", "ftp://h/x"):
+            with pytest.raises(OriginError, match="not an http"):
+                resolve_origin(
+                    url=address, path=tmp_path / "raw.csv", cwd=tmp_path
+                )
+
+    def test_it_does_not_mix_with_the_other_claims(self, tmp_path: Path):
+        with pytest.raises(OriginError, match=r"--mine and --url"):
+            resolve_origin(
+                mine=True,
+                url="https://example.org/x",
+                path=tmp_path / "x",
+                cwd=tmp_path,
+            )
+        with pytest.raises(OriginError, match="belongs on an attestation"):
+            resolve_origin(
+                with_ai=["Claude Opus 5"],
+                url="https://example.org/x",
+                path=tmp_path / "x",
+                cwd=tmp_path,
+            )
+
+    def test_the_record_keeps_the_url_and_the_date(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Round-tripped through figmint.toml, because a timestamp that does not
+        survive being written down is not a record of anything."""
+        from figmint.declare import declare
+        from figmint.store import Store
+
+        (tmp_path / ".git").mkdir()
+        self.served(monkeypatch, b"x,y\n1,2\n")
+        target = tmp_path / "raw.csv"
+        origin = resolve_origin(
+            url="https://example.org/raw.csv", path=target, cwd=tmp_path
+        )
+        declare(target, origin)
+
+        stored = Store.load(tmp_path).artifacts["raw.csv"]
+        assert stored.origin_kind == "url"
+        assert stored.origin == "https://example.org/raw.csv"
+        assert stored.origin_fetched == "2026-01-01T00:00:00+00:00"
+        assert "downloaded from https://example.org/raw.csv" in (
+            stored.origin_description()
+        )
+
+
+class TestFetching:
+    """The download itself, against a real socket.
+
+    Mocked everywhere else, so this is the only place that would notice
+    urllib being handed a `Request` it does not like, or a partial write being
+    left behind under the destination's name.
+    """
+
+    def serve(self, tmp_path: Path, payload: bytes, status: int = 200):
+        import http.server
+        import threading
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802 - required by the base class
+                if status != 200:
+                    self.send_error(status)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return server, f"http://127.0.0.1:{server.server_port}/x.csv"
+
+    def test_it_downloads_and_stamps(self, tmp_path: Path):
+        from figmint.origins import fetch
+
+        server, url = self.serve(tmp_path, b"x,y\n1,2\n")
+        try:
+            target = tmp_path / "nested" / "raw.csv"
+            stamp = fetch(url, target)
+        finally:
+            server.shutdown()
+
+        assert target.read_bytes() == b"x,y\n1,2\n"
+        # An ISO instant in UTC, which is what the record stores.
+        assert stamp.endswith("+00:00")
+        assert [p.name for p in target.parent.iterdir()] == ["raw.csv"]
+
+    def test_an_http_error_says_which(self, tmp_path: Path):
+        from figmint.origins import fetch
+
+        server, url = self.serve(tmp_path, b"", status=404)
+        try:
+            with pytest.raises(OriginError, match="404"):
+                fetch(url, tmp_path / "raw.csv")
+        finally:
+            server.shutdown()
+        # Nothing written, and no partial file wearing the real name.
+        assert list(tmp_path.iterdir()) == []

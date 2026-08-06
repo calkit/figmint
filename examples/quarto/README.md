@@ -15,13 +15,7 @@ make site        # build the document, recording it too
 `make all` does the lot. `make help` lists the rest.
 
 Python, Quarto, Plotly and kaleido all come from `pixi.toml`, so
-[pixi](https://pixi.sh) is the only thing you need beforehand. **One exception
-remains:** the composite needs the **draw.io desktop app**
-([drawio.com](https://www.drawio.com/)) on your `PATH`. It is an Electron
-application with no conda or PyPI package, so no lock file can pin it — which
-means `figures/composite.svg` rests on a tool version the record cannot name.
-That is a real gap and it is stated here rather than glossed; everything else in
-this project is pinned.
+[pixi](https://pixi.sh) is the only thing you need beforehand.
 
 **`figmint.toml` is committed**, along with every figure it describes and the
 lock file it names. That is not incidental to the example: the record is the
@@ -36,6 +30,23 @@ The rendered site is the one thing left out, as in the MyST example. So on a
 fresh clone `figmint status` reports `_site/index.html` as **missing** until you
 run `make all`, which is the record correctly noticing an artifact that is not
 there rather than a flaw in the example.
+
+## Reproducibility gotchas
+
+**draw.io.** The composite needs the draw.io desktop app
+([drawio.com](https://www.drawio.com/)) on your `PATH`. It is an Electron
+application with no conda or PyPI package, so no lock file can pin it — which
+means `figures/composite.svg` rests on a tool version the record cannot name.
+That is a real gap, stated rather than glossed.
+
+**figmint itself** is in the lock here, via `[pypi-dependencies]`, which is
+unusual: in the other examples it is a tool on `PATH`, because it wraps the
+command from the outside. It works here because `pixi run figmint run ... --
+pixi run python ...` re-enters the same environment either way.
+
+Everything else — Python, Quarto, Plotly, kaleido — is pinned across
+`osx-arm64`, `linux-64` and `win-64`. Compare the MyST example, which uses uv
+and therefore does _not_ pin the Node runtime MyST needs.
 
 ## What to look at
 
